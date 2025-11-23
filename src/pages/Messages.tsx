@@ -1432,7 +1432,7 @@ export default function Messages() {
         <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-primary" />
+              <MessageSquare className="w-5 h-5 items-center text-primary" />
               New Message
             </DialogTitle>
             <DialogDescription>
