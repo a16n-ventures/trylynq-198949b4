@@ -802,12 +802,12 @@ export default function Events() {
                     <h3 className="font-semibold text-foreground">Earnings Wallet</h3>
                     <div className="flex items-center gap-1.5">
                       <p className="text-xs text-muted-foreground">Available for daily payout</p>
-                      <TooltipProvider><Tooltip>
+                      <TooltipProvider>                           <Tooltip>
                         <TooltipTrigger>
                         <Badge variant="outline" className="text-[9px] h-4 px-1 text-muted-foreground">-2% Fee</Badge>
-                      </TooltipTrigger><TooltipContent>
-                        <p>A 2% platform fee is deducted from all ticket sales.</p></TooltipContent>
-                      </Tooltip></TooltipProvider>
+                        </TooltipTrigger>                           <TooltipContent>
+                          <p>A 2% platform fee is deducted from all ticket sales.</p>                          </TooltipContent>
+                      </Tooltip>                                </TooltipProvider>
                     </div>
                   </div>
                 </div>
@@ -838,8 +838,6 @@ export default function Events() {
                 </div>
               )}
             </CardContent>
-        </div>
-      </div>
           </Card>
 
           {/* Growth Insights Card */}
