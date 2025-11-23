@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   TrendingUp,
+  Wallet,
   Settings
 } from "lucide-react";
 import { toast } from "sonner";
@@ -72,8 +73,8 @@ export default function AdminLayout() {
     { label: 'Users', path: '/admin/users', icon: Users },
     { label: 'Events', path: '/admin/events', icon: Calendar },
     { label: 'Moderation', path: '/admin/moderation', icon: ShieldAlert },
-    { label: 'Finance', path: '/admin/finance', icon: TrendingUp },
-    // New Item 👇
+    { label: 'Transactions', path: '/admin/finance', icon: TrendingUp },
+    { label: 'Revenue', path: '/admin/revenue', icon: Wallet },
     { label: 'System & Billing', path: '/admin/settings', icon: Settings }, 
   ];
 
@@ -149,5 +150,5 @@ export default function AdminLayout() {
       </main>
     </div>
   );
-      }
+}
       
