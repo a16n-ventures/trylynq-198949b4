@@ -803,19 +803,6 @@ export default function Events() {
                     <h3 className="font-bold text-lg text-foreground">Earnings Wallet</h3>
                     <div className="flex items-center gap-2">
                       <p className="text-xs text-muted-foreground">Available for daily payout</p>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Badge variant="outline" className="text-[9px] h-5 px-2 text-muted-foreground hover:bg-muted">
-                              <Info className="w-3 h-3 mr-1" />
-                              -2% Platform fee
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>A 2% platform fee is automatically deducted from all ticket sales. The balance shown is your net amount after fees.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
                     </div>
                   </div>
                 </div>
@@ -846,9 +833,24 @@ export default function Events() {
                   )} */ }
                 </div>
 
-                <Button onClick={() => setIsPayoutModalOpen(true)} disabled={isPayoutLoading || !stats?.walletBalance || stats.walletBalance < 1000} className="gradient-primary text-white shadow-md shrink-0">
+                <Button onClick={() => setIsPayoutModalOpen(true)} disabled={isPayoutLoading || !stats?.walletBalance || stats?.walletBalance < 1000} className="gradient-primary text-white shadow-md shrink-0">
                   {isPayoutLoading ? ( <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing </> ) : ( <><ArrowUpRight className="w-4 h-4 ml-1" /> Request Payout </> )}
                 </Button>
+
+                <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Badge variant="outline" className="text-[9px] h-5 px-2 text-muted-foreground hover:bg-muted">
+                              <Info className="w-3 h-3 mr-1" />
+                              -2% Platform fee
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>A 2% platform fee is automatically deducted from all ticket sales. The balance shown is your net amount after fees.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                
               </div>
 
               {stats?.walletBalance && stats?.walletBalance >= 1000 && (
