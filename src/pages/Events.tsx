@@ -857,17 +857,8 @@ export default function Events() {
                   )}
                 </div>
 
-                <Button 
-                  onClick={() => setIsPayoutModalOpen(true)}
-                  disabled={isPayoutLoading || !stats?.walletBalance || stats.walletBalance < 1000}
-                  className="gradient-primary text-white shadow-md shrink-0">
-                  {isPayoutLoading ? ( <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing </>
-                  ) : (
-                    <>
-                      Request Payout 
-                      <ArrowUpRight className="w-4 h-4 ml-1" />
-                    </>
-                  )}
+                <Button onClick={() => setIsPayoutModalOpen(true)} disabled={isPayoutLoading || !stats?.walletBalance || stats.walletBalance < 1000} className="gradient-primary text-white shadow-md shrink-0">
+                  {isPayoutLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing</> : <><ArrowUpRight className="w-4 h-4 ml-1" /> Request Payout</>}
                 </Button>
               </div>
 
@@ -875,7 +866,7 @@ export default function Events() {
                 <div className="mt-4 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg">
                   <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5" />
-                    Payout will be processed within 24 hours to your registered bank account
+                    Payout will be processed shortly into your registered bank account
                   </p>
                 </div>
               )}
