@@ -24,7 +24,9 @@ import {
   ArrowUpRight,
   Info,
   Check,
-  AlertCircle
+  AlertCircle, 
+  Building2,
+  CreditCard
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, isPast, isFuture, isToday } from "date-fns";
@@ -56,7 +58,13 @@ type Event = {
 
 type EventWithStats = Event & {
   attendee_count?: number;
-};
+}; 
+
+type BankDetails = {
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+}; 
 
 // --- COMPONENTS ---
 const EventSkeleton = () => (
@@ -112,7 +120,12 @@ export default function Events() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my");
+  const [isPayoutLoading, setIsPayoutLoading] = useState(false); 
+  
+  // Payout & Modal States
+  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isPayoutLoading, setIsPayoutLoading] = useState(false);
+  const [bankForm, setBankForm] = useState<BankDetails>({ bank_name: '', account_number: '', account_name: '' }); 
 
   // 1. Fetch My Events
   const { data: myEvents = [], isLoading: loadingMy } = useQuery<EventWithStats[]>({
@@ -342,7 +355,46 @@ export default function Events() {
     },
     enabled: !!userId && activeTab === "analytics",
     staleTime: 60000,
+  }); 
+
+    // 5. Fetch Saved Bank Details
+  const { data: savedBankDetails, refetch: refetchBank } = useQuery({
+    queryKey: ["bank-details", userId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_bank_details')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!userId && isPayoutModalOpen
   });
+
+  // Handle Save Bank
+  const saveBankDetails = async () => {
+    if (!bankForm.account_number || !bankForm.bank_name || !bankForm.account_name) {
+      toast.error("Please fill in all bank details");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('user_bank_details')
+        .upsert({ 
+          user_id: userId,
+          ...bankForm,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+      await refetchBank();
+      toast.success("Bank details saved!");
+    } catch (e: any) {
+      toast.error("Failed to save bank: " + e.message);
+    }
+  };
 
   // Handle Payout Request
   const handlePayout = async () => {
@@ -763,16 +815,10 @@ export default function Events() {
                 </div>
 
                 <Button 
-                  onClick={handlePayout}
+                  onClick={() => setIsPayoutModalOpen(true)}
                   disabled={isPayoutLoading || !stats?.walletBalance || stats.walletBalance < 1000}
-                  className="gradient-primary text-white shadow-lg hover:shadow-xl transition-all shrink-0 px-6"
-                  size="lg"
-                >
-                  {isPayoutLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> 
-                      Processing
-                    </>
+                  className="gradient-primary text-white shadow-md shrink-0">
+                  {isPayoutLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing</>
                   ) : (
                     <>
                       Request Payout 
