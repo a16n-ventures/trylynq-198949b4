@@ -815,8 +815,7 @@ export default function Events() {
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>.                        </p>
-                    </div>
-                  </div>
+                   
                 </div>
                 { /* 
                 <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm border border-primary/20">
@@ -849,6 +848,7 @@ export default function Events() {
                   {isPayoutLoading ? ( <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing </> ) : ( <><ArrowUpRight className="w-4 h-4 ml-1" /> Request Payout </> )}
                 </Button>
                 
+                </div>
               </div>
 
               {stats?.walletBalance && stats?.walletBalance >= 1000 && (
