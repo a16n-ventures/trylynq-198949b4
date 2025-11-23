@@ -64,12 +64,12 @@ const Index = () => {
         {/* Background Image with Gradient Overlay */}
         <div className="absolute inset-0 z-0">
           <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-background z-10" />
-          <img 
+          { /* <img 
             src={heroImage} 
             onError={(e) => e.currentTarget.src = 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=2070&auto=format&fit=crop'}
             alt="Background" 
             className="w-full h-full object-cover scale-105 animate-slow-zoom"
-          />
+          /> */ }
         </div>
 
         {/* Content */}
