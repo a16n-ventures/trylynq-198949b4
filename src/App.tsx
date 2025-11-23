@@ -29,6 +29,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminModeration from "./pages/admin/AdminModeration";
 import AdminEvents from "./pages/admin/AdminEvents";
+import AdminWallet from "./pages/admin/AdminWallet";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
               <Route path="users" element={<AdminUsers />} />
               <Route path="moderation" element={<AdminModeration />} /> 
               <Route path="events" element={<AdminEvents />} />
+              <Route path="revenue" element={<AdminWallet />} />
             </Route>
 
             {/* User App Routes (With Bottom Navigation) */}
