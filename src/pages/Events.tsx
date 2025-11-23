@@ -793,55 +793,27 @@ export default function Events() {
             <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
             
-            <CardContent className="p-6 relative z-10">
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-3">
-                  <div className="bg-primary/20 p-3 rounded-xl">
-                    <Wallet className="w-6 h-6 text-primary" />
-                  </div>
+                        <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="bg-primary/20 p-2 rounded-lg"><Wallet className="w-5 h-5 text-primary" /></div>
                   <div>
-                    <h3 className="font-bold text-lg text-foreground">Earnings Wallet</h3>
-                      <p className="text-xs text-muted-foreground">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Badge variant="outline" className="text-[9px] h-5 px-2 text-muted-foreground hover:bg-muted">
-                              <Info className="w-3 h-3 mr-1" />
-                              -2% Platform fee
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>A 2% platform fee is automatically deducted from all ticket sales. The balance shown is your net amount after fees.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>.                        </p>
-                   
+                    <h3 className="font-semibold text-foreground">Earnings Wallet</h3>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-muted-foreground">Available for daily payout</p>
+                      <TooltipProvider><Tooltip><TooltipTrigger><Badge variant="outline" className="text-[9px] h-4 px-1 text-muted-foreground">-2% Fee</Badge></TooltipTrigger><TooltipContent><p>A 2% platform fee is deducted from all ticket sales.</p></TooltipContent></Tooltip></TooltipProvider>
+                    </div>
+                  </div>
                 </div>
-                { /* 
-                <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm border border-primary/20">
-                  <Check className="w-3 h-3 mr-1" />
-                  Daily Payouts
-                </Badge>
-                */ }
+                <Badge variant="outline" className="bg-background/50 backdrop-blur-sm">Daily Payouts</Badge>
               </div>
-
               <div className="flex items-end justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                    Withdrawable Balance
-                  </p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-bold text-foreground tracking-tight">
-                      ₦{(stats?.walletBalance || 0).toLocaleString()}
-                    </span>
-                    <span className="text-sm text-muted-foreground font-medium">.00</span>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Withdrawable Balance</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-bold text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}</span>
+                    <span className="text-xs text-muted-foreground font-medium">.00</span>
                   </div>
-                  { /* {stats?.walletBalance && stats.walletBalance < 1000 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      Minimum ₦1,000 required
-                    </p> 
-                  )} */ }
                 </div>
 
                 <Button onClick={() => setIsPayoutModalOpen(true)} disabled={isPayoutLoading || !stats?.walletBalance || stats?.walletBalance < 1000} className="gradient-primary text-white shadow-md shrink-0">
