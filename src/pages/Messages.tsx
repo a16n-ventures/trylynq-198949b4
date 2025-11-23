@@ -1499,7 +1499,7 @@ export default function Messages() {
       {/* Create Community Dialog */}
       <Dialog open={isCreateCommunityOpen} onOpenChange={setIsCreateCommunityOpen}>
         <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
+          <DialogHeader className="items-center">
             <DialogTitle className="flex items-center gap-2">
               <Users className="w-5 h-5 text-primary" />
               Create Community
