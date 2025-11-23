@@ -827,7 +827,6 @@ export default function Events() {
                 </Button>
                 
                 </div>
-              </div>
 
               {stats?.walletBalance && stats?.walletBalance >= 1000 && (
                 <div className="mt-4 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg">
