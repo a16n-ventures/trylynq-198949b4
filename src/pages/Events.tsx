@@ -819,10 +819,12 @@ export default function Events() {
                     </div>
                   </div>
                 </div>
+                { /* 
                 <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm border border-primary/20">
                   <Check className="w-3 h-3 mr-1" />
                   Daily Payouts
                 </Badge>
+                */ }
               </div>
 
               <div className="flex items-end justify-between gap-4">
