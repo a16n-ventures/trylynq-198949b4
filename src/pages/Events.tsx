@@ -27,7 +27,16 @@ import {
   AlertCircle, 
   Building2,
   CreditCard
-} from "lucide-react";
+} from "lucide-react"; 
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter 
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label"; 
 import { useNavigate } from "react-router-dom";
 import { format, isPast, isFuture, isToday } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
@@ -84,31 +93,6 @@ const bankDetailsSchema = z.object({
     .regex(/^[a-zA-Z\s'-]+$/, 'Account name contains invalid characters')
 });
 
-// In saveBankDetails function:
-const saveBankDetails = async () => {
-  try {
-    const validated = bankDetailsSchema.parse(bankForm);
-    
-    const { error } = await supabase
-      .from('user_bank_details')
-      .upsert({
-        user_id: user.id,
-        bank_name: validated.bank_name,
-        account_number: validated.account_number,
-        account_name: validated.account_name
-      });
-      
-    if (error) throw error;
-    toast.success('Bank details saved');
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      toast.error(err.errors[0].message);
-      return;
-    }
-    toast.error('Failed to save bank details');
-  }
-};
-
 // --- COMPONENTS ---
 const EventSkeleton = () => (
   <div className="space-y-3">
@@ -163,7 +147,6 @@ export default function Events() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my");
-  const [isPayoutLoading, setIsPayoutLoading] = useState(false); 
   
   // Payout & Modal States
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
@@ -435,13 +418,17 @@ export default function Events() {
       await refetchBank();
       toast.success("Bank details saved!");
     } catch (e: any) {
-      toast.error("Failed to save bank: " + e.message);
+      if (e instanceof z.ZodError) {
+      toast.error(e.errors[0].message);
+      return;
+    }
+    toast.error('Failed to save bank details');
     }
   };
 
   // Handle Payout Request
   const handlePayout = async () => {
-    if (!stats?.walletBalance || stats.walletBalance < 1000) {
+    if (!stats?.walletBalance || stats?.walletBalance < 1000) {
       toast.error("Minimum withdrawal amount is ₦1,000");
       return;
     }
