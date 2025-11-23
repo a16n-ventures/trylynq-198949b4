@@ -10,6 +10,44 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// In verify-payment function, add:
+
+// 1. Check for duplicate processing
+const { data: existingPayment } = await supabase
+  .from('payments')
+  .select('id')
+  .eq('transaction_id', transaction_id)
+  .single();
+
+if (existingPayment) {
+  return new Response(
+    JSON.stringify({ status: 'already_processed' }),
+    { status: 200, headers: corsHeaders }
+  );
+}
+
+// 2. Validate tx_ref format and ownership
+const txRefParts = tx_ref.split('-');
+if (txRefParts[0] !== 'lynq' || !txRefParts[1]) {
+  throw new Error('Invalid tx_ref format');
+}
+
+const userId = txRefParts[1];
+const { data: { user } } = await supabase.auth.getUser(authHeader);
+if (userId !== user.id) {
+  throw new Error('Transaction belongs to different user');
+}
+
+// 3. Store tx_ref in payments to prevent reuse
+await supabase.from('payments').insert({
+  user_id: userId,
+  transaction_id: String(transaction_id),
+  tx_ref: tx_ref,  // Critical for deduplication
+  flw_ref: transaction.flw_ref,
+  amount: transaction.amount,
+  status: 'success'
+});
+
 serve(async (req) => {
   // Handle CORS (Browser security)
   if (req.method === "OPTIONS") {
