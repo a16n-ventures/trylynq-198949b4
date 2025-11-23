@@ -1,1 +1,5 @@
 project_id = "xinpddlavyqkgwnkncst"
+
+# supabase/config.toml
+[functions.verify-payment]
+verify_jwt = true  # Require authentication
