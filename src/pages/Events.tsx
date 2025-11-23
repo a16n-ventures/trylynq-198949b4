@@ -426,8 +426,8 @@ export default function Events() {
     }
   };
 
-  // Handle Payout Request
-  const handlePayout = async () => {
+  // Process Payout Request
+  const processPayout = async () => {
     if (!stats?.walletBalance || stats?.walletBalance < 1000) {
       toast.error("Minimum withdrawal amount is ₦1,000");
       return;
@@ -670,7 +670,7 @@ export default function Events() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1 rounded-xl">
           <TabsTrigger value="my" className="rounded-lg text-xs">Hosted</TabsTrigger>
-          <TabsTrigger value="attending" className="rounded-lg text-xs">Going</TabsTrigger>
+          <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
           <TabsTrigger value="discover" className="rounded-lg text-xs">Discover</TabsTrigger>
           <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
         </TabsList>
@@ -808,7 +808,7 @@ export default function Events() {
                           <TooltipTrigger>
                             <Badge variant="outline" className="text-[9px] h-5 px-2 text-muted-foreground hover:bg-muted">
                               <Info className="w-3 h-3 mr-1" />
-                              -2% Fee
+                              -2% Platform fee
                             </Badge>
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
@@ -838,12 +838,12 @@ export default function Events() {
                     </span>
                     <span className="text-sm text-muted-foreground font-medium">.00</span>
                   </div>
-                  {stats?.walletBalance && stats.walletBalance < 1000 && (
+                  { /* {stats?.walletBalance && stats.walletBalance < 1000 && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
                       <AlertCircle className="w-3 h-3" />
                       Minimum ₦1,000 required
-                    </p>
-                  )}
+                    </p> 
+                  )} */ }
                 </div>
 
                 <Button onClick={() => setIsPayoutModalOpen(true)} disabled={isPayoutLoading || !stats?.walletBalance || stats.walletBalance < 1000} className="gradient-primary text-white shadow-md shrink-0">
@@ -851,7 +851,7 @@ export default function Events() {
                 </Button>
               </div>
 
-              {stats?.walletBalance && stats.walletBalance >= 1000 && (
+              {stats?.walletBalance && stats?.walletBalance >= 1000 && (
                 <div className="mt-4 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg">
                   <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5" />
