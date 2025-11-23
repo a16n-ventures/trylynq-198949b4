@@ -1225,10 +1225,10 @@ export default function Messages() {
             <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
               Messages
             </h1>
-            <p className="text-muted-foreground text-sm font-medium mt-1 flex items-center gap-1.5">
+{ /* <p className="text-muted-foreground text-sm font-medium mt-1 flex items-center gap-1.5">
               <MessageSquare className="w-4 h-4" />
               Connect with your circle
-            </p>
+            </p> */ }
           </div>
           <Button 
             size="icon" 
