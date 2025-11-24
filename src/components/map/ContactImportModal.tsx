@@ -56,7 +56,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
                 <Input
                   value={contact.name}
                   onChange={(e) => updateContact(index, 'name', e.target.value)}
-                  placeholder="John Doe"
+                  placeholder="Barack Musa"
                 />
               </div>
               <div>
@@ -64,7 +64,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
                 <Input
                   value={contact.phone}
                   onChange={(e) => updateContact(index, 'phone', e.target.value)}
-                  placeholder="+1234567890"
+                  placeholder="08117920080"
                 />
               </div>
               <div>
@@ -72,7 +72,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
                 <Input
                   value={contact.email}
                   onChange={(e) => updateContact(index, 'email', e.target.value)}
-                  placeholder="john@example.com"
+                  placeholder="barack.m@example.com"
                 />
               </div>
             </div>
