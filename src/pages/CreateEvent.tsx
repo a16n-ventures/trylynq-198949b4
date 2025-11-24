@@ -70,8 +70,8 @@ const CreateEvent = () => {
 
     if (!eventData.title.trim()) {
       newErrors.title = 'Event title is required';
-    } else if (eventData.title.length < 3) {
-      newErrors.title = 'Title must be at least 3 characters';
+    } else if (eventData.title.length < 5) {
+      newErrors.title = 'Title must be at least 5 characters';
     } else if (eventData.title.length > 100) {
       newErrors.title = 'Title must be less than 100 characters';
     }
@@ -127,16 +127,6 @@ const CreateEvent = () => {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
-    const eventSchema = z.object({
-  title: z.string().trim().min(3).max(200),
-  description: z.string().trim().max(5000).optional(),
-  location: z.string().trim().min(3).max(500),
-  price: z.string().optional().refine(
-    (val) => !val || (parseFloat(val) >= 0 && parseFloat(val) <= 1000000),
-    'Price must be between ₦0 and ₦1,000,000'
-  )
-});
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -250,7 +240,7 @@ const CreateEvent = () => {
   // Generate share links
   const getInAppLink = () => {
     if (!createdEventId) return '';
-    return `${window.location.origin}/app/events/${createdEventId}`;
+    return `${window.location.origin}/events/${createdEventId}`;
   };
 
   const getShareText = () => {
@@ -289,7 +279,7 @@ const CreateEvent = () => {
 
   const handleDone = () => {
     setShowShareDialog(false);
-    navigate('/app/events');
+    navigate('/events');
   };
 
   return (
@@ -302,7 +292,7 @@ const CreateEvent = () => {
               variant="ghost" 
               size="sm" 
               className="text-white hover:bg-white/20 p-2"
-              onClick={() => navigate('/app/events')}
+              onClick={() => navigate('/events')}
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
@@ -744,7 +734,7 @@ const CreateEvent = () => {
               <Button
                 type="button"
                 onClick={() => {
-                  navigate(`/app/events/${createdEventId}/invite`);
+                  navigate(`/events/${createdEventId}/invite`);
                 }}
                 className="w-full"
               >
