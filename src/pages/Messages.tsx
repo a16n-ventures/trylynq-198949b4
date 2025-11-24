@@ -1244,7 +1244,7 @@ export default function Messages() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
                 placeholder="Search conversations..." 
-                className="pl-11 bg-muted/30 border-transparent rounded-2xl h-8 focus:bg-background focus:border-primary/20 transition-all" 
+                className="pl-11 bg-muted/30 border-transparent rounded-2xl h-10 focus:bg-background focus:border-primary/20 transition-all" 
                 value={searchQuery} 
                 onChange={(e) => setSearchQuery(e.target.value)} 
               />
