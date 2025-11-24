@@ -81,9 +81,9 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
             .from('contacts')
             .insert({
               user_id: user?.id,
-              contact_name: contact.name,
-              contact_phone: contact.phone || null,
-              contact_email: contact.email || null 
+              name: contact.name,
+              phone: contact.phone || null,
+              email: contact.email || null 
             });
 
           if (!saveError) contactsSaved++;
@@ -111,7 +111,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
             Import Contacts
           </DialogTitle>
           <DialogDescription>
-            We'll check if they are already on the app. If not, we'll save them to your contact list and you'll have to invite them manually using your invite link.
+            We'll check if your contact(s) are already on the app. If not, we'll save them to your contact list.
           </DialogDescription>
         </DialogHeader>
 
