@@ -198,16 +198,15 @@ const Profile = () => {
     onError: (error: Error) => toast.error('Failed to update: ' + error.message)
   });
 
-    // --- FIXED LOCATION MUTATION ---
+  // --- FIXED LOCATION MUTATION ---
   const toggleLocationMutation = useMutation({
     mutationFn: async ({ checked, latitude, longitude }: { checked: boolean; latitude?: number; longitude?: number }) => {
       if (checked) {
-        // Enabling: We MUST provide latitude/longitude to satisfy the NOT NULL constraint
+        // ENABLING: Must provide coordinates to satisfy DB constraints
         if (latitude === undefined || longitude === undefined) {
-          throw new Error("Location coordinates missing");
+          throw new Error("Cannot enable location: Coordinates missing.");
         }
         
-        // Use upsert to create or update the row
         const { error } = await supabase
           .from('user_locations')
           .upsert({ 
@@ -221,8 +220,7 @@ const Profile = () => {
         
         if (error) throw error;
       } else {
-        // Disabling: Just update the flag. 
-        // We use .update() instead of .upsert() here to avoid creating a new row with null coords if one doesn't exist
+        // DISABLING: Just update the flag
         const { error } = await supabase
           .from('user_locations')
           .update({ is_sharing_location: false })
@@ -232,34 +230,41 @@ const Profile = () => {
       }
       return checked;
     },
-    onError: (error: any) => {
-      console.error('Location toggle error:', error);
-      toast.error(`Failed to toggle location: ${error.message}`);
-      setIsLocating(false);
-    },
     onSuccess: (checked) => {
       toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
       setIsLocating(false);
-      queryClient.setQueryData(['profile', user!.id], (old: any) => ({
-        ...old,
-        location: { ...old.location, is_sharing_location: checked }
-      }));
+      // Immediately update cache to reflect change in UI
+      queryClient.setQueryData(['profile', user!.id], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          location: { ...old.location, is_sharing_location: checked }
+        };
+      });
+    },
+    onError: (error: any) => {
+      console.error('Location toggle error:', error);
+      toast.error(`Error: ${error.message}`);
+      setIsLocating(false);
+      // Revert switch if failed by invalidating
+      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     }
   });
   
-  // --- HANDLER FOR THE SWITCH ---
   const handleLocationToggle = (checked: boolean) => {
     if (checked) {
-      // If turning ON, we must get GPS coordinates first
+      // User wants to turn ON -> Get GPS
       setIsLocating(true);
+
       if (!navigator.geolocation) {
-        toast.error("Geolocation is not supported by your browser");
+        toast.error("Geolocation is not supported by this browser.");
         setIsLocating(false);
         return;
       }
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          // Success getting GPS -> Send to DB
           toggleLocationMutation.mutate({
             checked: true,
             latitude: position.coords.latitude,
@@ -267,14 +272,20 @@ const Profile = () => {
           });
         },
         (error) => {
-          console.error(error);
-          if (error.code === 1) toast.error("Location permission denied. Please enable in browser settings.");
-          else toast.error("Unable to retrieve location.");
+          // Error getting GPS
+          console.error("GPS Error: ", error);
+          let msg = "Unable to retrieve location.";
+          if (error.code === 1) msg = "Location permission denied. Please allow location access.";
+          if (error.code === 2) msg = "Location unavailable. Check your GPS.";
+          if (error.code === 3) msg = "Location request timed out.";
+          
+          toast.error(msg);
           setIsLocating(false);
-        }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      // If turning OFF, just update the flag
+      // User wants to turn OFF -> No GPS needed
       toggleLocationMutation.mutate({ checked: false });
     }
   };
