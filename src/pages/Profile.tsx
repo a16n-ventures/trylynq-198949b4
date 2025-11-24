@@ -197,34 +197,86 @@ const Profile = () => {
     onError: (error: Error) => toast.error('Failed to update: ' + error.message)
   });
 
-  // ... inside Profile component
-
+    // --- FIXED LOCATION MUTATION ---
   const toggleLocationMutation = useMutation({
-    mutationFn: async (checked: boolean) => {
-      const { error } = await supabase
-        .from('user_locations')
-        .upsert({ user_id: user!.id, is_sharing_location: checked })
-        .select();
-      
-      if (error) throw error;
+    mutationFn: async ({ checked, latitude, longitude }: { checked: boolean; latitude?: number; longitude?: number }) => {
+      if (checked) {
+        // Enabling: We MUST provide latitude/longitude to satisfy the NOT NULL constraint
+        if (latitude === undefined || longitude === undefined) {
+          throw new Error("Location coordinates missing");
+        }
+        
+        // Use upsert to create or update the row
+        const { error } = await supabase
+          .from('user_locations')
+          .upsert({ 
+            user_id: user!.id, 
+            is_sharing_location: true,
+            latitude: latitude,
+            longitude: longitude,
+            updated_at: new Date().toISOString()
+          })
+          .select();
+        
+        if (error) throw error;
+      } else {
+        // Disabling: Just update the flag. 
+        // We use .update() instead of .upsert() here to avoid creating a new row with null coords if one doesn't exist
+        const { error } = await supabase
+          .from('user_locations')
+          .update({ is_sharing_location: false })
+          .eq('user_id', user!.id);
+
+        if (error) throw error;
+      }
       return checked;
     },
-    // Add this onError handler to see why it's failing
     onError: (error: any) => {
       console.error('Location toggle error:', error);
       toast.error(`Failed to toggle location: ${error.message}`);
+      setIsLocating(false);
     },
     onSuccess: (checked) => {
       toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
-      // Update the cache immediately so the switch flips visually
+      setIsLocating(false);
       queryClient.setQueryData(['profile', user!.id], (old: any) => ({
         ...old,
         location: { ...old.location, is_sharing_location: checked }
       }));
     }
   });
+  
+  // --- HANDLER FOR THE SWITCH ---
+  const handleLocationToggle = (checked: boolean) => {
+    if (checked) {
+      // If turning ON, we must get GPS coordinates first
+      setIsLocating(true);
+      if (!navigator.geolocation) {
+        toast.error("Geolocation is not supported by your browser");
+        setIsLocating(false);
+        return;
+      }
 
-  // ...
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          toggleLocationMutation.mutate({
+            checked: true,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.error(error);
+          if (error.code === 1) toast.error("Location permission denied. Please enable in browser settings.");
+          else toast.error("Unable to retrieve location.");
+          setIsLocating(false);
+        }
+      );
+    } else {
+      // If turning OFF, just update the flag
+      toggleLocationMutation.mutate({ checked: false });
+    }
+  };
   
   const uploadAvatarMutation = useMutation({
     mutationFn: async (file: File) => {
