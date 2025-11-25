@@ -330,6 +330,32 @@ export default function Friends() {
     }
   });
 
+  // Add this helper function before the mutations
+const checkBulkDuplicates = async (contactsToCheck: Array<{email?: string, phone?: string}>) => {
+  if (!userId) return [];
+  
+  const { data: existingContacts } = await supabase
+    .from('contacts')
+    .select('email, phone, name')
+    .eq('user_id', userId);
+  
+  if (!existingContacts) return [];
+  
+  return contactsToCheck.filter(newContact => {
+    return existingContacts.some(existing => {
+      if (newContact.email && existing.email?.toLowerCase() === newContact.email.toLowerCase()) {
+        return true;
+      }
+      if (newContact.phone && existing.phone) {
+        const normalizedNew = newContact.phone.replace(/[\s\-\(\)]/g, '');
+        const normalizedExisting = existing.phone.replace(/[\s\-\(\)]/g, '');
+        return normalizedNew === normalizedExisting;
+      }
+      return false;
+    });
+  });
+};
+
   // Contact Mutations
   const addContact = useMutation({
     mutationFn: async () => {
@@ -339,18 +365,61 @@ export default function Friends() {
         throw new Error("Either email or phone is required");
       }
 
+      // Check for duplicate email
+      if (newContactEmail.trim()) {
+        const { data: existingByEmail } = await supabase
+          .from('contacts')
+          .select('id, name')
+          .eq('user_id', userId)
+          .eq('email', newContactEmail.trim().toLowerCase())
+          .maybeSingle();
+
+        if (existingByEmail) {
+          throw new Error(`Contact with this email already exists: ${existingByEmail.name}`);
+        }
+      }
+
+      // Check for duplicate phone
+      if (newContactPhone.trim()) {
+        // Normalize phone number (remove spaces, dashes, parentheses)
+        const normalizedPhone = newContactPhone.trim().replace(/[\s\-\(\)]/g, '');
+        
+        const { data: existingByPhone } = await supabase
+          .from('contacts')
+          .select('id, name, phone')
+          .eq('user_id', userId)
+          .not('phone', 'is', null);
+
+        if (existingByPhone) {
+          const duplicate = existingByPhone.find(contact => {
+            const existingNormalized = contact.phone?.replace(/[\s\-\(\)]/g, '');
+            return existingNormalized === normalizedPhone;
+          });
+
+          if (duplicate) {
+            throw new Error(`Contact with this phone already exists: ${duplicate.name}`);
+          }
+        }
+      }
+
+      // Insert new contact
       const { data, error } = await supabase
         .from('contacts')
         .insert({
           user_id: userId,
           name: newContactName.trim(),
-          email: newContactEmail.trim() || null,
+          email: newContactEmail.trim().toLowerCase() || null,
           phone: newContactPhone.trim() || null,
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('This contact already exists');
+        }
+        throw error;
+      }
       return data;
     },
     onSuccess: async () => {
