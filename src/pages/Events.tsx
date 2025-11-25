@@ -153,46 +153,90 @@ export default function Events() {
   const [isPayoutLoading, setIsPayoutLoading] = useState(false);
   const [bankForm, setBankForm] = useState<BankDetails>({ bank_name: '', account_number: '', account_name: '' }); 
 
-  // 1. Fetch My Events
-  const { data: myEvents = [], isLoading: loadingMy } = useQuery<EventWithStats[]>({
-    queryKey: ["events", "my", userId],
-    queryFn: async () => {
-      if (!userId) return [];
-      
-      const { data: events, error } = await supabase
-        .from("events")
-        .select(`
-          *,
-          creator:profiles!creator_id(user_id, display_name, avatar_url)
-        `)
-        .eq("creator_id", userId)
-        .order("start_date", { ascending: true });
-      
-      if (error) throw error;
-      if (!events || events.length === 0) return [];
+// Add this enhanced version of the myEvents query with better error handling and debugging
 
-      const eventIds = events.map(e => e.id);
-      const { data: allAttendees, error: countError } = await supabase
-        .from("event_attendees")
-        .select("event_id")
-        .in("event_id", eventIds)
-        .eq("status", "confirmed");
-      
-      if (countError) throw countError;
+// 1. Fetch My Events - ENHANCED WITH DEBUGGING
+const { data: myEvents = [], isLoading: loadingMy, error: myEventsError } = useQuery<EventWithStats[]>({
+  queryKey: ["events", "my", userId],
+  queryFn: async () => {
+    console.log("🔍 Starting myEvents query with userId:", userId);
+    
+    if (!userId) {
+      console.warn("⚠️ No userId provided");
+      return [];
+    }
+    
+    // Step 1: Fetch events
+    const { data: events, error } = await supabase
+      .from("events")
+      .select(`
+        *,
+        creator:profiles!creator_id(user_id, display_name, avatar_url)
+      `)
+      .eq("creator_id", userId)
+      .order("start_date", { ascending: true });
+    
+    console.log("📊 Raw events query result:", { events, error });
+    
+    if (error) {
+      console.error("❌ Error fetching events:", error);
+      throw error;
+    }
+    
+    if (!events || events.length === 0) {
+      console.log("ℹ️ No events found for user");
+      return [];
+    }
 
-      const countMap: Record<string, number> = {};
-      allAttendees?.forEach(a => {
-        countMap[a.event_id] = (countMap[a.event_id] || 0) + 1;
-      });
+    console.log(`✅ Found ${events.length} events`);
 
-      return events.map(event => ({
-        ...event,
-        attendee_count: countMap[event.id] || 0
-      }));
-    },
-    enabled: !!userId,
-    staleTime: 30000,
-  });
+    // Step 2: Fetch attendee counts
+    const eventIds = events.map(e => e.id);
+    console.log("🎫 Fetching attendees for event IDs:", eventIds);
+    
+    const { data: allAttendees, error: countError } = await supabase
+      .from("event_attendees")
+      .select("event_id")
+      .in("event_id", eventIds)
+      .eq("status", "confirmed");
+    
+    console.log("👥 Attendees query result:", { allAttendees, countError });
+    
+    // Don't throw error if attendees table fails - just log it
+    if (countError) {
+      console.warn("⚠️ Error fetching attendees (continuing anyway):", countError);
+    }
+
+    // Step 3: Build count map
+    const countMap: Record<string, number> = {};
+    allAttendees?.forEach(a => {
+      countMap[a.event_id] = (countMap[a.event_id] || 0) + 1;
+    });
+
+    console.log("📈 Attendee count map:", countMap);
+
+    // Step 4: Merge data
+    const result = events.map(event => ({
+      ...event,
+      attendee_count: countMap[event.id] || 0
+    }));
+
+    console.log("✨ Final result:", result);
+    return result;
+  },
+  enabled: !!userId,
+  staleTime: 30000,
+  retry: 1, // Add retry logic
+});
+
+// Add this to display errors
+useEffect(() => {
+  if (myEventsError) {
+    console.error("🚨 myEvents query error:", myEventsError);
+    toast.error(`Failed to load events: ${myEventsError.message}`);
+  }
+}, [myEventsError]);
+
 
   // 2. Fetch Attending Events
   const { data: attendingEvents = [], isLoading: loadingAttending } = useQuery<EventWithStats[]>({
