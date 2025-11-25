@@ -237,6 +237,16 @@ useEffect(() => {
   }
 }, [myEventsError]);
 
+  // Add debugging info to the render
+console.log("🎬 Render state:", {
+  activeTab,
+  loadingMy,
+  myEventsCount: myEvents.length,
+  filteredCount: filteredMyEvents.length,
+  searchQuery,
+  userId,
+  hasError: !!myEventsError
+});
 
   // 2. Fetch Attending Events
   const { data: attendingEvents = [], isLoading: loadingAttending } = useQuery<EventWithStats[]>({
