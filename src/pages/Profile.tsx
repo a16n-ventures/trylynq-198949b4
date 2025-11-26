@@ -147,6 +147,7 @@ const Profile = () => {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [discoveryRadius, setDiscoveryRadius] = useState([5000]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [sharingLocation, setSharingLocation] = useState(false);
   const [isLocating, setIsLocating] = useState(false); 
 
   const { data, isLoading: loading } = useQuery<CombinedProfile, Error>({
@@ -198,70 +199,40 @@ const Profile = () => {
     onError: (error: Error) => toast.error('Failed to update: ' + error.message)
   });
 
-  // --- FIXED LOCATION MUTATION ---
-  const toggleLocationMutation = useMutation({
-    mutationFn: async ({ checked, latitude, longitude }: { checked: boolean; latitude?: number; longitude?: number }) => {
-      if (checked) {
-        // ENABLING: Must provide coordinates to satisfy DB constraints
-        if (latitude === undefined || longitude === undefined) {
-          throw new Error("Cannot enable location: Coordinates missing.");
-        }
-        
-        const { error } = await supabase
-          .from('user_locations')
-          .upsert({ 
-            user_id: user!.id, 
-            is_sharing_location: true,
-            latitude: latitude,
-            longitude: longitude,
-            updated_at: new Date().toISOString()
-          })
-          .select();
-        
-        if (error) throw error;
-      } else {
-        // DISABLING: Just update the flag
-        const { error } = await supabase
-          .from('user_locations')
-          .update({ is_sharing_location: false })
-          .eq('user_id', user!.id);
+        // Fetch location sharing status
+      const { data: locationData } = await supabase
+        .from('user_locations')
+        .select('is_sharing_location')
+        .eq('user_id', user?.id)
+        .single();
 
-        if (error) throw error;
+      if (locationData) {
+        setLocationSharing(locationData.is_sharing_location);
       }
-      return checked;
-    },
-    onSuccess: (checked) => {
-      toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
-      setIsLocating(false);
-      // Immediately update cache to reflect change in UI
-      queryClient.setQueryData(['profile', user!.id], (old: any) => {
-        if (!old) return old;
-        return {
-          ...old,
-          location: { ...old.location, is_sharing_location: checked }
-        };
-      });
-    },
-    onError: (error: any) => {
-      console.error('Location toggle error:', error);
-      toast.error(`Error: ${error.message}`);
-      setIsLocating(false);
-      // Revert switch if failed by invalidating
-      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
-    }
-  });
   
-  const handleLocationToggle = (checked: boolean) => {
-    if (checked) {
-      // User wants to turn ON -> Get GPS
-      setIsLocating(true);
+  const handleLocationToggle = async (checked: boolean) => {
+    setLocationSharing(checked); 
+    // User wants to turn ON -> Get GPS
+      setIsLocating(true); 
+
+    try {
+      await supabase
+        .from('user_locations')
+        .update({ is_sharing_location: checked })
+        .eq('user_id', user?.id);
+      
+      toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
+    } catch (error) {
+      console.error('Location toggle error:', error);
+      toast.error('Failed to update location sharing');
+    }
+  };
 
       if (!navigator.geolocation) {
         toast.error("Geolocation is not supported by this browser.");
         setIsLocating(false);
         return;
       }
-
       navigator.geolocation.getCurrentPosition(
         (position) => {
           // Success getting GPS -> Send to DB
