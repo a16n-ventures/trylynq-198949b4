@@ -147,7 +147,7 @@ const Profile = () => {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [discoveryRadius, setDiscoveryRadius] = useState([5000]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  { /* const [sharingLocation, setSharingLocation] = useState(false); */ }
+  const [sharingLocation, setSharingLocation] = useState(false); 
   const [isLocating, setIsLocating] = useState(false); 
 
   const { data, isLoading: loading } = useQuery<CombinedProfile, Error>({
@@ -199,6 +199,16 @@ const Profile = () => {
     onError: (error: Error) => toast.error('Failed to update: ' + error.message)
   });
 
+const { data: locationData } = await supabase
+        .from('user_locations')
+        .select('is_sharing_location')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (locationData) {
+        setLocationSharing(locationData.is_sharing_location);
+      }
+
 const toggleLocationMutation = useMutation({
     mutationFn: async ({ checked, latitude, longitude }: { checked: boolean; latitude?: number; longitude?: number }) => {
       if (checked) {
@@ -246,32 +256,18 @@ const toggleLocationMutation = useMutation({
   });
 
   // --- HANDLER ---
-  const handleLocationToggle = (checked: boolean) => {
-    if (checked) {
-      setIsLocating(true);
-      if (!navigator.geolocation) {
-        toast.error("Geolocation is not supported by your browser");
-        setIsLocating(false);
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          toggleLocationMutation.mutate({
-            checked: true,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.error(error);
-          if (error.code === 1) toast.error("Location permission denied. Please enable in browser settings.");
-          else toast.error("Unable to retrieve location.");
-          setIsLocating(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    } else {
-      toggleLocationMutation.mutate({ checked: false });
+  const handleLocationToggle = async (checked: boolean) => {
+    setLocationSharing(checked);
+    try {
+      await supabase
+        .from('user_locations')
+        .update({ is_sharing_location: checked })
+        .eq('user_id', user?.id);
+      
+      toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
+    } catch (error) {
+      console.error('Location toggle error:', error);
+      toast.error('Failed to update location sharing');
     }
   };
   
