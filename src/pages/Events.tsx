@@ -161,10 +161,7 @@ export default function Events() {
       
       const { data: events, error } = await supabase
         .from("events")
-        .select(`
-          *,
-          creator:profiles!creator_id(*)
-        `)
+        .select("*")
         .eq("creator_id", userId)
         .order("start_date", { ascending: true });
       
