@@ -147,7 +147,7 @@ const Profile = () => {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [discoveryRadius, setDiscoveryRadius] = useState([5000]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [sharingLocation, setSharingLocation] = useState(false);
+  { /* const [sharingLocation, setSharingLocation] = useState(false); */ }
   const [isLocating, setIsLocating] = useState(false); 
 
   const { data, isLoading: loading } = useQuery<CombinedProfile, Error>({
@@ -199,43 +199,63 @@ const Profile = () => {
     onError: (error: Error) => toast.error('Failed to update: ' + error.message)
   });
 
-        // Fetch location sharing status
-      const { data: locationData } = await supabase
-        .from('user_locations')
-        .select('is_sharing_location')
-        .eq('user_id', user?.id)
-        .single();
+const toggleLocationMutation = useMutation({
+    mutationFn: async ({ checked, latitude, longitude }: { checked: boolean; latitude?: number; longitude?: number }) => {
+      if (checked) {
+        if (latitude === undefined || longitude === undefined) {
+          throw new Error("Location coordinates missing");
+        }
+        
+        const { error } = await supabase
+          .from('user_locations')
+          .upsert({ 
+            user_id: user!.id, 
+            is_sharing_location: true,
+            latitude: latitude,
+            longitude: longitude,
+            updated_at: new Date().toISOString()
+          })
+          .select();
+        
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('user_locations')
+          .update({ is_sharing_location: false })
+          .eq('user_id', user!.id);
 
-      if (locationData) {
-        setLocationSharing(locationData.is_sharing_location);
+        if (error) throw error;
       }
-  
-  const handleLocationToggle = async (checked: boolean) => {
-    setLocationSharing(checked); 
-    // User wants to turn ON -> Get GPS
-      setIsLocating(true); 
-
-    try {
-      await supabase
-        .from('user_locations')
-        .update({ is_sharing_location: checked })
-        .eq('user_id', user?.id);
-      
-      toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
-    } catch (error) {
+      return checked;
+    },
+    onError: (error: any) => {
       console.error('Location toggle error:', error);
-      toast.error('Failed to update location sharing');
+      toast.error(`Failed to toggle location: ${error.message}`);
+      setIsLocating(false);
+      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] }); // Revert UI
+    },
+    onSuccess: (checked) => {
+      toast.success(checked ? 'Location sharing enabled' : 'Location sharing disabled');
+      setIsLocating(false);
+      // Optimistic update
+      queryClient.setQueryData(['profile', user!.id], (old: any) => ({
+        ...old,
+        location: { ...old.location, is_sharing_location: checked }
+      }));
     }
-  };
+  });
 
+  // --- HANDLER ---
+  const handleLocationToggle = (checked: boolean) => {
+    if (checked) {
+      setIsLocating(true);
       if (!navigator.geolocation) {
-        toast.error("Geolocation is not supported by this browser.");
+        toast.error("Geolocation is not supported by your browser");
         setIsLocating(false);
         return;
       }
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          // Success getting GPS -> Send to DB
           toggleLocationMutation.mutate({
             checked: true,
             latitude: position.coords.latitude,
@@ -243,20 +263,14 @@ const Profile = () => {
           });
         },
         (error) => {
-          // Error getting GPS
-          console.error("GPS Error: ", error);
-          let msg = "Unable to retrieve location.";
-          if (error.code === 1) msg = "Location permission denied. Please allow location access.";
-          if (error.code === 2) msg = "Location unavailable. Check your GPS.";
-          if (error.code === 3) msg = "Location request timed out.";
-          
-          toast.error(msg);
+          console.error(error);
+          if (error.code === 1) toast.error("Location permission denied. Please enable in browser settings.");
+          else toast.error("Unable to retrieve location.");
           setIsLocating(false);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {
-      // User wants to turn OFF -> No GPS needed
       toggleLocationMutation.mutate({ checked: false });
     }
   };
