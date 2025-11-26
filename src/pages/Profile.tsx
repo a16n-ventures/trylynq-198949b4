@@ -267,7 +267,92 @@ const Profile = () => {
         setIsLocating(false);
         return;
       }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          // Success: We have coordinates, call the mutation
+          toggleLocationMutation.mutate({
+            checked: true,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        (error) => {
+  // Toggle Location Mutation
+  const toggleLocationMutation = useMutation({
+    mutationFn: async ({ checked, latitude, longitude }: { checked: boolean; latitude?: number; longitude?: number }) => {
+      // 1. Disabling location sharing
+      if (!checked) {
+        const { error } = await supabase
+          .from('user_locations')
+          .update({ is_sharing_location: false })
+          .eq('user_id', user!.id);
 
+        if (error) throw error;
+        return false; // Return new state
+      }
+
+      // 2. Enabling location sharing (Requires Coordinates)
+      if (checked) {
+        if (latitude === undefined || longitude === undefined) {
+          throw new Error("Location coordinates missing");
+        }
+        
+        // Upsert creates the row if it doesn't exist, or updates it if it does
+        const { error } = await supabase
+          .from('user_locations')
+          .upsert({ 
+            user_id: user!.id, 
+            is_sharing_location: true,
+            latitude: latitude,
+            longitude: longitude,
+            updated_at: new Date().toISOString()
+          })
+          .select();
+        
+        if (error) throw error;
+        return true; // Return new state
+      }
+      
+      return false;
+    },
+    onSuccess: (newState) => {
+      toast.success(newState ? 'Location sharing enabled' : 'Location sharing disabled');
+      setIsLocating(false);
+      
+      // Update the cached data immediately so the switch flips in the UI
+      queryClient.setQueryData(['profile', user!.id], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          location: { 
+            ...oldData.location, 
+            is_sharing_location: newState 
+          }
+        };
+      });
+    },
+    onError: (error: any) => {
+      console.error('Location toggle error details:', error);
+      // Use a fallback message if error.message is generic
+      const msg = error.message || "Failed to update location settings";
+      toast.error(msg);
+      setIsLocating(false);
+      // If error, re-fetch to ensure UI matches DB state
+      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
+    }
+  });
+  
+  // --- HANDLER: The Switch Logic ---
+  const handleLocationToggle = (checked: boolean) => {
+    if (checked) {
+      // User is turning it ON -> Need GPS
+      setIsLocating(true);
+
+      if (!navigator.geolocation) {
+        toast.error("Geolocation is not supported by this browser.");
+        setIsLocating(false);
+        return;
+      }
       navigator.geolocation.getCurrentPosition(
         (position) => {
           // Success: We have coordinates, call the mutation
@@ -292,6 +377,7 @@ const Profile = () => {
       );
     } else {
       // User is turning it OFF -> No GPS needed
+      setIsLocating(true); // Set loading state while disabling
       toggleLocationMutation.mutate({ checked: false });
     }
   };
