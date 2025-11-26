@@ -982,7 +982,7 @@ export default function Messages() {
     const canModerate = isComm && (selectedChat.my_role === 'admin' || selectedChat.my_role === 'moderator');
 
     return (
-      <div className="fixed inset-0 z-50 bg-background flex flex-col h-[100dvh]">
+      <div className="fixed inset-0 z-50 bg-background flex flex-col min-h-60">
         
         {/* Header */}
         <div className="px-4 py-3 border-b flex items-center gap-3 bg-gradient-to-r from-background to-muted/20 backdrop-blur-xl shadow-sm shrink-0 z-10">
@@ -1257,7 +1257,7 @@ export default function Messages() {
           className="w-full"
         >
           <div className="mb-5">
-            <TabsList className="grid w-full grid-cols-2 bg-muted/40 p-1.5 rounded-2xl h-auto">
+            <TabsList className="grid w-full grid-cols-2 bg-muted/40 p-1.5 rounded-2xl">
               <TabsTrigger 
                 value="dm" 
                 className="rounded-xl py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-md transition-all font-semibold"
