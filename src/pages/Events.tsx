@@ -436,7 +436,7 @@ export default function Events() {
         className="overflow-hidden hover:shadow-lg transition-all border-border/60 cursor-pointer group"
         onClick={() => navigate(`/events/${event.id}`)}
       >
-        <CardContent className="p-auto">
+        <CardContent className="p-0">
           <div className="flex h-36">
             <div className="w-28 bg-gradient-to-br from-purple-600 to-blue-600 relative overflow-hidden">
               {event.image_url ? (
@@ -612,10 +612,10 @@ export default function Events() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1 rounded-xl">
+        <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
           <TabsTrigger value="my" className="rounded-lg text-xs">Hosted</TabsTrigger>
           <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
+          <TabsTrigger value="analytics" className="rounded-lg text-xs">Analytics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="my" className="space-y-3 mt-6 animate-in fade-in-50">
