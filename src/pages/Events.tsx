@@ -434,10 +434,10 @@ export default function Events() {
       <Card 
         key={event.id} 
         className="overflow-hidden hover:shadow-lg transition-all border-border/60 cursor-pointer group"
-        onClick={() => navigate(`/events/${event.id}`)}
+        onClick={() => navigate(`/app/events/${event.id}`)}
       >
         <CardContent className="p-0">
-          <div className="flex h-36">
+          <div className="flex h-40">
             <div className="w-28 bg-gradient-to-br from-purple-600 to-blue-600 relative overflow-hidden">
               {event.image_url ? (
                 <img 
@@ -526,7 +526,7 @@ export default function Events() {
                       className="h-7 text-xs flex-1"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/events/${event.id}`);
+                        navigate(`/app/events/${event.id}`);
                       }}
                     >
                       <Edit className="w-3 h-3 mr-1" /> Manage
@@ -549,7 +549,7 @@ export default function Events() {
                     className="h-7 text-xs w-full gradient-primary text-white"
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/events/${event.id}`);
+                      navigate(`/app/app/events/${event.id}`);
                     }}
                   >
                     <Ticket className="w-3 h-3 mr-1" /> View Details
@@ -562,7 +562,7 @@ export default function Events() {
                     disabled={isFull}
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/events/${event.id}`);
+                      navigate(`/app/events/${event.id}`);
                     }}
                   >
                     {isFull ? 'Event Full' : 'View & RSVP'}
@@ -615,7 +615,7 @@ export default function Events() {
         <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
           <TabsTrigger value="my" className="rounded-lg text-xs">Hosted</TabsTrigger>
           <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-lg text-xs">Analytics</TabsTrigger>
+          <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
         </TabsList>
 
         <TabsContent value="my" className="space-y-3 mt-6 animate-in fade-in-50">
