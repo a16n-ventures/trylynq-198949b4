@@ -48,7 +48,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
       await Promise.all(validContacts.map(async (contact) => {
         // 1. Search for existing user in profiles
         let query = supabase
-          .from('public_profiles')
+          .from('profiles')
           .select('id, user_id, display_name, email, phone')
           .neq('user_id', user?.id); // Don't find yourself
 
