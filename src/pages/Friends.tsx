@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
-  Search, MessageSquare, UserPlus, Check, X, Filter, ArrowUpDown, Clock, Loader2, Send, Mail, User
+  Search, MessageSquare, UserPlus, Check, X, Filter, ArrowUpDown, Clock, Loader2, Send, Mail, User, Smartphone
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -231,6 +231,18 @@ export default function Friends() {
     mutationFn: async (targetProfile: Profile) => {
       if (!userId) throw new Error("Not authenticated");
 
+      // Double check if already friends/pending to prevent duplicates
+      const { data: existing } = await supabase
+        .from('friendships')
+        .select('status')
+        .or(`and(requester_id.eq.${userId},addressee_id.eq.${targetProfile.user_id}),and(requester_id.eq.${targetProfile.user_id},addressee_id.eq.${userId})`)
+        .maybeSingle();
+
+      if (existing) {
+        if (existing.status === 'accepted') throw new Error("You are already friends!");
+        if (existing.status === 'pending') throw new Error("Friend request already pending.");
+      }
+
       const { data, error } = await supabase
         .from('friendships')
         .insert({ 
@@ -241,12 +253,7 @@ export default function Friends() {
         .select()
         .single();
 
-      if (error) {
-        if (error.code === '23505') {
-          throw new Error('Friend request already sent');
-        }
-        throw error;
-      }
+      if (error) throw error;
 
       supabase.from('notifications').insert({
         user_id: targetProfile.user_id,
@@ -330,32 +337,6 @@ export default function Friends() {
     }
   });
 
-  // Add this helper function before the mutations
-const checkBulkDuplicates = async (contactsToCheck: Array<{email?: string, phone?: string}>) => {
-  if (!userId) return [];
-  
-  const { data: existingContacts } = await supabase
-    .from('contacts')
-    .select('email, phone, name')
-    .eq('user_id', userId);
-  
-  if (!existingContacts) return [];
-  
-  return contactsToCheck.filter(newContact => {
-    return existingContacts.some(existing => {
-      if (newContact.email && existing.email?.toLowerCase() === newContact.email.toLowerCase()) {
-        return true;
-      }
-      if (newContact.phone && existing.phone) {
-        const normalizedNew = newContact.phone.replace(/[\s\-\(\)]/g, '');
-        const normalizedExisting = existing.phone.replace(/[\s\-\(\)]/g, '');
-        return normalizedNew === normalizedExisting;
-      }
-      return false;
-    });
-  });
-};
-
   // Contact Mutations
   const addContact = useMutation({
     mutationFn: async () => {
@@ -365,73 +346,102 @@ const checkBulkDuplicates = async (contactsToCheck: Array<{email?: string, phone
         throw new Error("Either email or phone is required");
       }
 
-      // Check for duplicate email
-      if (newContactEmail.trim()) {
-        const { data: existingByEmail } = await supabase
-          .from('contacts')
-          .select('id, name')
-          .eq('user_id', userId)
-          .eq('email', newContactEmail.trim().toLowerCase())
-          .maybeSingle();
+      const email = newContactEmail.trim().toLowerCase();
+      const phone = newContactPhone.trim().replace(/[\s\-\(\)]/g, ''); // Normalize
 
-        if (existingByEmail) {
-          throw new Error(`Contact with this email already exists: ${existingByEmail.name}`);
+      // --- IMPROVED LOGIC: Check Platform Users First ---
+      
+      let query = supabase.from('profiles').select('user_id, display_name, avatar_url');
+      const conditions = [];
+      if (email) conditions.push(`email.eq.${email}`);
+      if (phone) conditions.push(`phone.eq.${phone}`);
+      // Note: In real app, make sure 'email' and 'phone' columns exist on profiles or a separate secure lookup table
+      // Assuming 'profiles' has these fields or you query auth.users via a secure edge function. 
+      // Since we can't access auth.users directly from client usually, assuming 'profiles' has public contact info or specific privacy rules.
+      // If 'profiles' does not have phone/email visible, this part requires an Edge Function.
+      // For this implementation, we assume profiles table has these fields accessible.
+      
+      if (conditions.length > 0) {
+        query = query.or(conditions.join(','));
+        const { data: existingUsers } = await query;
+
+        if (existingUsers && existingUsers.length > 0) {
+           const foundUser = existingUsers[0];
+           
+           // Check if we already have a relationship
+           const { data: relationship } = await supabase
+             .from('friendships')
+             .select('status')
+             .or(`and(requester_id.eq.${userId},addressee_id.eq.${foundUser.user_id}),and(requester_id.eq.${foundUser.user_id},addressee_id.eq.${userId})`)
+             .maybeSingle();
+
+           if (relationship) {
+             if (relationship.status === 'accepted') {
+                return { status: 'already_friends', user: foundUser };
+             } else {
+                return { status: 'pending', user: foundUser };
+             }
+           } else {
+             // Send Friend Request automatically
+             await supabase.from('friendships').insert({
+               requester_id: userId,
+               addressee_id: foundUser.user_id,
+               status: 'pending'
+             });
+             return { status: 'request_sent', user: foundUser };
+           }
         }
       }
 
-      // Check for duplicate phone
-      if (newContactPhone.trim()) {
-        // Normalize phone number (remove spaces, dashes, parentheses)
-        const normalizedPhone = newContactPhone.trim().replace(/[\s\-\(\)]/g, '');
-        
-        const { data: existingByPhone } = await supabase
-          .from('contacts')
-          .select('id, name, phone')
-          .eq('user_id', userId)
-          .not('phone', 'is', null);
+      // --- FALLBACK: No User Found, Save to Contacts ---
 
-        if (existingByPhone) {
-          const duplicate = existingByPhone.find(contact => {
-            const existingNormalized = contact.phone?.replace(/[\s\-\(\)]/g, '');
-            return existingNormalized === normalizedPhone;
-          });
-
-          if (duplicate) {
-            throw new Error(`Contact with this phone already exists: ${duplicate.name}`);
-          }
-        }
+      // Check for duplicate in contacts
+      if (email) {
+        const { data: existingByEmail } = await supabase.from('contacts').select('id, name').eq('user_id', userId).eq('email', email).maybeSingle();
+        if (existingByEmail) throw new Error(`Contact with this email already exists: ${existingByEmail.name}`);
       }
 
-      // Insert new contact
+      if (phone) {
+        const { data: existingByPhone } = await supabase.from('contacts').select('id, name').not('phone', 'is', null).eq('user_id', userId);
+        const duplicate = existingByPhone?.find(c => c.phone?.replace(/[\s\-\(\)]/g, '') === phone);
+        if (duplicate) throw new Error(`Contact with this phone already exists: ${duplicate.name}`);
+      }
+
       const { data, error } = await supabase
         .from('contacts')
         .insert({
           user_id: userId,
           name: newContactName.trim(),
-          email: newContactEmail.trim().toLowerCase() || null,
-          phone: newContactPhone.trim() || null,
+          email: email || null,
+          phone: phone || null,
         })
         .select()
         .single();
 
-      if (error) {
-        if (error.code === '23505') {
-          throw new Error('This contact already exists');
-        }
-        throw error;
-      }
-      return data;
+      if (error) throw error;
+      return { status: 'contact_saved', data };
     },
-    onSuccess: async () => {
-      toast.success('Contact added successfully');
+    onSuccess: async (result: any) => {
+      // Clear form
       setNewContactName("");
       setNewContactEmail("");
       setNewContactPhone("");
       setShowAddContact(false);
-      await refetchContacts();
+
+      if (result.status === 'request_sent') {
+        toast.success(`User found on app! Friend request sent to ${result.user.display_name}.`);
+        await Promise.all([refetchOutgoing(), queryClient.invalidateQueries({ queryKey: ['suggestions'] })]);
+      } else if (result.status === 'already_friends') {
+        toast.info(`You are already friends with ${result.user.display_name}!`);
+      } else if (result.status === 'pending') {
+        toast.info(`A request is already pending for ${result.user.display_name}.`);
+      } else {
+        toast.success('Contact saved successfully. You can now invite them!');
+        await refetchContacts();
+      }
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to add contact');
+      toast.error(error.message || 'Failed to process contact');
     }
   });
 
@@ -467,24 +477,39 @@ const checkBulkDuplicates = async (contactsToCheck: Array<{email?: string, phone
 
       if (updateError) throw updateError;
 
-      // Here you would integrate with your email/SMS service
-      // For now, we'll simulate the invitation
-      const inviteMethod = contact.email ? 'email' : 'SMS';
-      const inviteTarget = contact.email || contact.phone;
+      // --- IMPROVED INVITE LOGIC ---
+      const appName = "OurApp"; // Replace with your actual app name
+      const inviteLink = "https://yourapp.com/join"; // Replace with actual deep link
+      const message = `Hey ${contact.name.split(' ')[0]}, join me on ${appName}! It's a great way for us to stay connected. Download here: ${inviteLink}`;
       
-      console.log(`Sending invite to ${contact.name} via ${inviteMethod} at ${inviteTarget}`);
-      
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (contact.phone) {
+        // Normalize phone number for SMS scheme
+        // Remove spaces, dashes, parens. 
+        const cleanPhone = contact.phone.replace(/[\s\-\(\)]/g, '');
+        // Determine delimiter based on OS (optional, but & usually works for iOS, ? for Android)
+        // A safe universal fallback is often just sms:number?body=...
+        const ua = navigator.userAgent.toLowerCase();
+        const isiOS = /iphone|ipad|ipod/.test(ua);
+        const separator = isiOS ? '&' : '?';
+        
+        window.location.href = `sms:${cleanPhone}${separator}body=${encodeURIComponent(message)}`;
+      } else if (contact.email) {
+        // Mailto fallback
+        window.location.href = `mailto:${contact.email}?subject=${encodeURIComponent("Join me on " + appName)}&body=${encodeURIComponent(message)}`;
+      } else {
+        throw new Error("No phone or email available for this contact");
+      }
       
       return contact;
     },
     onSuccess: async (contact) => {
-      toast.success(`Invitation sent to ${contact.name}`);
+      // We don't need a toast here because the user has left the app to go to SMS/Mail
+      // But we can show one just in case they come back quickly
+      // toast.success(`Opening invite for ${contact.name}...`);
       await refetchContacts();
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to send invitation');
+      toast.error(error.message || 'Failed to invite contact');
     }
   });
 
@@ -879,7 +904,7 @@ const checkBulkDuplicates = async (contactsToCheck: Array<{email?: string, phone
                         ) : (
                           <User className="w-4 h-4 mr-2" />
                         )}
-                        Save Contact
+                        Save / Connect
                       </Button>
                     </div>
                   </CardContent>
@@ -974,7 +999,7 @@ const checkBulkDuplicates = async (contactsToCheck: Array<{email?: string, phone
                           Invite friends to join
                         </p>
                         <p className="text-blue-700 dark:text-blue-300 text-xs">
-                          Click "Invite" to send them a link to download the app and connect with you.
+                          Click "Invite" to send them a link via SMS/Email to download the app.
                         </p>
                       </div>
                     </div>
