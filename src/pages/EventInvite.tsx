@@ -1,360 +1,234 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
-  Calendar,
-  MapPin,
-  Users,
-  DollarSign,
-  Share2,
-  Video,
-  VideoOff,
-  Mic,
-  MicOff,
-  PhoneOff,
-  Camera,
-  StopCircle,
-  Play,
-  Download,
-  Loader2,
+  Search,
   UserPlus,
-  ExternalLink,
-  Clock,
-  Check
+  Check,
+  Loader2,
+  Share2,
+  Copy,
+  Users
 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+type Profile = {
+  user_id: string;
+  display_name?: string | null;
+  avatar_url?: string | null;
+};
+
+type Friendship = {
+  id: string;
+  requester_id: string;
+  addressee_id: string;
+  requester: Profile;
+  addressee: Profile;
+};
 
 type Event = {
   id: string;
   title: string;
   description: string;
-  category: string;
-  location: string;
   start_date: string;
-  end_date?: string | null;
-  max_attendees?: number | null;
-  ticket_price: number;
-  is_public: boolean;
-  requires_approval: boolean;
-  creator_id: string;
-  image_url?: string | null;
-  event_type: 'physical' | 'virtual';
-  meeting_link?: string | null;
-  creator: {
-    user_id: string;
-    display_name: string;
-    avatar_url?: string;
-  };
+  location: string;
+  image_url?: string;
 };
 
-type Attendee = {
-  user_id: string;
-  display_name: string;
-  avatar_url?: string;
-};
-
-const EventDetail = () => {
+const EventInvitePage = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-
-  // Video Call States
-  const [isInCall, setIsInCall] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [showVideoDialog, setShowVideoDialog] = useState(false);
-
-  // Recording States
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const [showRecordingDialog, setShowRecordingDialog] = useState(false);
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const [search, setSearch] = useState('');
+  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Fetch event details
   const { data: event, isPending: loadingEvent } = useQuery<Event>({
     queryKey: ['event', eventId],
     queryFn: async () => {
-      // FIX 1: Added join query for creator details
       const { data, error } = await supabase
         .from('events')
-        .select(`
-          *,
-          creator:profiles!creator_id (
-            user_id,
-            display_name,
-            avatar_url
-          )
-        `)
+        .select('id, title, description, start_date, location, image_url')
         .eq('id', eventId)
         .single();
-
+      
       if (error) throw error;
       return data;
     },
     enabled: !!eventId,
   });
 
-  // Fetch attendees
-  const { data: attendees = [] } = useQuery<Attendee[]>({
-    queryKey: ['event-attendees', eventId],
+  // Fetch friends
+  const { data: friendships = [], isPending: loadingFriends } = useQuery<Friendship[]>({
+    queryKey: ['friends', user?.id],
     queryFn: async () => {
-      // FIX 2: Added join query for profile details of attendees
+      if (!user?.id) return [];
       const { data, error } = await supabase
-        .from('event_attendees')
+        .from('friendships')
         .select(`
-          status,
-          profiles:user_id (
-            user_id,
-            display_name,
-            avatar_url
-          )
+          id, requester_id, addressee_id,
+          requester:profiles!requester_id(user_id, display_name, avatar_url),
+          addressee:profiles!addressee_id(user_id, display_name, avatar_url)
         `)
-        .eq('event_id', eventId)
-        .eq('status', 'confirmed');
-
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .eq('status', 'accepted');
+      
       if (error) throw error;
-      // Map the nested profile object to flat Attendee type
-      return data.map((a: any) => a.profiles) as Attendee[];
+      return data || [];
+    },
+    enabled: !!user?.id,
+  });
+
+  // Fetch already invited friends
+  const { data: invitedFriendIds = [], isPending: loadingInvited } = useQuery<string[]>({
+    queryKey: ['event-invites', eventId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('event_invitations')
+        .select('invitee_id')
+        .eq('event_id', eventId);
+      
+      if (error) throw error;
+      return data.map(inv => inv.invitee_id);
     },
     enabled: !!eventId,
   });
 
-  // Check if user is attending
-  const { data: isAttending } = useQuery({
-    queryKey: ['is-attending', eventId, user?.id],
-    queryFn: async () => {
-      if (!user?.id) return false;
-      const { data } = await supabase
-        .from('event_attendees')
-        .select('id')
-        .eq('event_id', eventId)
-        .eq('user_id', user.id)
-        .eq('status', 'confirmed')
-        .single();
-      return !!data;
-    },
-    enabled: !!eventId && !!user?.id,
-  });
-
-  // RSVP Mutation
-  const rsvpMutation = useMutation({
-    mutationFn: async () => {
+  // Send invitations mutation
+  const sendInvitations = useMutation({
+    mutationFn: async (friendIds: string[]) => {
       if (!user?.id || !eventId) throw new Error('Missing user or event');
 
+      const invitations = friendIds.map(friendId => ({
+        event_id: eventId,
+        inviter_id: user.id,
+        invitee_id: friendId,
+        status: 'pending'
+      }));
+
       const { error } = await supabase
-        .from('event_attendees')
-        .insert({
-          event_id: eventId,
-          user_id: user.id,
-          status: event?.requires_approval ? 'pending' : 'confirmed'
-        });
+        .from('event_invitations')
+        .insert(invitations);
 
       if (error) throw error;
+
+      // Send notifications
+      const notifications = friendIds.map(friendId => ({
+        user_id: friendId,
+        type: 'event_invitation',
+        title: 'Event Invitation',
+        content: `You've been invited to ${event?.title}`,
+        data: { event_id: eventId, inviter_id: user.id }
+      }));
+
+      await supabase.from('notifications').insert(notifications);
     },
     onSuccess: () => {
-      toast.success(event?.requires_approval 
-        ? 'RSVP sent! Waiting for approval' 
-        : 'Successfully registered!'
-      );
-      queryClient.invalidateQueries({ queryKey: ['event-attendees', eventId] });
-      queryClient.invalidateQueries({ queryKey: ['is-attending', eventId] });
+      toast.success('Invitations sent successfully!');
+      queryClient.invalidateQueries({ queryKey: ['event-invites', eventId] });
+      setSelectedFriends(new Set());
     },
     onError: (error: any) => {
-      toast.error('Failed to RSVP: ' + error.message);
+      toast.error('Failed to send invitations: ' + error.message);
     }
   });
 
-  // Video Call Functions
-  const startVideoCall = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
+  // Get friends list
+  const friends = useMemo(() => {
+    return friendships.map(f => 
+      f.requester_id === user?.id ? f.addressee : f.requester
+    );
+  }, [friendships, user?.id]);
 
-      mediaStreamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-
-      setIsInCall(true);
-      setShowVideoDialog(true);
-      toast.success('Video call started');
-    } catch (error) {
-      console.error('Error starting video call:', error);
-      toast.error('Failed to start video call. Please check camera permissions.');
+  // Filter friends
+  const filteredFriends = useMemo(() => {
+    let result = friends.filter(f => !invitedFriendIds.includes(f.user_id));
+    
+    if (search) {
+      result = result.filter(f =>
+        f.display_name?.toLowerCase().includes(search.toLowerCase())
+      );
     }
+    
+    return result;
+  }, [friends, invitedFriendIds, search]);
+
+  const toggleFriend = (friendId: string) => {
+    setSelectedFriends(prev => {
+      const next = new Set(prev);
+      if (next.has(friendId)) {
+        next.delete(friendId);
+      } else {
+        next.add(friendId);
+      }
+      return next;
+    });
   };
 
-  const endVideoCall = () => {
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
-    setIsInCall(false);
-    setShowVideoDialog(false);
-    setIsMuted(false);
-    setIsVideoOff(false);
-    toast.info('Call ended');
+  const selectAll = () => {
+    setSelectedFriends(new Set(filteredFriends.map(f => f.user_id)));
   };
 
-  const toggleMute = () => {
-    if (mediaStreamRef.current) {
-      const audioTrack = mediaStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
-    }
+  const deselectAll = () => {
+    setSelectedFriends(new Set());
   };
 
-  const toggleVideo = () => {
-    if (mediaStreamRef.current) {
-      const videoTrack = mediaStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoOff(!videoTrack.enabled);
-      }
-    }
-  };
-
-  // Recording Functions
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1920, height: 1080 },
-        audio: true
-      });
-
-      mediaStreamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp9'
-      });
-
-      const chunks: Blob[] = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        setRecordedChunks(chunks);
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
-      setIsRecording(true);
-      setShowRecordingDialog(true);
-      setRecordingDuration(0);
-
-      // Start duration counter
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
-
-      toast.success('Recording started');
-    } catch (error) {
-      console.error('Error starting recording:', error);
-      toast.error('Failed to start recording. Please check camera permissions.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
-
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-
-      toast.success('Recording stopped');
-    }
-  };
-
-  const downloadRecording = () => {
-    if (recordedChunks.length === 0) {
-      toast.error('No recording available');
+  const handleSendInvites = () => {
+    if (selectedFriends.size === 0) {
+      toast.error('Please select at least one friend');
       return;
     }
-
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${event?.title || 'event'}-recording-${Date.now()}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    toast.success('Recording downloaded');
+    sendInvitations.mutate(Array.from(selectedFriends));
   };
 
-  const closeRecordingDialog = () => {
-    if (isRecording) {
-      stopRecording();
-    }
-    setShowRecordingDialog(false);
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+  const getShareLink = () => {
+    return `${window.location.origin}/app/events/${eventId}`;
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(getShareLink());
+      setCopied(true);
+      toast.success('Link copied!');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Failed to copy link');
     }
   };
 
-  // Format duration
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const handleExternalShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: event?.title,
+          text: `Join me at ${event?.title}`,
+          url: getShareLink(),
+        });
+      } catch (err) {
+        console.error('Share failed:', err);
+      }
+    } else {
+      await copyToClipboard();
+    }
   };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
-    };
-  }, []);
 
   if (loadingEvent) {
     return (
@@ -372,269 +246,107 @@ const EventDetail = () => {
     );
   }
 
-  const isCreator = user?.id === event.creator_id;
-  const eventDate = new Date(event.start_date);
-  const isUpcoming = eventDate > new Date();
-
   return (
     <div className="min-h-screen bg-background pb-20">
-      {/* Header with Image */}
-      <div className="relative h-64 bg-gradient-to-br from-purple-600 to-blue-600">
-        {event.image_url ? (
-          <img
-            src={event.image_url}
-            alt={event.title}
-            className="w-full h-full object-cover"
-          />
-        ) : null}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-        
-        <Button
-          variant="ghost"
-          size="sm"
-          className="absolute top-4 left-4 text-white hover:bg-white/20"
-          onClick={() => navigate('/events')}
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="absolute top-4 right-4 text-white hover:bg-white/20"
-          onClick={() => {
-            if (navigator.share) {
-              navigator.share({
-                title: event.title,
-                url: window.location.href
-              });
-            }
-          }}
-        >
-          <Share2 className="w-5 h-5" />
-        </Button>
+      {/* Header */}
+      <div className="gradient-primary text-white">
+        <div className="container-mobile py-4">
+          <div className="flex items-center gap-3 mb-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/20 p-2"
+              onClick={() => navigate(`/app/events/${eventId}`)}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex-1">
+              <h1 className="text-xl font-bold">Invite Friends</h1>
+              <p className="text-sm text-white/80 truncate">{event.title}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="container-mobile -mt-8 space-y-4">
-        {/* Main Info Card */}
+      <div className="container-mobile py-6 space-y-4">
+        {/* Share Options */}
         <Card className="gradient-card shadow-card border-0">
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <Badge className="mb-2">{event.category}</Badge>
-                <h1 className="text-2xl font-bold mb-2">{event.title}</h1>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Avatar className="w-6 h-6">
-                    <AvatarImage src={event.creator?.avatar_url} />
-                    <AvatarFallback>
-                      {event.creator?.display_name?.[0]?.toUpperCase() || '?'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span>Hosted by {event.creator?.display_name || 'Unknown'}</span>
-                </div>
-              </div>
-              <Badge variant={event.event_type === 'virtual' ? 'default' : 'secondary'}>
-                {event.event_type === 'virtual' ? (
-                  <><Video className="w-3 h-3 mr-1" /> Virtual</>
+          <CardContent className="p-4 space-y-3">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Share2 className="w-4 h-4" />
+              Share Event Link
+            </h3>
+            <div className="flex gap-2">
+              <Input
+                value={getShareLink()}
+                readOnly
+                className="flex-1 bg-background/50"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={copyToClipboard}
+              >
+                {copied ? (
+                  <Check className="w-4 h-4 text-green-500" />
                 ) : (
-                  <><MapPin className="w-3 h-3 mr-1" /> Physical</>
+                  <Copy className="w-4 h-4" />
                 )}
-              </Badge>
+              </Button>
             </div>
-
-            <div className="space-y-3 pt-4 border-t border-border">
-              <div className="flex items-center gap-3 text-sm">
-                <Calendar className="w-4 h-4 text-primary" />
-                <span>{eventDate.toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}</span>
-              </div>
-
-              <div className="flex items-center gap-3 text-sm">
-                <Clock className="w-4 h-4 text-primary" />
-                <span>{eventDate.toLocaleTimeString('en-US', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}</span>
-              </div>
-
-              <div className="flex items-center gap-3 text-sm">
-                <MapPin className="w-4 h-4 text-primary" />
-                <span>{event.location}</span>
-              </div>
-
-              {event.event_type === 'virtual' && event.meeting_link && (
-                <div className="flex items-center gap-3 text-sm">
-                  <Video className="w-4 h-4 text-primary" />
-                  <a
-                    href={event.meeting_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline flex items-center gap-1"
-                  >
-                    Join Meeting <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 text-sm">
-                <Users className="w-4 h-4 text-primary" />
-                <span>
-                  {attendees.length} attending
-                  {event.max_attendees && ` • ${event.max_attendees} max`}
-                </span>
-              </div>
-
-              {event.ticket_price > 0 && (
-                <div className="flex items-center gap-3 text-sm">
-                  <DollarSign className="w-4 h-4 text-primary" />
-                  <span className="font-semibold">₦{event.ticket_price.toFixed(2)}</span>
-                </div>
-              )}
-            </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleExternalShare}
+            >
+              <Share2 className="w-4 h-4 mr-2" />
+              Share via Apps
+            </Button>
           </CardContent>
         </Card>
 
-        {/* Tabs */}
-        <Tabs defaultValue="about" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="about">About</TabsTrigger>
-            <TabsTrigger value="attendees">Attendees ({attendees.length})</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="about" className="space-y-4 mt-4">
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="font-semibold mb-2">Description</h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                  {event.description}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Event Type Specific Features */}
-            {isCreator && (
-              <Card>
-                <CardContent className="p-4 space-y-3">
-                  <h3 className="font-semibold mb-2">Host Controls</h3>
-                  
-                  {event.event_type === 'virtual' ? (
-                    <Button
-                      className="w-full"
-                      onClick={startVideoCall}
-                      disabled={isInCall}
-                    >
-                      <Video className="w-4 h-4 mr-2" />
-                      {isInCall ? 'In Call' : 'Start Video Call'}
-                    </Button>
-                  ) : (
-                    <Button
-                      className="w-full"
-                      onClick={startRecording}
-                      disabled={isRecording}
-                    >
-                      <Camera className="w-4 h-4 mr-2" />
-                      {isRecording ? 'Recording...' : 'Start Recording Event'}
-                    </Button>
-                  )}
-
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => navigate(`/events/${eventId}/invite`)}
-                  >
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Invite Friends
-                  </Button>
-                </CardContent>
-              </Card>
+        {/* Friend Selection */}
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Select Friends ({selectedFriends.size})
+          </h3>
+          <div className="flex gap-2">
+            {selectedFriends.size > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={deselectAll}
+              >
+                Clear
+              </Button>
             )}
-          </TabsContent>
-
-          <TabsContent value="attendees" className="space-y-2 mt-4">
-            {attendees.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No attendees yet
-              </div>
-            ) : (
-              attendees.map((attendee) => (
-                <Card key={attendee.user_id}>
-                  <CardContent className="p-3 flex items-center gap-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={attendee.avatar_url} />
-                      <AvatarFallback>
-                        {attendee.display_name?.[0]?.toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="font-semibold text-sm">{attendee.display_name || 'Unknown User'}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </TabsContent>
-        </Tabs>
-
-        {/* RSVP Button */}
-        {!isCreator && isUpcoming && (
-          <div className="fixed bottom-4 left-0 right-0 px-4 z-10">
             <Button
-              className="w-full gradient-primary text-white shadow-lg"
-              size="lg"
-              onClick={() => rsvpMutation.mutate()}
-              disabled={rsvpMutation.isPending || isAttending}
+              variant="ghost"
+              size="sm"
+              onClick={selectAll}
+              disabled={filteredFriends.length === 0}
             >
-              {rsvpMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : isAttending ? (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Registered
-                </>
-              ) : (
-                <>
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  RSVP Now
-                </>
-              )}
+              Select All
             </Button>
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Video Call Dialog */}
-      <Dialog open={showVideoDialog} onOpenChange={setShowVideoDialog}>
-        <DialogContent className="max-w-4xl h-[80vh] p-0">
-          <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-            
-            {/* Call Controls */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
-              <Button
-                size="icon"
-                variant={isMuted ? "destructive" : "secondary"}
-                className="rounded-full w-14 h-14"
-                onClick={toggleMute}
-              >
-                {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-              </Button>
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search friends..."
+            className="pl-10"
+          />
+        </div>
 
-              <Button
-                size="icon"
-                variant={isVideoOff ? "destructive" : "secondary"}sName="w-6 h-6 animate-spin text-muted-foreground" />
+        {/* Friends List */}
+        {loadingFriends ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : filteredFriends.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -717,4 +429,4 @@ const EventDetail = () => {
   );
 };
 
-export default EventInvite;
+export default EventInvitePage;
