@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
-  Search, MessageSquare, UserPlus, Check, X, Filter, ArrowUpDown, Clock, Loader2, Send, Mail, User
+  Search, MessageSquare, UserPlus, Check, X, Filter, ArrowUpDown, Clock, Loader2, Send, Mail, User, Smartphone
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -35,7 +35,6 @@ type Profile = {
   phone?: string;
 };
 
-// Extended type for suggestions to include the "reason" (e.g. "Mutual friend")
 type SuggestionProfile = Profile & {
   reason?: string;
   score?: number;
@@ -91,6 +90,9 @@ export default function Friends() {
   const [requestView, setRequestView] = useState<'received' | 'sent'>('received');
   const [discoverView, setDiscoverView] = useState<'suggestions' | 'contacts'>('suggestions');
   
+  // Local state for optimistic updates to prevent "Already Pending" errors
+  const [optimisticPendingIds, setOptimisticPendingIds] = useState<Set<string>>(new Set());
+
   // Contact form state
   const [showAddContact, setShowAddContact] = useState(false);
   const [newContactName, setNewContactName] = useState("");
@@ -118,7 +120,6 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 30000,
   });
 
   // 2. Incoming (Received)
@@ -140,7 +141,6 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 30000,
   });
 
   // 3. Outgoing (Sent)
@@ -162,33 +162,25 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 30000,
   });
 
-  // 5. Contacts (Moved up because Suggestions needs it)
+  // 4. Contacts
   const { data: contacts = [], isPending: loadingContacts, refetch: refetchContacts } = useQuery<Contact[]>({
     queryKey: ['contacts', userId],
     queryFn: async () => {
       if (!userId) return [];
-      
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
-      
-      if (error) {
-        console.error('Error fetching contacts:', error);
-        return [];
-      }
-      
+      if (error) return [];
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 30000,
   });
 
-  // Helper: Source of truth for UI buttons
+  // Helper: Source of truth for UI buttons (Merged with optimistic state)
   const existingIds = useMemo(() => {
     const ids = new Set<string>();
     friends.forEach(f => {
@@ -197,53 +189,41 @@ export default function Friends() {
     });
     incomingRequests.forEach(r => ids.add(r.requester_id));
     outgoingRequests.forEach(r => ids.add(r.addressee_id));
+    // Merge Optimistic Updates
+    optimisticPendingIds.forEach(id => ids.add(id));
+    
     if (userId) ids.add(userId);
     return ids;
-  }, [friends, incomingRequests, outgoingRequests, userId]);
+  }, [friends, incomingRequests, outgoingRequests, optimisticPendingIds, userId]);
 
 
-  // 4. Suggestions (SMART LOGIC: Mutuals + Contact Matches)
+  // 5. Suggestions
   const { data: suggestions = [], isPending: loadingSuggestions } = useQuery<SuggestionProfile[]>({
     queryKey: ['suggestions', userId, debouncedSearch, existingIds.size, friends.length, contacts.length],
     queryFn: async () => {
       if (!userId) return [];
-      
-      // We will build a map to store unique suggestions with a score
-      // Score system: 
-      // +100 = Found in your uploaded contacts
-      // +20 per mutual friend
-      // +1 = Random discovery
       const suggestionsMap = new Map<string, SuggestionProfile>();
       const excludeIds = Array.from(existingIds);
 
-      // --- STRATEGY A: MATCH CONTACTS (High Priority) ---
-      // Matches people from your uploaded phonebook who are on the app
+      // Strategy A: Contact Matching
       if (contacts.length > 0) {
         const contactEmails = contacts.map(c => c.email).filter(Boolean) as string[];
         const contactPhones = contacts.map(c => c.phone?.replace(/\D/g, '')).filter(Boolean) as string[];
 
-        // Only run if we have data to match
         if (contactEmails.length > 0 || contactPhones.length > 0) {
           let matchQuery = supabase.from('profiles').select('user_id, display_name, avatar_url, email, phone');
-          
           const conditions = [];
           if (contactEmails.length) conditions.push(`email.in.(${contactEmails.map(e => `"${e}"`).join(',')})`);
-          // Note: Phone matching via 'in' requires clean data. 
-          // Ideally you'd have a 'normalized_phone' column. For now we try exact match on what's in DB.
           if (contactPhones.length) conditions.push(`phone.in.(${contactPhones.map(p => `"${p}"`).join(',')})`); 
 
           if (conditions.length > 0) {
             matchQuery = matchQuery.or(conditions.join(','));
             const { data: matches } = await matchQuery;
-            
             matches?.forEach(p => {
               if (p.user_id !== userId && !excludeIds.includes(p.user_id)) {
                 suggestionsMap.set(p.user_id, { 
-                  user_id: p.user_id, 
-                  display_name: p.display_name, 
-                  avatar_url: p.avatar_url, 
-                  score: 100, 
-                  reason: 'From your contacts' 
+                  user_id: p.user_id, display_name: p.display_name, avatar_url: p.avatar_url, 
+                  score: 100, reason: 'From your contacts' 
                 });
               }
             });
@@ -251,33 +231,20 @@ export default function Friends() {
         }
       }
 
-      // --- STRATEGY B: MUTUAL FRIENDS (Medium Priority) ---
-      // "People who are friends with my friends"
+      // Strategy B: Mutual Friends
       const myFriendIds = friends.map(f => f.requester_id === userId ? f.addressee_id : f.requester_id);
-      
       if (myFriendIds.length > 0) {
-        // We limit to checking the last 20 friends to keep performance high
         const recentFriendIds = myFriendIds.slice(0, 20);
-        
-        // Find friendships where one party is one of MY friends
         const { data: mutualsData } = await supabase
           .from('friendships')
-          .select(`
-            requester_id, addressee_id,
-            requester:profiles!requester_id(user_id, display_name, avatar_url),
-            addressee:profiles!addressee_id(user_id, display_name, avatar_url)
-          `)
+          .select(`requester_id, addressee_id, requester:profiles!requester_id(user_id, display_name, avatar_url), addressee:profiles!addressee_id(user_id, display_name, avatar_url)`)
           .or(`requester_id.in.(${recentFriendIds.join(',')}),addressee_id.in.(${recentFriendIds.join(',')})`)
           .eq('status', 'accepted')
           .limit(50);
 
         mutualsData?.forEach(m => {
-          // Identify the "Third Party" (the potential suggestion)
-          // If my friend is Requester, the Suggestion is Addressee.
-          // If my friend is Addressee, the Suggestion is Requester.
           let potential: any = null;
           let potentialId = '';
-
           if (myFriendIds.includes(m.requester_id)) {
             potential = m.addressee;
             potentialId = m.addressee_id;
@@ -285,60 +252,31 @@ export default function Friends() {
             potential = m.requester;
             potentialId = m.requester_id;
           }
-
-          // Filter out myself and people I already know
           if (potentialId && potentialId !== userId && !excludeIds.includes(potentialId)) {
              const existing = suggestionsMap.get(potentialId);
-             
-             // Calculate mutual count
-             // If already in map, we parse the previous reason to increment count
-             // (Simple parsing logic for this example)
-             let currentScore = existing?.score || 0;
-             let mutualCount = 0;
-             
-             if (existing && existing.reason?.includes('mutual')) {
-                const match = existing.reason.match(/(\d+)/);
-                if (match) mutualCount = parseInt(match[0]);
-             }
-
+             let mutualCount = existing?.reason?.includes('mutual') ? parseInt(existing.reason.match(/(\d+)/)?.[0] || '0') : 0;
              const newCount = mutualCount + 1;
-             
-             // Base score 20, +10 for every additional mutual friend
              suggestionsMap.set(potentialId, { 
-               user_id: potential.user_id,
-               display_name: potential.display_name,
-               avatar_url: potential.avatar_url,
-               score: currentScore + 20,
-               reason: `${newCount} mutual friend${newCount > 1 ? 's' : ''}` 
+               user_id: potential.user_id, display_name: potential.display_name, avatar_url: potential.avatar_url,
+               score: (existing?.score || 0) + 20, reason: `${newCount} mutual friend${newCount > 1 ? 's' : ''}` 
              });
           }
         });
       }
 
-      // --- STRATEGY C: DISCOVERY (Fallback) ---
-      // If we don't have enough smart suggestions, fill with randoms (or search results)
-      if (suggestionsMap.size < 20) {
+      // Strategy C: Discovery / Search
+      if (suggestionsMap.size < 20 || debouncedSearch) {
          let discoveryQuery = supabase.from('profiles').select('user_id, display_name, avatar_url');
-         
-         if (debouncedSearch) {
-             discoveryQuery = discoveryQuery.ilike('display_name', `%${debouncedSearch}%`);
-         }
-         
-         // Exclude existing friends + people already in our smart suggestion map
+         if (debouncedSearch) discoveryQuery = discoveryQuery.ilike('display_name', `%${debouncedSearch}%`);
          const allExclusions = [...excludeIds, ...Array.from(suggestionsMap.keys())];
-         if (allExclusions.length > 0) {
-             // Chunking might be needed for very large lists, but fine for now
-             discoveryQuery = discoveryQuery.not('user_id', 'in', `(${allExclusions.join(',')})`);
-         }
+         if (allExclusions.length > 0) discoveryQuery = discoveryQuery.not('user_id', 'in', `(${allExclusions.join(',')})`);
 
          const { data: randomUsers } = await discoveryQuery.limit(20 - suggestionsMap.size);
-         
          randomUsers?.forEach(p => {
             suggestionsMap.set(p.user_id, { ...p, score: 1, reason: 'Suggested for you' });
          });
       }
 
-      // Convert Map to Array and Sort by Score (Desc)
       return Array.from(suggestionsMap.values()).sort((a, b) => (b.score || 0) - (a.score || 0));
     },
     enabled: activeTab === 'discover' && discoverView === 'suggestions',
@@ -360,8 +298,8 @@ export default function Friends() {
         .maybeSingle();
 
       if (existing) {
-        if (existing.status === 'accepted') throw new Error("You are already friends!");
-        if (existing.status === 'pending') throw new Error("Friend request already pending.");
+        if (existing.status === 'accepted') throw new Error("ALREADY_FRIENDS");
+        if (existing.status === 'pending') throw new Error("ALREADY_PENDING");
       }
 
       const { data, error } = await supabase
@@ -388,8 +326,11 @@ export default function Friends() {
       } catch (e) {
         console.warn("Failed to send notification:", e);
       }
-      
       return data;
+    },
+    onMutate: async (targetProfile) => {
+      // OPTIMISTIC UPDATE: Instantly add to pending list to disable button
+      setOptimisticPendingIds(prev => new Set(prev).add(targetProfile.user_id));
     },
     onSuccess: async () => {
       toast.success('Friend request sent');
@@ -398,261 +339,170 @@ export default function Friends() {
         queryClient.invalidateQueries({ queryKey: ['suggestions'] }),
       ]);
     },
-    onError: (error: any) => {
-      const message = error.message || "Failed to send request";
-      toast.error(message);
+    onError: (error: any, targetProfile) => {
+      // Handle the "Already Pending" gracefully
+      if (error.message === "ALREADY_PENDING" || error.message.includes("pending")) {
+        // It's technically a success from the user's perspective (it IS pending)
+        // Just keep the optimistic update and don't show an error toast
+        setOptimisticPendingIds(prev => new Set(prev).add(targetProfile.user_id));
+      } else if (error.message === "ALREADY_FRIENDS") {
+        toast.info("You are already friends with this user.");
+      } else {
+        toast.error("Failed to send request");
+        // Revert optimistic update on real error
+        setOptimisticPendingIds(prev => {
+          const next = new Set(prev);
+          next.delete(targetProfile.user_id);
+          return next;
+        });
+      }
     }
   });
 
+  // SMART CONNECT (For Contacts List)
+  const connectWithContact = useMutation({
+    mutationFn: async (contact: Contact) => {
+       // 1. Search if this contact exists as a User
+       const conditions = [];
+       if (contact.email) conditions.push(`email.eq.${contact.email}`);
+       if (contact.phone) {
+         // Try matching phone (simple clean)
+         const cleanPhone = contact.phone.replace(/\D/g, ''); 
+         if (cleanPhone.length > 6) {
+             // We try to match loosely or exactly depending on your DB
+             conditions.push(`phone.eq.${contact.phone}`);
+         }
+       }
+
+       let targetUser = null;
+       if (conditions.length > 0) {
+         const { data } = await supabase.from('profiles')
+            .select('user_id, display_name')
+            .or(conditions.join(','))
+            .maybeSingle();
+         targetUser = data;
+       }
+
+       if (targetUser) {
+           // User Exists! Send Friend Request
+           try {
+              await sendFriendRequest.mutateAsync({ user_id: targetUser.user_id } as Profile);
+              return { type: 'request_sent', user: targetUser };
+           } catch (e: any) {
+              if (e.message === 'ALREADY_FRIENDS') return { type: 'already_friends' };
+              if (e.message === 'ALREADY_PENDING') return { type: 'already_pending' };
+              throw e;
+           }
+       } else {
+           // User Does Not Exist -> Fallback to Invite
+           return { type: 'invite_needed', contact };
+       }
+    },
+    onSuccess: (result) => {
+        if (result.type === 'request_sent') {
+            toast.success(`Request sent to ${result.user?.display_name}!`);
+        } else if (result.type === 'invite_needed') {
+            // Trigger the SMS/Email logic
+            const contact = result.contact!;
+            const appName = "Lynq";
+            const inviteLink = "https://lynq.app/join";
+            const message = `Hey ${contact.name.split(' ')[0]}, join me on ${appName}! Download here: ${inviteLink}`;
+            
+            if (contact.phone) {
+                const cleanPhone = contact.phone.replace(/\D/g, '');
+                const isiOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+                window.location.href = `sms:${cleanPhone}${isiOS ? '&' : '?'}body=${encodeURIComponent(message)}`;
+            } else if (contact.email) {
+                window.location.href = `mailto:${contact.email}?subject=Join me on ${appName}&body=${encodeURIComponent(message)}`;
+            } else {
+                toast.error("No valid phone or email for this contact.");
+            }
+        }
+    },
+    onError: (e) => {
+        toast.error("Failed to connect: " + e.message);
+    }
+  });
+
+
+  // Other Mutations (Accept/Reject/Cancel/AddContact)
   const acceptFriendRequest = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('friendships')
-        .update({ status: 'accepted' })
-        .eq('id', id);
-      
+      const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
       if (error) throw error;
     },
     onSuccess: async () => {
       toast.success('Friend added!');
-      await Promise.all([
-        refetchFriends(),
-        refetchIncoming(),
-      ]);
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to accept request');
+      await Promise.all([refetchFriends(), refetchIncoming()]);
     }
   });
 
   const rejectFriendRequest = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('friendships')
-        .delete()
-        .eq('id', id);
-      
+      const { error } = await supabase.from('friendships').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: async () => {
-      toast.info('Request declined');
-      await refetchIncoming();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to decline request');
-    }
+    onSuccess: async () => await refetchIncoming()
   });
 
   const cancelSentRequest = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('friendships')
-        .delete()
-        .eq('id', id);
-      
+      const { error } = await supabase.from('friendships').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: async () => {
-      toast.info('Request cancelled');
-      await refetchOutgoing();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to cancel request');
-    }
-  });
-
-  // Contact Mutations
-  const addContact = useMutation({
-    mutationFn: async () => {
-      if (!userId) throw new Error("Not authenticated");
-      
-      // Allow Name only (for username search) OR Name + Contact Info
-      if (!newContactName.trim()) throw new Error("Name is required");
-
-      const name = newContactName.trim();
-      const email = newContactEmail.trim().toLowerCase();
-      const phoneRaw = newContactPhone.trim();
-      
-      // --- IMPROVED SEARCH LOGIC ---
-      // We build a query to find a matching user by Email OR Phone OR Display Name
-      let query = supabase.from('profiles').select('user_id, display_name, avatar_url, email, phone')
-        .neq('user_id', userId); // Exclude self
-      
-      const conditions: string[] = [];
-      
-      // 1. Check Username/Display Name
-      if (name) conditions.push(`display_name.ilike.${name}`);
-      // 2. Check Email
-      if (email) conditions.push(`email.eq.${email}`);
-      // 3. Check Phone
-      if (phoneRaw) conditions.push(`phone.eq.${phoneRaw}`);
-
-      if (conditions.length > 0) {
-        // Execute the OR query
-        query = query.or(conditions.join(','));
-        const { data: existingUsers, error: searchError } = await query;
-        
-        if (searchError) console.error("Search Error:", searchError);
-
-        if (existingUsers && existingUsers.length > 0) {
-           // We found a matching user!
-           const foundUser = existingUsers[0];
-           
-           // Check existing relationship
-           const { data: relationship } = await supabase
-             .from('friendships')
-             .select('status')
-             .or(`and(requester_id.eq.${userId},addressee_id.eq.${foundUser.user_id}),and(requester_id.eq.${foundUser.user_id},addressee_id.eq.${userId})`)
-             .maybeSingle();
-
-           if (relationship) {
-             if (relationship.status === 'accepted') {
-                return { status: 'already_friends', user: foundUser };
-             } else {
-                return { status: 'pending_exists', user: foundUser };
-             }
-           } else {
-             // --- SEND FRIEND REQUEST ---
-             const { error: reqError } = await supabase.from('friendships').insert({
-               requester_id: userId,
-               addressee_id: foundUser.user_id,
-               status: 'pending' // This ensures it shows up in "Sent Requests"
-             });
-             
-             if (reqError) throw reqError;
-             
-             // --- SEND NOTIFICATION ---
-             await supabase.from('notifications').insert({
-                user_id: foundUser.user_id,
-                type: 'friend_request',
-                title: 'New Friend Request',
-                content: `You have a new friend request from ${user?.email || 'a user'}.`,
-                data: { requester_id: userId },
-                is_read: false
-             });
-
-             return { status: 'request_sent', user: foundUser };
-           }
-        }
-      }
-
-      // --- FALLBACK: No User Found on App ---
-      
-      // If we didn't find a user, we can ONLY save as contact if we have contact info.
-      // If they only provided a name (hoping for a username match) and it failed, we throw error.
-      if (!email && !phoneRaw) {
-        throw new Error(`User "${name}" not found on the app. Please add email or phone to save as a contact.`);
-      }
-
-      // Check for duplicate in contacts
-      if (email) {
-        const { data: existingByEmail } = await supabase.from('contacts').select('id, name').eq('user_id', userId).eq('email', email).maybeSingle();
-        if (existingByEmail) throw new Error(`Contact with this email already exists: ${existingByEmail.name}`);
-      }
-
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert({
-          user_id: userId,
-          name: name,
-          email: email || null,
-          phone: phoneRaw || null,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return { status: 'contact_saved', data };
-    },
-    onSuccess: async (result: any) => {
-      // Clear form
-      setNewContactName("");
-      setNewContactEmail("");
-      setNewContactPhone("");
-      setShowAddContact(false);
-
-      if (result.status === 'request_sent') {
-        toast.success(`User found! Friend request sent to ${result.user.display_name}.`);
-        // Refresh outgoing requests tab
-        await Promise.all([
-            refetchOutgoing(), 
-            queryClient.invalidateQueries({ queryKey: ['suggestions'] })
-        ]);
-        // Switch tab to requests so they see it
-        setActiveTab('requests');
-        setRequestView('sent');
-      } else if (result.status === 'already_friends') {
-        toast.info(`You are already friends with ${result.user.display_name}!`);
-      } else if (result.status === 'pending_exists') {
-        toast.info(`A request is already pending for ${result.user.display_name}.`);
-      } else {
-        toast.success('User not on app. Saved to contacts list.');
-        await refetchContacts();
-      }
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to process contact');
+       toast.info('Request cancelled');
+       await refetchOutgoing();
     }
   });
 
   const deleteContact = useMutation({
     mutationFn: async (contactId: string) => {
-      const { error } = await supabase
-        .from('contacts')
-        .delete()
-        .eq('id', contactId)
-        .eq('user_id', userId);
-      
+      const { error } = await supabase.from('contacts').delete().eq('id', contactId).eq('user_id', userId);
       if (error) throw error;
     },
-    onSuccess: async () => {
-      toast.info('Contact removed');
-      await refetchContacts();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to remove contact');
-    }
+    onSuccess: async () => { toast.info('Contact removed'); await refetchContacts(); }
   });
 
-  const inviteContact = useMutation({
-    mutationFn: async (contact: Contact) => {
-      if (!userId) throw new Error("Not authenticated");
-      
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update({ invited_at: new Date().toISOString() })
-        .eq('id', contact.id)
-        .eq('user_id', userId);
+  // Simplified Add Contact (Manually)
+  const addContact = useMutation({
+    mutationFn: async () => {
+      if (!newContactName.trim()) throw new Error("Name is required");
+      const name = newContactName.trim();
+      const email = newContactEmail.trim().toLowerCase();
+      const phone = newContactPhone.trim();
 
-      if (updateError) throw updateError;
-
-      const appName = "OurApp";
-      const inviteLink = "https://yourapp.com/join";
-      const message = `Hey ${contact.name.split(' ')[0]}, join me on ${appName}! Download here: ${inviteLink}`;
+      // 1. Try to find user first (by name/email/phone)
+      let query = supabase.from('profiles').select('*').neq('user_id', userId);
+      const conditions = [`display_name.ilike.${name}`];
+      if (email) conditions.push(`email.eq.${email}`);
+      if (phone) conditions.push(`phone.eq.${phone}`);
       
-      if (contact.phone) {
-        const cleanPhone = contact.phone.replace(/\D/g, ''); // Ensure only digits
-        const ua = navigator.userAgent.toLowerCase();
-        const isiOS = /iphone|ipad|ipod/.test(ua);
-        const separator = isiOS ? '&' : '?';
-        window.location.href = `sms:${cleanPhone}${separator}body=${encodeURIComponent(message)}`;
-      } else if (contact.email) {
-        window.location.href = `mailto:${contact.email}?subject=${encodeURIComponent("Join me on " + appName)}&body=${encodeURIComponent(message)}`;
-      } else {
-        throw new Error("No phone or email available");
+      const { data: users } = await query.or(conditions.join(',')).maybeSingle();
+
+      if (users) {
+         // Found user -> Connect immediately
+         await sendFriendRequest.mutateAsync({ user_id: users.user_id } as Profile);
+         return { type: 'connected', user: users };
       }
-      
-      return contact;
+
+      // 2. Not found -> Save contact
+      if (!email && !phone) throw new Error("User not found. Add email/phone to save as contact.");
+      const { error } = await supabase.from('contacts').insert({ user_id: userId, name, email: email || null, phone: phone || null });
+      if (error) throw error;
+      return { type: 'saved' };
     },
-    onSuccess: async () => {
-      await refetchContacts();
+    onSuccess: (res) => {
+       setShowAddContact(false);
+       setNewContactName(""); setNewContactEmail(""); setNewContactPhone("");
+       if (res.type === 'connected') toast.success(`Request sent to ${res.user.display_name}`);
+       else { toast.success('Saved to contacts'); refetchContacts(); }
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to invite contact');
-    }
+    onError: (e) => toast.error(e.message)
   });
 
-  // Render Profile Helper
+
+  // --- RENDER HELPERS ---
   const renderProfile = useCallback((profile: SuggestionProfile, subtext?: string) => (
     <>
       <Avatar className="w-12 h-12 border border-border/50">
@@ -674,11 +524,10 @@ export default function Friends() {
     </>
   ), []);
 
-  // Render Contact Helper
   const renderContact = useCallback((contact: Contact) => (
     <>
       <Avatar className="w-12 h-12 border border-border/50">
-        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+        <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-500 text-white">
           {contact.name[0]?.toUpperCase() || 'C'}
         </AvatarFallback>
       </Avatar>
@@ -691,39 +540,23 @@ export default function Friends() {
     </>
   ), []);
 
-  // Filter and sort friends
+  // Filter Logic
   const filteredFriends = useMemo(() => {
     let res = [...friends];
-    
     if (debouncedSearch) {
       res = res.filter(f => {
         const p = f.requester_id === userId ? f.addressee : f.requester;
         return p.display_name?.toLowerCase().includes(debouncedSearch.toLowerCase());
       });
     }
-    
-    res.sort((a, b) => {
-      const pA = a.requester_id === userId ? a.addressee : a.requester;
-      const pB = b.requester_id === userId ? b.addressee : b.requester;
-      
-      return sortOption === 'alphabetical' 
-        ? (pA.display_name || '').localeCompare(pB.display_name || '') 
-        : new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-    
     return res;
-  }, [friends, debouncedSearch, sortOption, userId]);
+  }, [friends, debouncedSearch, userId]);
 
-  // Filter contacts
   const filteredContacts = useMemo(() => {
     if (!debouncedSearch) return contacts;
-    
-    return contacts.filter(c => 
-      c.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      c.email?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      c.phone?.includes(debouncedSearch)
-    );
+    return contacts.filter(c => c.name.toLowerCase().includes(debouncedSearch.toLowerCase()));
   }, [contacts, debouncedSearch]);
+
 
   return (
     <div className="container-mobile py-4 space-y-4 min-h-[80vh] pb-20">
@@ -731,32 +564,20 @@ export default function Friends() {
         <h1 className="text-2xl font-bold tracking-tight">Friends</h1>
       </div>
       
+      {/* Search Bar */}
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)} 
-            placeholder="Search friends..."
-            className="pl-10 bg-background/50 backdrop-blur-sm"
+            value={search} onChange={(e) => setSearch(e.target.value)} 
+            placeholder="Search friends..." className="pl-10 bg-background/50 backdrop-blur-sm"
           />
-          {search !== debouncedSearch && (
-            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
-          )}
         </div>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon">
-              <Filter className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button variant="outline" size="icon"><Filter className="h-4 w-4" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setSortOption('newest')}>
-              <ArrowUpDown className="mr-2 h-4 w-4" /> Newest First
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortOption('alphabetical')}>
-              <Filter className="mr-2 h-4 w-4" /> Alphabetical
-            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortOption('newest')}><ArrowUpDown className="mr-2 h-4 w-4" /> Newest First</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortOption('alphabetical')}><Filter className="mr-2 h-4 w-4" /> Alphabetical</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -775,382 +596,127 @@ export default function Friends() {
           <TabsTrigger value="discover">Discover</TabsTrigger>
         </TabsList>
 
-        {/* ALL FRIENDS */}
+        {/* ALL FRIENDS TAB */}
         <TabsContent value="all" className="mt-4 space-y-2">
-          <Card className="border-0 shadow-none bg-transparent">
-            <CardContent className="p-0">
-              {loadingFriends ? (
-                <FriendSkeleton />
-              ) : filteredFriends.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground mb-2">
-                    {search ? 'No friends found' : 'No friends yet'}
-                  </p>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setActiveTab('discover')}
-                    className="mt-2"
-                  >
-                    Find Friends
-                  </Button>
+          {loadingFriends ? <FriendSkeleton /> : filteredFriends.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">No friends yet.</div>
+          ) : (
+            filteredFriends.map(f => {
+              const p = f.requester_id === userId ? f.addressee : f.requester;
+              return (
+                <div key={f.id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 cursor-pointer" onClick={() => navigate(`/messages?userId=${p.user_id}`)}>
+                  {renderProfile(p, "Connected")}
+                  <Button variant="ghost" size="icon"><MessageSquare className="w-5 h-5 text-primary" /></Button>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredFriends.map(f => {
-                    const p = f.requester_id === userId ? f.addressee : f.requester;
-                    return (
-                      <div 
-                        key={f.id} 
-                        className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer" 
-                        onClick={() => navigate(`/messages?userId=${p.user_id}`)}
-                      >
-                        {renderProfile(p, "Connected")}
-                        <Button variant="ghost" size="icon" onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/messages?userId=${p.user_id}`);
-                        }}>
-                          <MessageSquare className="w-5 h-5 text-primary" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              );
+            })
+          )}
         </TabsContent>
 
-        {/* REQUESTS */}
+        {/* REQUESTS TAB */}
         <TabsContent value="requests" className="mt-4">
           <div className="flex gap-2 mb-4 p-1 bg-muted/20 rounded-lg w-fit mx-auto">
-            <button 
-              onClick={() => setRequestView('received')} 
-              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
-                requestView === 'received' 
-                  ? 'bg-background shadow-sm font-medium text-foreground' 
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Received {incomingRequests.length > 0 && `(${incomingRequests.length})`}
-            </button>
-            <button 
-              onClick={() => setRequestView('sent')} 
-              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
-                requestView === 'sent' 
-                  ? 'bg-background shadow-sm font-medium text-foreground' 
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Sent {outgoingRequests.length > 0 && `(${outgoingRequests.length})`}
-            </button>
+            <button onClick={() => setRequestView('received')} className={`px-4 py-1.5 text-sm rounded-md transition-all ${requestView === 'received' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}>Received</button>
+            <button onClick={() => setRequestView('sent')} className={`px-4 py-1.5 text-sm rounded-md transition-all ${requestView === 'sent' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}>Sent</button>
           </div>
-
-          {requestView === 'received' && (
-            <div className="space-y-2">
-              {loadingIncoming ? (
-                <FriendSkeleton />
-              ) : incomingRequests.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  No incoming requests
+          {requestView === 'received' ? (
+            incomingRequests.length === 0 ? <div className="text-center py-10 text-muted-foreground">No incoming requests</div> :
+            incomingRequests.map(r => (
+              <div key={r.id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
+                {renderProfile(r.requester, "Wants to connect")}
+                <div className="flex gap-1">
+                  <Button size="icon" variant="ghost" className="text-red-500" onClick={() => rejectFriendRequest.mutate(r.id)}><X className="w-5 h-5" /></Button>
+                  <Button size="icon" className="gradient-primary text-white rounded-full" onClick={() => acceptFriendRequest.mutate(r.id)}><Check className="w-5 h-5" /></Button>
                 </div>
-              ) : (
-                incomingRequests.map(r => (
-                  <div 
-                    key={r.id} 
-                    className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40"
-                  >
-                    {renderProfile(r.requester, "Wants to connect")}
-                    <div className="flex gap-1">
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="text-red-500 hover:bg-red-50 hover:text-red-600" 
-                        onClick={() => rejectFriendRequest.mutate(r.id)}
-                        disabled={rejectFriendRequest.isPending}
-                      >
-                        <X className="w-5 h-5" />
-                      </Button>
-                      <Button 
-                        size="icon" 
-                        className="bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full hover:from-blue-600 hover:to-purple-600" 
-                        onClick={() => acceptFriendRequest.mutate(r.id)}
-                        disabled={acceptFriendRequest.isPending}
-                      >
-                        {acceptFriendRequest.isPending ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                          <Check className="w-5 h-5" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {requestView === 'sent' && (
-            <div className="space-y-2">
-              {loadingOutgoing ? (
-                <FriendSkeleton />
-              ) : outgoingRequests.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  No sent requests
-                </div>
-              ) : (
-                outgoingRequests.map(r => (
-                  <div 
-                    key={r.id} 
-                    className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 opacity-80"
-                  >
-                    {renderProfile(r.addressee, "Request sent")}
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="text-xs h-8" 
-                      onClick={() => cancelSentRequest.mutate(r.id)}
-                      disabled={cancelSentRequest.isPending}
-                    >
-                      {cancelSentRequest.isPending ? (
-                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                      ) : null}
-                      Cancel
-                    </Button>
-                  </div>
-                ))
-              )}
-            </div>
+              </div>
+            ))
+          ) : (
+            outgoingRequests.length === 0 ? <div className="text-center py-10 text-muted-foreground">No sent requests</div> :
+            outgoingRequests.map(r => (
+              <div key={r.id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 opacity-80">
+                {renderProfile(r.addressee, "Request sent")}
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => cancelSentRequest.mutate(r.id)}>Cancel</Button>
+              </div>
+            ))
           )}
         </TabsContent>
 
-        {/* DISCOVER */}
+        {/* DISCOVER TAB */}
         <TabsContent value="discover" className="mt-4">
           <div className="flex gap-2 mb-4 p-1 bg-muted/20 rounded-lg w-fit mx-auto">
-            <button 
-              onClick={() => setDiscoverView('suggestions')} 
-              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
-                discoverView === 'suggestions' 
-                  ? 'bg-background shadow-sm font-medium text-foreground' 
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Suggestions
-            </button>
-            <button 
-              onClick={() => setDiscoverView('contacts')} 
-              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
-                discoverView === 'contacts' 
-                  ? 'bg-background shadow-sm font-medium text-foreground' 
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              My Contacts {contacts.length > 0 && `(${contacts.length})`}
-            </button>
+            <button onClick={() => setDiscoverView('suggestions')} className={`px-4 py-1.5 text-sm rounded-md transition-all ${discoverView === 'suggestions' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}>Suggestions</button>
+            <button onClick={() => setDiscoverView('contacts')} className={`px-4 py-1.5 text-sm rounded-md transition-all ${discoverView === 'contacts' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}>My Contacts</button>
           </div>
 
           {/* SUGGESTIONS VIEW */}
           {discoverView === 'suggestions' && (
             <div className="space-y-2">
-              {loadingSuggestions ? (
-                <FriendSkeleton />
-              ) : suggestions.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  {search ? 'No users found' : 'No suggestions available'}
-                </div>
-              ) : (
+              {loadingSuggestions ? <FriendSkeleton /> : suggestions.length === 0 ? <div className="text-center py-10 text-muted-foreground">No suggestions available</div> :
                 suggestions.map(p => {
+                  // Use robust check including optimistic updates
                   const isPending = existingIds.has(p.user_id);
                   return (
-                    <div 
-                      key={p.user_id} 
-                      className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40"
-                    >
+                    <div key={p.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
                       {renderProfile(p, "Suggested for you")}
                       <Button 
                         size="sm" 
-                        className={isPending 
-                          ? "bg-transparent border border-primary/20 text-muted-foreground cursor-not-allowed" 
-                          : "bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600"
-                        }
+                        className={isPending ? "bg-transparent border border-primary/20 text-muted-foreground" : "gradient-primary text-white"}
                         variant={isPending ? "outline" : "default"}
                         disabled={isPending || sendFriendRequest.isPending}
                         onClick={() => !isPending && sendFriendRequest.mutate(p)}
                       >
-                        {sendFriendRequest.isPending ? (
-                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                        ) : isPending ? (
-                          <Clock className="w-4 h-4 mr-1" />
-                        ) : (
-                          <UserPlus className="w-4 h-4 mr-1" />
-                        )}
-                        {isPending ? 'Pending' : 'Add'}
+                        {isPending ? <><Clock className="w-3 h-3 mr-1" /> Pending</> : <><UserPlus className="w-3 h-3 mr-1" /> Add</>}
                       </Button>
                     </div>
                   );
                 })
-              )}
+              }
             </div>
           )}
 
-          {/* CONTACTS VIEW */}
+          {/* CONTACTS VIEW - Improved with SMART CONNECT */}
           {discoverView === 'contacts' && (
             <div className="space-y-3">
-              {/* Add Contact Form */}
               {showAddContact ? (
-                <Card className="border-2 border-primary/20 bg-card">
+                <Card className="border-2 border-primary/20 bg-card animate-in fade-in zoom-in-95">
                   <CardContent className="p-4 space-y-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-sm">Add New Contact</h3>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => {
-                          setShowAddContact(false);
-                          setNewContactName("");
-                          setNewContactEmail("");
-                          setNewContactPhone("");
-                        }}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    
-                    <Input
-                      placeholder="Full Name *"
-                      value={newContactName}
-                      onChange={(e) => setNewContactName(e.target.value)}
-                      className="bg-background"
-                    />
-                    
-                    <Input
-                      type="email"
-                      placeholder="Email"
-                      value={newContactEmail}
-                      onChange={(e) => setNewContactEmail(e.target.value)}
-                      className="bg-background"
-                    />
-                    
-                    <Input
-                      type="tel"
-                      placeholder="Phone Number"
-                      value={newContactPhone}
-                      onChange={(e) => setNewContactPhone(e.target.value)}
-                      className="bg-background"
-                    />
-                    
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1 bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600"
-                        onClick={() => addContact.mutate()}
-                        disabled={addContact.isPending || !newContactName.trim()}
-                      >
-                        {addContact.isPending ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <User className="w-4 h-4 mr-2" />
-                        )}
-                        Save / Connect
-                      </Button>
-                    </div>
+                    <div className="flex justify-between items-center"><h3 className="font-semibold text-sm">Add New Contact</h3><Button variant="ghost" size="sm" onClick={() => setShowAddContact(false)}><X className="w-4 h-4" /></Button></div>
+                    <Input placeholder="Full Name" value={newContactName} onChange={(e) => setNewContactName(e.target.value)} />
+                    <Input placeholder="Phone (Optional)" value={newContactPhone} onChange={(e) => setNewContactPhone(e.target.value)} />
+                    <Input placeholder="Email (Optional)" value={newContactEmail} onChange={(e) => setNewContactEmail(e.target.value)} />
+                    <Button className="w-full gradient-primary text-white" onClick={() => addContact.mutate()} disabled={addContact.isPending}>{addContact.isPending ? <Loader2 className="animate-spin" /> : 'Save / Connect'}</Button>
                   </CardContent>
                 </Card>
               ) : (
-                <Button
-                  className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600"
-                  onClick={() => setShowAddContact(true)}
-                >
-                  <User className="w-4 h-4 mr-2" />
-                  Add New Contact
-                </Button>
+                <Button className="w-full gradient-primary text-white" onClick={() => setShowAddContact(true)}><UserPlus className="w-4 h-4 mr-2" /> Add New Contact</Button>
               )}
 
-              {/* Contacts List */}
-              {loadingContacts ? (
-                <FriendSkeleton />
-              ) : filteredContacts.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  {search ? 'No contacts match your search' : showAddContact ? '' : 'No contacts yet. Add someone to invite them!'}
-                </div>
-              ) : (
+              {loadingContacts ? <FriendSkeleton /> : filteredContacts.length === 0 ? <div className="text-center py-10 text-muted-foreground">No contacts found</div> :
                 <div className="space-y-2">
-                  {filteredContacts.map(contact => {
-                    const wasInvited = !!contact.invited_at;
-                    const invitedRecently = wasInvited && 
-                      (new Date().getTime() - new Date(contact.invited_at!).getTime()) < 24 * 60 * 60 * 1000;
-                    
-                    return (
-                      <div 
-                        key={contact.id} 
-                        className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40"
-                      >
-                        {renderContact(contact)}
+                  {filteredContacts.map(contact => (
+                    <div key={contact.id} className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
+                      {renderContact(contact)}
+                      <div className="flex gap-1">
+                        {/* REPLACED 'INVITE' WITH SMART 'CONNECT' BUTTON */}
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="text-xs h-8 border-primary/20 hover:bg-primary/5 text-primary"
+                          onClick={() => connectWithContact.mutate(contact)}
+                          disabled={connectWithContact.isPending}
+                        >
+                          {connectWithContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserPlus className="w-3 h-3 mr-1" />}
+                          Connect
+                        </Button>
                         
-                        <div className="flex gap-1">
-                          {wasInvited && invitedRecently ? (
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              className="text-xs h-8 text-green-600 cursor-default"
-                              disabled
-                            >
-                              <Check className="w-3 h-3 mr-1" />
-                              Invited
-                            </Button>
-                          ) : (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="text-xs h-8"
-                              onClick={() => inviteContact.mutate(contact)}
-                              disabled={inviteContact.isPending || (!contact.email && !contact.phone)}
-                            >
-                              {inviteContact.isPending ? (
-                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                              ) : (
-                                <Send className="w-3 h-3 mr-1" />
-                              )}
-                              {wasInvited ? 'Resend' : 'Invite'}
-                            </Button>
-                          )}
-                          
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            className="text-xs h-8 text-red-500 hover:bg-red-50 hover:text-red-600"
-                            onClick={() => deleteContact.mutate(contact.id)}
-                            disabled={deleteContact.isPending}
-                          >
-                            {deleteContact.isPending ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <X className="w-3 h-3" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Info Card */}
-              {!showAddContact && contacts.length > 0 && (
-                <Card className="border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
-                  <CardContent className="p-4">
-                    <div className="flex gap-3">
-                      <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                      <div className="text-sm space-y-1">
-                        <p className="font-medium text-blue-900 dark:text-blue-100">
-                          Invite friends to join
-                        </p>
-                        <p className="text-blue-700 dark:text-blue-300 text-xs">
-                          Click "Invite" to send them a link via SMS/Email to download the app.
-                        </p>
+                        <Button size="sm" variant="ghost" className="text-xs h-8 text-red-500 hover:bg-red-50" onClick={() => deleteContact.mutate(contact.id)}>
+                          <X className="w-3 h-3" />
+                        </Button>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  ))}
+                </div>
+              }
             </div>
           )}
         </TabsContent>
