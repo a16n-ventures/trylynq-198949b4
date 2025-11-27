@@ -41,6 +41,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
     setLoading(true);
     let requestsSent = 0;
     let contactsSaved = 0;
+    let alreadyFriends = 0;
 
     try {
       // Process contacts in parallel for speed
@@ -48,13 +49,13 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
         // 1. Search for existing user in profiles
         let query = supabase
           .from('profiles')
-          .select('id, user_id')
+          .select('id, user_id, display_name')
           .neq('user_id', user?.id); // Don't find yourself
 
         // Construct OR query for email OR phone
         const conditions = [];
-        if (contact.email) conditions.push(`email.eq.${contact.email}`);
-        if (contact.phone) conditions.push(`phone.eq.${contact.phone}`);
+        if (contact.email) conditions.push(`email.eq.${contact.email.trim()}`);
+        if (contact.phone) conditions.push(`phone.eq.${contact.phone.replace(/[\s\-\(\)]/g, '')}`);
         
         // Apply the OR filter if we have conditions
         if (conditions.length > 0) {
@@ -64,17 +65,39 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
         const { data: existingUser } = await query.maybeSingle();
 
         if (existingUser) {
-          // --- SCENARIO A: MATCH FOUND -> Send Friend Request ---
-          const { error: reqError } = await supabase
+          // --- SCENARIO A: MATCH FOUND -> Check Friendship status first ---
+          
+          // Check if we are already friends or have a pending request
+          const { data: existingFriendship } = await supabase
             .from('friendships')
-            .upsert({ // Upsert prevents error if request already exists
-              requester_id: user?.id,
-              addressee_id: existingUser.user_id,
-              status: 'pending'
-            }, { onConflict: 'sender_id, receiver_id' });
+            .select('status')
+            .or(`and(requester_id.eq.${user?.id},addressee_id.eq.${existingUser.user_id}),and(requester_id.eq.${existingUser.user_id},addressee_id.eq.${user?.id})`)
+            .maybeSingle();
 
-          if (!reqError) requestsSent++;
+          if (existingFriendship) {
+            alreadyFriends++;
+            // Don't do anything if already friends or pending
+          } else {
+             // Send Friend Request
+            const { error: reqError } = await supabase
+              .from('friendships')
+              .insert({ 
+                requester_id: user?.id,
+                addressee_id: existingUser.user_id,
+                status: 'pending'
+              });
 
+            if (!reqError) requestsSent++;
+            
+            // Send notification
+            supabase.from('notifications').insert({
+                user_id: existingUser.user_id,
+                type: 'friend_request',
+                title: 'New Friend Request',
+                content: `You have a new friend request from a contact import.`,
+                data: { requester_id: user?.id },
+            });
+          }
         } else {
           // --- SCENARIO B: NO MATCH -> Save to Contacts ---
           const { error: saveError } = await supabase
@@ -82,7 +105,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
             .insert({
               user_id: user?.id,
               name: contact.name,
-              phone: contact.phone || null,
+              phone: contact.phone ? contact.phone.replace(/[\s\-\(\)]/g, '') : null,
               email: contact.email || null 
             });
 
@@ -90,7 +113,11 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
         }
       }));
 
-      toast.success(`Complete: Sent ${requestsSent} friend requests and saved ${contactsSaved} contacts.`);
+      let message = `Complete: Saved ${contactsSaved} contacts.`;
+      if (requestsSent > 0) message += ` Sent ${requestsSent} friend requests.`;
+      if (alreadyFriends > 0) message += ` Found ${alreadyFriends} existing friends.`;
+      
+      toast.success(message);
       onOpenChange(false);
       setContacts([{ name: '', phone: '', email: '' }]); // Reset form
 
@@ -111,7 +138,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
             Import Contacts
           </DialogTitle>
           <DialogDescription>
-            We'll check if your contact(s) are already on the app. If not, we'll save them to your contact list.
+            We'll check if your contact(s) are already on the app. If so, we'll connect you automatically. If not, we'll save them to your list.
           </DialogDescription>
         </DialogHeader>
 
