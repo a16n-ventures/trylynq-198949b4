@@ -96,10 +96,7 @@ const EventDetail = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('events')
-        .select(`
-          *,
-          creator:profiles!creator_id(user_id, display_name, avatar_url)
-        `)
+        .select('*')
         .eq('id', eventId)
         .single();
 
@@ -115,10 +112,7 @@ const EventDetail = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('event_attendees')
-        .select(`
-          user_id,
-          profiles!user_id(user_id, display_name, avatar_url)
-        `)
+        .select('*')
         .eq('event_id', eventId)
         .eq('status', 'confirmed');
 
