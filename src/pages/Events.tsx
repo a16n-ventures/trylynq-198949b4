@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -23,26 +23,13 @@ import {
   Wallet,
   ArrowUpRight,
   Info,
-  Check,
-  AlertCircle, 
-  Building2,
-  CreditCard
-} from "lucide-react"; 
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription, 
-  DialogFooter 
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label"; 
+  Check
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, isPast, isFuture, isToday } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; 
-import { z } from 'zod';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // --- TYPES ---
 type Event = {
@@ -68,31 +55,7 @@ type Event = {
 
 type EventWithStats = Event & {
   attendee_count?: number;
-  my_status?: 'confirmed' | 'pending'; // Added status field
-}; 
-
-type BankDetails = {
-  bank_name: string;
-  account_number: string;
-  account_name: string;
-}; 
-
-const bankDetailsSchema = z.object({
-  bank_name: z.string()
-    .trim()
-    .min(3, 'Bank name too short')
-    .max(50, 'Bank name too long')
-    .regex(/^[a-zA-Z\s]+$/, 'Bank name can only contain letters and spaces'),
-  account_number: z.string()
-    .trim()
-    .length(10, 'Nigerian account numbers must be exactly 10 digits')
-    .regex(/^\d{10}$/, 'Account number must contain only digits'),
-  account_name: z.string()
-    .trim()
-    .min(3, 'Account name too short')
-    .max(100, 'Account name too long')
-    .regex(/^[a-zA-Z\s'-]+$/, 'Account name contains invalid characters')
-});
+};
 
 // --- COMPONENTS ---
 const EventSkeleton = () => (
@@ -100,7 +63,7 @@ const EventSkeleton = () => (
     {[1, 2, 3].map(i => (
       <Card key={i} className="border-0 shadow-sm bg-card/50">
         <CardContent className="p-4 flex gap-4">
-          <div className="w-24 h-32 rounded-l bg-muted animate-pulse" />
+          <div className="w-24 h-32 rounded-xl bg-muted animate-pulse" />
           <div className="flex-1 space-y-2">
             <div className="h-5 w-2/3 bg-muted animate-pulse rounded" />
             <div className="h-4 w-1/2 bg-muted/50 animate-pulse rounded" />
@@ -144,17 +107,12 @@ export default function Events() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const userId = user?.id;
-  const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my");
-  
-  // Payout & Modal States
-  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isPayoutLoading, setIsPayoutLoading] = useState(false);
-  const [bankForm, setBankForm] = useState<BankDetails>({ bank_name: '', account_number: '', account_name: '' }); 
 
-  // 1. Fetch My Events
+  // 1. Fetch My Events with attendee counts
   const { data: myEvents = [], isLoading: loadingMy } = useQuery<EventWithStats[]>({
     queryKey: ["events", "my", userId],
     queryFn: async () => {
@@ -162,7 +120,10 @@ export default function Events() {
       
       const { data: events, error } = await supabase
         .from("events")
-        .select("*")
+        .select(`
+          *,
+          creator:profiles!creator_id(user_id, display_name, avatar_url)
+        `)
         .eq("creator_id", userId)
         .order("start_date", { ascending: true });
       
@@ -170,13 +131,11 @@ export default function Events() {
       if (!events || events.length === 0) return [];
 
       const eventIds = events.map(e => e.id);
-      const { data: allAttendees, error: countError } = await supabase
+      const { data: allAttendees } = await supabase
         .from("event_attendees")
         .select("event_id")
         .in("event_id", eventIds)
         .eq("status", "confirmed");
-      
-      if (countError) throw countError;
 
       const countMap: Record<string, number> = {};
       allAttendees?.forEach(a => {
@@ -198,40 +157,32 @@ export default function Events() {
     queryFn: async () => {
       if (!userId) return [];
       
-      // FIX: Select status so we can map it later, and allow 'pending'
-      const { data: attendees, error: attendeesError } = await supabase
+      const { data: attendees } = await supabase
         .from("event_attendees")
-        .select("event_id, status")
+        .select("event_id")
         .eq("user_id", userId)
-        .in("status", ["confirmed", "pending"]); // Allow pending events to show
+        .eq("status", "confirmed");
       
-      if (attendeesError) throw attendeesError;
       if (!attendees || attendees.length === 0) return [];
       
-      // Map status for each event
-      const statusMap = new Map();
-      const eventIds = attendees.map((a) => {
-        statusMap.set(a.event_id, a.status);
-        return a.event_id;
-      });
+      const eventIds = attendees.map((a) => a.event_id);
       
-      const { data: events, error: eventsError } = await supabase
+      const { data: events } = await supabase
         .from("events")
-        .select("*")
+        .select(`
+          *,
+          creator:profiles!creator_id(user_id, display_name, avatar_url)
+        `)
         .in("id", eventIds)
         .order("start_date", { ascending: true });
       
-      if (eventsError) throw eventsError;
       if (!events || events.length === 0) return [];
 
-      // Get counts (global count, usually just confirmed)
-      const { data: allAttendees, error: countError } = await supabase
+      const { data: allAttendees } = await supabase
         .from("event_attendees")
         .select("event_id")
         .in("event_id", eventIds)
         .eq("status", "confirmed");
-
-      if (countError) throw countError;
 
       const countMap: Record<string, number> = {};
       allAttendees?.forEach(a => {
@@ -240,16 +191,61 @@ export default function Events() {
 
       return events.map(event => ({
         ...event,
-        attendee_count: countMap[event.id] || 0,
-        my_status: statusMap.get(event.id) as 'confirmed' | 'pending'
+        attendee_count: countMap[event.id] || 0
       }));
     },
     enabled: !!userId,
     staleTime: 30000,
   });
 
-  // 3. Fetch Stats
-  const { data: stats } = useQuery({
+  // 3. Fetch Discover Events
+  const { data: discoverEvents = [], isLoading: loadingDiscover } = useQuery<EventWithStats[]>({
+    queryKey: ["events", "discover", userId, searchQuery],
+    queryFn: async () => {
+      if (!userId) return [];
+      
+      let query = supabase
+        .from("events")
+        .select(`
+          *,
+          creator:profiles!creator_id(user_id, display_name, avatar_url)
+        `)
+        .eq("is_public", true)
+        .neq("creator_id", userId)
+        .gte("start_date", new Date().toISOString())
+        .order("start_date", { ascending: true })
+        .limit(50);
+
+      if (searchQuery) {
+        query = query.or(`title.ilike.%${searchQuery}%,location.ilike.%${searchQuery}%,category.ilike.%${searchQuery}%`);
+      }
+
+      const { data: events } = await query;
+      if (!events || events.length === 0) return [];
+
+      const eventIds = events.map(e => e.id);
+      const { data: allAttendees } = await supabase
+        .from("event_attendees")
+        .select("event_id")
+        .in("event_id", eventIds)
+        .eq("status", "confirmed");
+
+      const countMap: Record<string, number> = {};
+      allAttendees?.forEach(a => {
+        countMap[a.event_id] = (countMap[a.event_id] || 0) + 1;
+      });
+
+      return events.map(event => ({
+        ...event,
+        attendee_count: countMap[event.id] || 0
+      }));
+    },
+    enabled: !!userId && activeTab === "discover",
+    staleTime: 30000,
+  });
+
+  // 4. Fetch Stats with Wallet Balance
+  const { data: stats, refetch: refetchStats } = useQuery({
     queryKey: ["events", "stats", userId],
     queryFn: async () => {
       if (!userId) return { 
@@ -257,16 +253,19 @@ export default function Events() {
         totalAttendees: 0, 
         upcomingEvents: 0,
         pastEvents: 0,
+        grossRevenue: 0,
         netRevenue: 0,
         walletBalance: 0
       };
       
+      // Get all my events
       const { data: myEventsList } = await supabase
         .from('events')
         .select('id, start_date, ticket_price')
         .eq('creator_id', userId);
       
       if (!myEventsList?.length) {
+        // Check wallet even if no events
         const { data: wallet } = await supabase
           .from('wallets')
           .select('balance')
@@ -278,6 +277,7 @@ export default function Events() {
           totalAttendees: 0, 
           upcomingEvents: 0,
           pastEvents: 0,
+          grossRevenue: 0,
           netRevenue: 0,
           walletBalance: wallet?.balance || 0
         };
@@ -285,6 +285,7 @@ export default function Events() {
       
       const ids = myEventsList.map(e => e.id);
 
+      // Fetch ALL attendees
       const { data: allAttendees } = await supabase
         .from('event_attendees')
         .select('event_id')
@@ -293,6 +294,7 @@ export default function Events() {
 
       const totalAttendees = allAttendees?.length || 0;
 
+      // Calculate Revenue
       const countMap: Record<string, number> = {};
       allAttendees?.forEach(a => {
         countMap[a.event_id] = (countMap[a.event_id] || 0) + 1;
@@ -305,100 +307,50 @@ export default function Events() {
           grossRevenue += count * event.ticket_price;
         }
       }
-      const netRevenue = grossRevenue * 0.98;
+      
+      const netRevenue = grossRevenue * 0.98; // After 2% fee
 
       const upcomingEvents = myEventsList.filter(e => isFuture(new Date(e.start_date))).length;
       const pastEvents = myEventsList.filter(e => isPast(new Date(e.start_date))).length;
       
-      let walletBalance = 0;
-      try {
-        const { data: wallet } = await supabase
-          .from('wallets')
-          .select('balance')
-          .eq('user_id', userId)
-          .maybeSingle();
-        
-        walletBalance = wallet?.balance || 0;
-      } catch (e) {
-        console.log("Wallet fetch warning:", e);
-      }
+      // Fetch Wallet Balance
+      const { data: wallet } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('user_id', userId)
+        .maybeSingle();
 
       return { 
         totalHosted: myEventsList.length,
         totalAttendees,
         upcomingEvents,
         pastEvents,
-        netRevenue, 
-        walletBalance 
+        grossRevenue,
+        netRevenue,
+        walletBalance: wallet?.balance || 0
       };
     },
     enabled: !!userId && activeTab === "analytics",
-    staleTime: 60000,
-  }); 
-
-    // 4. Fetch Saved Bank Details
-  const { data: savedBankDetails, refetch: refetchBank } = useQuery({
-    queryKey: ["bank-details", userId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('user_bank_details')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (error) return null;
-      return data;
-    },
-    enabled: !!userId && isPayoutModalOpen
+    staleTime: 30000,
   });
 
-  // Handle Save Bank
-  const saveBankDetails = async () => {
-    if (!bankForm.account_number || !bankForm.bank_name || !bankForm.account_name) {
-      toast.error("Please fill in all bank details");
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('user_bank_details')
-        .upsert({ 
-          user_id: userId,
-          ...bankForm,
-          updated_at: new Date().toISOString()
-        });
-
-      if (error) throw error;
-      await refetchBank();
-      toast.success("Bank details saved!");
-    } catch (e: any) {
-      if (e instanceof z.ZodError) {
-      toast.error(e.errors[0].message);
-      return;
-    }
-    toast.error('Failed to save bank details');
-    }
-  };
-
-  // Process Payout Request
-  const processPayout = async () => {
-    if (!stats?.walletBalance || stats?.walletBalance < 1000) {
+  // Handle Payout
+  const handlePayout = async () => {
+    if (!stats?.walletBalance || stats.walletBalance < 1000) {
       toast.error("Minimum withdrawal amount is ₦1,000");
       return;
     }
 
     setIsPayoutLoading(true);
     try {
-      const { error } = await supabase.functions.invoke('request-payout', {
+      const { data, error } = await supabase.functions.invoke('request-payout', {
         body: { amount: stats.walletBalance }
       });
 
-      if (error) {
-        const body = await error.context?.json().catch(() => ({}));
-        throw new Error(body.error || error.message || "Failed to process payout");
-      }
+      if (error) throw error;
       
       toast.success("Payout request submitted successfully!");
-      queryClient.invalidateQueries({ queryKey: ["events", "stats", userId] });
+      refetchStats();
       
     } catch (error: any) {
       console.error("Payout error:", error);
@@ -408,6 +360,7 @@ export default function Events() {
     }
   };
 
+  // Event helpers
   const getEventStatus = (startDate: string) => {
     const date = new Date(startDate);
     if (isToday(date)) return { label: 'Today', color: 'bg-green-500' };
@@ -419,7 +372,7 @@ export default function Events() {
     const shareData = {
       title: event.title,
       text: `Check out this event: ${event.title}`,
-      url: `${window.location.origin}/events/${event.id}`
+      url: `${window.location.origin}/app/events/${event.id}`
     };
 
     try {
@@ -434,11 +387,11 @@ export default function Events() {
     }
   };
 
-  const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
+  // Render Event Card
+  const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending' | 'discover') => {
     const status = getEventStatus(event.start_date);
     const eventDate = new Date(event.start_date);
     const isFull = event.max_attendees && event.attendee_count ? event.attendee_count >= event.max_attendees : false;
-    const isPending = event.my_status === 'pending';
 
     return (
       <Card 
@@ -447,7 +400,8 @@ export default function Events() {
         onClick={() => navigate(`/app/events/${event.id}`)}
       >
         <CardContent className="p-0">
-          <div className="flex h-46">
+          <div className="flex h-36">
+            {/* Image/Date Strip */}
             <div className="w-28 bg-gradient-to-br from-purple-600 to-blue-600 relative overflow-hidden">
               {event.image_url ? (
                 <img 
@@ -469,20 +423,19 @@ export default function Events() {
                 </div>
               )}
               
-              <div className="absolute top-2 left-2 flex flex-col gap-1">
-                <Badge 
-                  className="text-[10px] px-2 py-0.5"
-                  variant={event.event_type === 'virtual' ? 'default' : 'secondary'}
-                >
-                  {event.event_type === 'virtual' ? (
-                    <><Video className="w-3 h-3 mr-1" /> Virtual</>
-                  ) : (
-                    <><MapPinned className="w-3 h-3 mr-1" /> Physical</>
-                  )}
-                </Badge>
-              </div>
+              <Badge 
+                className="absolute top-2 left-2 text-[10px] px-2 py-0.5"
+                variant={event.event_type === 'virtual' ? 'default' : 'secondary'}
+              >
+                {event.event_type === 'virtual' ? (
+                  <><Video className="w-3 h-3 mr-1" /> Virtual</>
+                ) : (
+                  <><MapPinned className="w-3 h-3 mr-1" /> Physical</>
+                )}
+              </Badge>
             </div>
 
+            {/* Details */}
             <div className="flex-1 p-4 min-w-0 flex flex-col justify-between">
               <div>
                 <div className="flex justify-between items-start gap-2 mb-2">
@@ -490,16 +443,9 @@ export default function Events() {
                     <h3 className="font-bold truncate text-base leading-tight mb-1">
                       {event.title}
                     </h3>
-                    <div className="flex items-center gap-1">
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        {event.category}
-                        </Badge>
-                        {isPending && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-yellow-600 border-yellow-200 bg-yellow-50">
-                                Pending Approval
-                            </Badge>
-                        )}
-                    </div>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      {event.category}
+                    </Badge>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     {event.ticket_price > 0 ? (
@@ -536,6 +482,7 @@ export default function Events() {
                 </div>
               </div>
               
+              {/* Actions */}
               <div className="flex items-center gap-2 mt-3">
                 {type === 'mine' ? (
                   <>
@@ -565,17 +512,13 @@ export default function Events() {
                 ) : type === 'attending' ? (
                   <Button 
                     size="sm" 
-                    className={`h-7 text-xs w-full ${isPending ? 'bg-yellow-500 hover:bg-yellow-600' : 'gradient-primary'} text-white`}
+                    className="h-7 text-xs w-full gradient-primary text-white"
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(`/app/events/${event.id}`);
                     }}
                   >
-                    {isPending ? (
-                         <><Clock className="w-3 h-3 mr-1" /> Awaiting Approval</>
-                    ) : (
-                         <><Ticket className="w-3 h-3 mr-1" /> View Details</>
-                    )}
+                    <Ticket className="w-3 h-3 mr-1" /> View Details
                   </Button>
                 ) : (
                   <Button 
@@ -613,10 +556,11 @@ export default function Events() {
 
   return (
     <div className="container-mobile py-4 space-y-6 pb-24">
+      {/* Header */}
       <div className="flex items-center justify-between px-1">
         <h1 className="text-2xl font-bold tracking-tight">Events</h1>
         <Button 
-          onClick={() => navigate('/create-event')} 
+          onClick={() => navigate('/app/create-event')} 
           size="sm" 
           className="gradient-primary text-white rounded-full shadow-md gap-1"
         >
@@ -624,6 +568,7 @@ export default function Events() {
         </Button>
       </div>
 
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
@@ -634,54 +579,60 @@ export default function Events() {
         />
       </div>
 
+      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
+        <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1 rounded-xl">
           <TabsTrigger value="my" className="rounded-lg text-xs">Hosted</TabsTrigger>
-          <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
+          <TabsTrigger value="attending" className="rounded-lg text-xs">Going</TabsTrigger>
+          <TabsTrigger value="discover" className="rounded-lg text-xs">Discover</TabsTrigger>
           <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="my" className="space-y-3 mt-6 animate-in fade-in-50">
-          {loadingMy ? (
-            <EventSkeleton />
-          ) : filteredMyEvents.length === 0 ? (
+        {/* My Events */}
+        <TabsContent value="my" className="space-y-3 mt-6">
+          {loadingMy ? <EventSkeleton /> : filteredMyEvents.length === 0 ? (
             <EmptyState
               title="No Hosted Events"
-              description={searchQuery 
-                ? "No events match your search. Try different keywords." 
-                : "You haven't created any events yet. Start hosting to build your community!"
-              }
-              action={() => navigate('/create-event')}
+              description={searchQuery ? "No events match your search." : "Create your first event!"}
+              action={() => navigate('/app/create-event')}
               actionLabel="Create Event"
             />
           ) : (
-            <div className="space-y-3">
-              {filteredMyEvents.map(e => renderEventCard(e, 'mine'))}
-            </div>
+            filteredMyEvents.map(e => renderEventCard(e, 'mine'))
           )}
         </TabsContent>
 
-        <TabsContent value="attending" className="space-y-3 mt-6 animate-in fade-in-50">
-          {loadingAttending ? (
-            <EventSkeleton />
-          ) : filteredAttendingEvents.length === 0 ? (
+        {/* Attending */}
+        <TabsContent value="attending" className="space-y-3 mt-6">
+          {loadingAttending ? <EventSkeleton /> : filteredAttendingEvents.length === 0 ? (
             <EmptyState
-              title="No Events Found"
-              description={searchQuery
-                ? "No events match your search."
-                : "You haven't joined any events yet. Discover exciting events happening around you!"
-              }
+              title="No Events"
+              description="Discover events near you"
               action={() => setActiveTab('discover')}
               actionLabel="Discover Events"
             />
           ) : (
-            <div className="space-y-3">
-              {filteredAttendingEvents.map(e => renderEventCard(e, 'attending'))}
-            </div>
+            filteredAttendingEvents.map(e => renderEventCard(e, 'attending'))
           )}
         </TabsContent>
 
-        <TabsContent value="analytics" className="space-y-4 mt-6 animate-in fade-in-50">
+        {/* Discover */}
+        <TabsContent value="discover" className="space-y-3 mt-6">
+          {loadingDiscover ? <EventSkeleton /> : discoverEvents.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed rounded-xl">
+              <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+              <p className="text-muted-foreground text-sm">
+                {searchQuery ? "No events found" : "No upcoming events"}
+              </p>
+            </div>
+          ) : (
+            discoverEvents.map(e => renderEventCard(e, 'discover'))
+          )}
+        </TabsContent>
+
+        {/* Analytics */}
+        <TabsContent value="analytics" className="space-y-4 mt-6">
+          {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-3">
             <Card className="gradient-card border-0 shadow-sm">
               <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
@@ -689,9 +640,7 @@ export default function Events() {
                   <Calendar className="w-4 h-4 text-primary" />
                 </div>
                 <span className="text-2xl font-bold">{stats?.totalHosted || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Total Hosted
-                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Hosted</span>
               </CardContent>
             </Card>
 
@@ -701,9 +650,7 @@ export default function Events() {
                   <Users className="w-4 h-4 text-blue-600" />
                 </div>
                 <span className="text-2xl font-bold">{stats?.totalAttendees || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Total Attendees
-                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Attendees</span>
               </CardContent>
             </Card>
 
@@ -713,9 +660,7 @@ export default function Events() {
                   <TrendingUp className="w-4 h-4 text-green-600" />
                 </div>
                 <span className="text-2xl font-bold">{stats?.upcomingEvents || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Upcoming
-                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Upcoming</span>
               </CardContent>
             </Card>
 
@@ -724,178 +669,115 @@ export default function Events() {
                 <div className="bg-purple-100 p-2 rounded-full mb-2">
                   <Ticket className="w-4 h-4 text-purple-600" />
                 </div>
-                <span className="text-2xl font-bold">
+                <span className="text-xl font-bold">
                   ₦{(stats?.netRevenue || 0).toLocaleString()}
                 </span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center justify-center gap-1">
-                  Net Earnings
-                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Net Revenue</span>
               </CardContent>
             </Card>
           </div>
           
-          {/* PAYOUT WALLET CARD */}
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-md overflow-hidden relative">
-            <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+          {/* Wallet/Payout Card */}
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-lg overflow-hidden relative">
+            <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl" />
             
-                        <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="bg-primary/20 p-2 rounded-lg"><Wallet className="w-5 h-5 text-primary" />
+            <CardContent className="p-6 relative z-10">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary/20 p-3 rounded-xl">
+                    <Wallet className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground">Earnings Wallet</h3>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs text-muted-foreground">Available for daily payout</p>
-                      <TooltipProvider>                           <Tooltip>
-                        <TooltipTrigger>
-                        <Badge variant="outline" className="text-[9px] h-4 px-1 text-muted-foreground">-2% Fee</Badge>
-                        </TooltipTrigger>                           <TooltipContent>
-                          <p>A 2% platform fee is deducted from all ticket sales.</p>                          </TooltipContent>
-                      </Tooltip>                                </TooltipProvider>
+                    <h3 className="font-bold text-lg">Earnings Wallet</h3>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground">Available for withdrawal</p>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 cursor-help">
+                              -2% Fee
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">A 2% platform fee is deducted from ticket sales.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   </div>
                 </div>
-                <Badge variant="outline" className="bg-background/50 backdrop-blur-sm">Daily Payouts</Badge>
+                <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">
+                  Daily Payouts
+                </Badge>
               </div>
+
               <div className="flex items-end justify-between gap-4">
                 <div>
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Withdrawable Balance</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-bold text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}</span>
-                    <span className="text-xs text-muted-foreground font-medium">.00</span>
-                  </div>
-                </div>
-
-                <Button onClick={() => setIsPayoutModalOpen(true)} disabled={isPayoutLoading || !stats?.walletBalance || stats?.walletBalance < 1000} className="gradient-primary text-white shadow-md shrink-0">
-                  {isPayoutLoading ? ( <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing </> ) : ( <><ArrowUpRight className="w-4 h-4 ml-1" /> Request Payout </> )}
-                </Button>
-                
-                </div>
-
-              {stats?.walletBalance && stats?.walletBalance >= 1000 && (
-                <div className="mt-4 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg">
-                  <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5" />
-                    Payout will be processed shortly into your registered bank account
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                    Withdrawable Balance
                   </p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-bold text-foreground tracking-tight">
+                      ₦{(stats?.walletBalance || 0).toLocaleString()}
+                    </span>
+                    <span className="text-sm text-muted-foreground font-medium">.00</span>
+                  </div>
+                  {stats?.walletBalance && stats.walletBalance < 1000 && (
+                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      Minimum: ₦1,000
+                    </p>
+                  )}
                 </div>
-              )}
+
+                <Button 
+                  onClick={handlePayout}
+                  disabled={isPayoutLoading || !stats?.walletBalance || stats.walletBalance < 1000}
+                  className="gradient-primary text-white shadow-md shrink-0 font-semibold"
+                >
+                  {isPayoutLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      Request Payout
+                      <ArrowUpRight className="w-4 h-4 ml-1" />
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Growth Insights Card */}
+          {/* Insights */}
           <Card className="border-muted/50 shadow-sm bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-5 h-5 text-blue-600" />
-                Growth Insights
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+                <h3 className="font-bold">Growth Insights</h3>
+              </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Past Events</span>
                 <span className="font-semibold">{stats?.pastEvents || 0}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Avg Attendees/Event</span>
+                <span className="text-muted-foreground">Avg Attendees</span>
                 <span className="font-semibold">
                   {stats?.totalHosted && stats.totalHosted > 0
                     ? Math.round((stats.totalAttendees || 0) / stats.totalHosted)
                     : 0}
                 </span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Success Rate</span>
-                <span className="font-semibold text-green-600">
-                  {stats?.totalHosted && stats.totalHosted > 0
-                    ? Math.round((stats.upcomingEvents / stats.totalHosted) * 100)
-                    : 0}%
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground pt-3 border-t border-border">
-                💡 Tip: Hosting events consistently helps grow your community 3x faster!
+              <p className="text-xs text-muted-foreground pt-3 border-t border-border flex items-start gap-2">
+                <Check className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+                <span>Hosting events consistently helps grow your community 3x faster!</span>
               </p>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* --- PAYOUT MODAL --- */}
-      <Dialog open={isPayoutModalOpen} onOpenChange={setIsPayoutModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{savedBankDetails ? 'Confirm Payout' : 'Add Bank Details'}</DialogTitle>
-            <DialogDescription>
-              {savedBankDetails ? 'Review your payout destination below.' : 'Where should we send your earnings?'}
-            </DialogDescription>
-          </DialogHeader>
-
-          {savedBankDetails ? (
-            <div className="space-y-4 py-2">
-               <div className="bg-muted/50 p-4 rounded-lg flex items-start gap-3 border border-border">
-                  <Building2 className="w-5 h-5 text-primary mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-sm">{savedBankDetails.bank_name}</p>
-                    <p className="text-xs text-muted-foreground">{savedBankDetails.account_name}</p>
-                    <p className="text-sm font-mono mt-1 tracking-wider">{savedBankDetails.account_number}</p>
-                  </div>
-               </div>
-               
-               <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md text-xs text-yellow-800 dark:text-yellow-200 flex gap-2">
-                 <Info className="w-4 h-4 shrink-0" />
-                 <span>Payouts are processed daily. You will receive <b>₦{(stats?.walletBalance || 0).toLocaleString()}</b>.</span>
-               </div>
-            </div>
-          ) : (
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="bank">Bank Name</Label>
-                <Input 
-                  id="bank" 
-                  placeholder="e.g. GTBank, Zenith Bank" 
-                  value={bankForm.bank_name}
-                  onChange={e => setBankForm({...bankForm, bank_name: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="acc_num">Account Number</Label>
-                <Input 
-                  id="acc_num" 
-                  placeholder="0123456789" 
-                  maxLength={10}
-                  value={bankForm.account_number}
-                  onChange={e => setBankForm({...bankForm, account_number: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="acc_name">Account Name</Label>
-                <Input 
-                  id="acc_name" 
-                  placeholder="Name on account" 
-                  value={bankForm.account_name}
-                  onChange={e => setBankForm({...bankForm, account_name: e.target.value})}
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            {!savedBankDetails ? (
-              <Button onClick={saveBankDetails} className="w-full">Save Bank Details</Button>
-            ) : (
-              <div className="flex gap-2 w-full">
-                <Button variant="outline" className="flex-1" onClick={() => navigate('/settings?tab=bank')}>Change Bank</Button>
-                <Button onClick={processPayout} disabled={isPayoutLoading} className="flex-1 gradient-primary text-white">
-                  {isPayoutLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Withdraw'}
-                </Button>
-              </div>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
     </div>
   );
 }
