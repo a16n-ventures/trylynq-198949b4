@@ -16,6 +16,15 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// --- CONSTANTS ---
+const STALE_TIME = 30000; // 30 seconds
+const SUGGESTION_STALE_TIME = 60000; // 1 minute
+const DEBOUNCE_DELAY = 500;
+const MAX_MUTUAL_FRIENDS_CHECK = 20;
+const MAX_SUGGESTIONS = 20;
+const MAX_MUTUAL_FRIENDS_QUERY = 50;
+const INVITE_COOLDOWN = 24 * 60 * 60 * 1000; // 24 hours
+
 // --- UTILS ---
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -26,6 +35,15 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+// Sanitize phone number for consistent comparison
+const sanitizePhone = (phone: string): string => phone.replace(/\D/g, '');
+
+// Check if a contact was invited recently
+const wasInvitedRecently = (invitedAt: string | null | undefined): boolean => {
+  if (!invitedAt) return false;
+  return (new Date().getTime() - new Date(invitedAt).getTime()) < INVITE_COOLDOWN;
+};
+
 // --- TYPES ---
 type Profile = {
   user_id: string;
@@ -35,7 +53,6 @@ type Profile = {
   phone?: string;
 };
 
-// Extended type for suggestions to include the "reason" (e.g. "Mutual friend")
 type SuggestionProfile = Profile & {
   reason?: string;
   score?: number;
@@ -62,10 +79,13 @@ type Contact = {
 };
 
 type SortOption = 'newest' | 'alphabetical';
+type TabValue = 'all' | 'requests' | 'discover';
+type RequestView = 'received' | 'sent';
+type DiscoverView = 'suggestions' | 'contacts';
 
 // --- SKELETON ---
 const FriendSkeleton = () => (
-  <div className="space-y-3">
+  <div className="space-y-3" role="status" aria-label="Loading friends">
     {[1, 2, 3].map(i => (
       <div key={i} className="flex items-center gap-3 p-4 bg-muted/10 rounded-xl">
         <div className="w-12 h-12 rounded-full bg-muted animate-pulse" />
@@ -85,11 +105,11 @@ export default function Friends() {
   const navigate = useNavigate();
   
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounce(search, 500);
+  const debouncedSearch = useDebounce(search, DEBOUNCE_DELAY);
   const [sortOption, setSortOption] = useState<SortOption>('newest');
-  const [activeTab, setActiveTab] = useState("all");
-  const [requestView, setRequestView] = useState<'received' | 'sent'>('received');
-  const [discoverView, setDiscoverView] = useState<'suggestions' | 'contacts'>('suggestions');
+  const [activeTab, setActiveTab] = useState<TabValue>("all");
+  const [requestView, setRequestView] = useState<RequestView>('received');
+  const [discoverView, setDiscoverView] = useState<DiscoverView>('suggestions');
   
   // Contact form state
   const [showAddContact, setShowAddContact] = useState(false);
@@ -97,13 +117,13 @@ export default function Friends() {
   const [newContactEmail, setNewContactEmail] = useState("");
   const [newContactPhone, setNewContactPhone] = useState("");
 
-  // FIX 1: Local state for immediate "Pending" UI update
+  // Local state for optimistic UI updates
   const [recentlySent, setRecentlySent] = useState<Set<string>>(new Set());
 
   // --- QUERIES ---
 
   // 1. Friends (Accepted)
-  const { data: friends = [], isPending: loadingFriends, refetch: refetchFriends } = useQuery<Friendship[]>({
+  const { data: friends = [], isPending: loadingFriends, refetch: refetchFriends, error: friendsError } = useQuery<Friendship[]>({
     queryKey: ['friends', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -121,11 +141,12 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 30000,
+    staleTime: STALE_TIME,
+    retry: 2,
   });
 
   // 2. Incoming (Received)
-  const { data: incomingRequests = [], isPending: loadingIncoming, refetch: refetchIncoming } = useQuery<Friendship[]>({
+  const { data: incomingRequests = [], isPending: loadingIncoming, refetch: refetchIncoming, error: incomingError } = useQuery<Friendship[]>({
     queryKey: ['friendRequests', 'incoming', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -143,11 +164,12 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 30000,
+    staleTime: STALE_TIME,
+    retry: 2,
   });
 
   // 3. Outgoing (Sent)
-  const { data: outgoingRequests = [], isPending: loadingOutgoing, refetch: refetchOutgoing } = useQuery<Friendship[]>({
+  const { data: outgoingRequests = [], isPending: loadingOutgoing, refetch: refetchOutgoing, error: outgoingError } = useQuery<Friendship[]>({
     queryKey: ['friendRequests', 'outgoing', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -165,11 +187,12 @@ export default function Friends() {
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 30000,
+    staleTime: STALE_TIME,
+    retry: 2,
   });
 
-  // 5. Contacts (Moved up because Suggestions needs it)
-  const { data: contacts = [], isPending: loadingContacts, refetch: refetchContacts } = useQuery<Contact[]>({
+  // 4. Contacts
+  const { data: contacts = [], isPending: loadingContacts, refetch: refetchContacts, error: contactsError } = useQuery<Contact[]>({
     queryKey: ['contacts', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -182,16 +205,17 @@ export default function Friends() {
       
       if (error) {
         console.error('Error fetching contacts:', error);
-        return [];
+        throw error;
       }
       
       return data || [];
     },
     enabled: !!userId,
-    staleTime: 30000,
+    staleTime: STALE_TIME,
+    retry: 2,
   });
 
-  // Helper: Source of truth for UI buttons
+  // Helper: Source of truth for existing relationships
   const existingIds = useMemo(() => {
     const ids = new Set<string>();
     friends.forEach(f => {
@@ -200,74 +224,70 @@ export default function Friends() {
     });
     incomingRequests.forEach(r => ids.add(r.requester_id));
     outgoingRequests.forEach(r => ids.add(r.addressee_id));
-    
-    // FIX 1b: Include recently sent IDs to update UI instantly
     recentlySent.forEach(id => ids.add(id));
-
     if (userId) ids.add(userId);
     return ids;
   }, [friends, incomingRequests, outgoingRequests, userId, recentlySent]);
 
-
-  // 4. Suggestions (SMART LOGIC: Mutuals + Contact Matches)
-  const { data: suggestions = [], isPending: loadingSuggestions } = useQuery<SuggestionProfile[]>({
+  // 5. Suggestions (Smart matching algorithm)
+  const { data: suggestions = [], isPending: loadingSuggestions, error: suggestionsError } = useQuery<SuggestionProfile[]>({
     queryKey: ['suggestions', userId, debouncedSearch, existingIds.size, friends.length, contacts.length],
     queryFn: async () => {
       if (!userId) return [];
       
-      // We will build a map to store unique suggestions with a score
-      // Score system: 
-      // +100 = Found in your uploaded contacts
-      // +20 per mutual friend
-      // +1 = Random discovery
       const suggestionsMap = new Map<string, SuggestionProfile>();
       const excludeIds = Array.from(existingIds);
 
       // --- STRATEGY A: MATCH CONTACTS (High Priority) ---
-      // Matches people from your uploaded phonebook who are on the app
       if (contacts.length > 0) {
         const contactEmails = contacts.map(c => c.email).filter(Boolean) as string[];
-        const contactPhones = contacts.map(c => c.phone?.replace(/\D/g, '')).filter(Boolean) as string[];
+        const contactPhones = contacts
+          .map(c => c.phone ? sanitizePhone(c.phone) : null)
+          .filter(Boolean) as string[];
 
-        // Only run if we have data to match
         if (contactEmails.length > 0 || contactPhones.length > 0) {
-          let matchQuery = supabase.from('profiles').select('user_id, display_name, avatar_url, email, phone');
+          let matchQuery = supabase
+            .from('profiles')
+            .select('user_id, display_name, avatar_url, email, phone');
           
           const conditions = [];
-          if (contactEmails.length) conditions.push(`email.in.(${contactEmails.map(e => `"${e}"`).join(',')})`);
-          // Note: Phone matching via 'in' requires clean data. 
-          // Ideally you'd have a 'normalized_phone' column. For now we try exact match on what's in DB.
-          if (contactPhones.length) conditions.push(`phone.in.(${contactPhones.map(p => `"${p}"`).join(',')})`); 
+          if (contactEmails.length) {
+            conditions.push(`email.in.(${contactEmails.join(',')})`);
+          }
+          if (contactPhones.length) {
+            conditions.push(`phone.in.(${contactPhones.join(',')})`);
+          }
 
           if (conditions.length > 0) {
             matchQuery = matchQuery.or(conditions.join(','));
-            const { data: matches } = await matchQuery;
+            const { data: matches, error } = await matchQuery;
             
-            matches?.forEach(p => {
-              if (p.user_id !== userId && !excludeIds.includes(p.user_id)) {
-                suggestionsMap.set(p.user_id, { 
-                  user_id: p.user_id, 
-                  display_name: p.display_name, 
-                  avatar_url: p.avatar_url, 
-                  score: 100, 
-                  reason: 'From your contacts' 
-                });
-              }
-            });
+            if (!error && matches) {
+              matches.forEach(p => {
+                if (p.user_id !== userId && !excludeIds.includes(p.user_id)) {
+                  suggestionsMap.set(p.user_id, { 
+                    user_id: p.user_id, 
+                    display_name: p.display_name, 
+                    avatar_url: p.avatar_url, 
+                    score: 100, 
+                    reason: 'From your contacts' 
+                  });
+                }
+              });
+            }
           }
         }
       }
 
       // --- STRATEGY B: MUTUAL FRIENDS (Medium Priority) ---
-      // "People who are friends with my friends"
-      const myFriendIds = friends.map(f => f.requester_id === userId ? f.addressee_id : f.requester_id);
+      const myFriendIds = friends.map(f => 
+        f.requester_id === userId ? f.addressee_id : f.requester_id
+      );
       
       if (myFriendIds.length > 0) {
-        // We limit to checking the last 20 friends to keep performance high
-        const recentFriendIds = myFriendIds.slice(0, 20);
+        const recentFriendIds = myFriendIds.slice(0, MAX_MUTUAL_FRIENDS_CHECK);
         
-        // Find friendships where one party is one of MY friends
-        const { data: mutualsData } = await supabase
+        const { data: mutualsData, error } = await supabase
           .from('friendships')
           .select(`
             requester_id, addressee_id,
@@ -276,82 +296,100 @@ export default function Friends() {
           `)
           .or(`requester_id.in.(${recentFriendIds.join(',')}),addressee_id.in.(${recentFriendIds.join(',')})`)
           .eq('status', 'accepted')
-          .limit(50);
+          .limit(MAX_MUTUAL_FRIENDS_QUERY);
 
-        mutualsData?.forEach(m => {
-          // Identify the "Third Party" (the potential suggestion)
-          // If my friend is Requester, the Suggestion is Addressee.
-          // If my friend is Addressee, the Suggestion is Requester.
-          let potential: any = null;
-          let potentialId = '';
+        if (!error && mutualsData) {
+          mutualsData.forEach(m => {
+            let potential: Profile | null = null;
+            let potentialId = '';
 
-          if (myFriendIds.includes(m.requester_id)) {
-            potential = m.addressee;
-            potentialId = m.addressee_id;
-          } else {
-            potential = m.requester;
-            potentialId = m.requester_id;
-          }
+            if (myFriendIds.includes(m.requester_id)) {
+              potential = m.addressee;
+              potentialId = m.addressee_id;
+            } else {
+              potential = m.requester;
+              potentialId = m.requester_id;
+            }
 
-          // Filter out myself and people I already know
-          if (potentialId && potentialId !== userId && !excludeIds.includes(potentialId)) {
-             const existing = suggestionsMap.get(potentialId);
-             
-             // Calculate mutual count
-             // If already in map, we parse the previous reason to increment count
-             // (Simple parsing logic for this example)
-             let currentScore = existing?.score || 0;
-             let mutualCount = 0;
-             
-             if (existing && existing.reason?.includes('mutual')) {
+            if (potentialId && potentialId !== userId && !excludeIds.includes(potentialId) && potential) {
+              const existing = suggestionsMap.get(potentialId);
+              let currentScore = existing?.score || 0;
+              let mutualCount = 0;
+              
+              if (existing?.reason?.includes('mutual')) {
                 const match = existing.reason.match(/(\d+)/);
-                if (match) mutualCount = parseInt(match[0]);
-             }
+                if (match) mutualCount = parseInt(match[0], 10);
+              }
 
-             const newCount = mutualCount + 1;
-             
-             // Base score 20, +10 for every additional mutual friend
-             suggestionsMap.set(potentialId, { 
-               user_id: potential.user_id,
-               display_name: potential.display_name,
-               avatar_url: potential.avatar_url,
-               score: currentScore + 20,
-               reason: `${newCount} mutual friend${newCount > 1 ? 's' : ''}` 
-             });
-          }
-        });
+              const newCount = mutualCount + 1;
+              
+              suggestionsMap.set(potentialId, { 
+                user_id: potential.user_id,
+                display_name: potential.display_name,
+                avatar_url: potential.avatar_url,
+                score: currentScore + 20,
+                reason: `${newCount} mutual friend${newCount > 1 ? 's' : ''}` 
+              });
+            }
+          });
+        }
       }
 
       // --- STRATEGY C: DISCOVERY (Fallback) ---
-      // If we don't have enough smart suggestions, fill with randoms (or search results)
-      if (suggestionsMap.size < 20) {
-         let discoveryQuery = supabase.from('profiles').select('user_id, display_name, avatar_url');
-         
-         if (debouncedSearch) {
-             discoveryQuery = discoveryQuery.ilike('display_name', `%${debouncedSearch}%`);
-         }
-         
-         // Exclude existing friends + people already in our smart suggestion map
-         const allExclusions = [...excludeIds, ...Array.from(suggestionsMap.keys())];
-         if (allExclusions.length > 0) {
-             // Chunking might be needed for very large lists, but fine for now
-             discoveryQuery = discoveryQuery.not('user_id', 'in', `(${allExclusions.join(',')})`);
-         }
+      if (suggestionsMap.size < MAX_SUGGESTIONS) {
+        let discoveryQuery = supabase
+          .from('profiles')
+          .select('user_id, display_name, avatar_url');
+        
+        if (debouncedSearch) {
+          discoveryQuery = discoveryQuery.ilike('display_name', `%${debouncedSearch}%`);
+        }
+        
+        const allExclusions = [...excludeIds, ...Array.from(suggestionsMap.keys())];
+        if (allExclusions.length > 0) {
+          discoveryQuery = discoveryQuery.not('user_id', 'in', `(${allExclusions.join(',')})`);
+        }
 
-         const { data: randomUsers } = await discoveryQuery.limit(20 - suggestionsMap.size);
-         
-         randomUsers?.forEach(p => {
+        const { data: randomUsers, error } = await discoveryQuery.limit(MAX_SUGGESTIONS - suggestionsMap.size);
+        
+        if (!error && randomUsers) {
+          randomUsers.forEach(p => {
             suggestionsMap.set(p.user_id, { ...p, score: 1, reason: 'Suggested for you' });
-         });
+          });
+        }
       }
 
-      // Convert Map to Array and Sort by Score (Desc)
-      return Array.from(suggestionsMap.values()).sort((a, b) => (b.score || 0) - (a.score || 0));
+      return Array.from(suggestionsMap.values())
+        .sort((a, b) => (b.score || 0) - (a.score || 0));
     },
-    enabled: activeTab === 'discover' && discoverView === 'suggestions',
-    staleTime: 60000, 
+    enabled: activeTab === 'discover' && discoverView === 'suggestions' && !!userId,
+    staleTime: SUGGESTION_STALE_TIME,
+    retry: 2,
   });
 
+  // Handle query errors
+  useEffect(() => {
+    if (friendsError) {
+      console.error('Friends query error:', friendsError);
+      toast.error('Failed to load friends');
+    }
+    if (incomingError) {
+      console.error('Incoming requests error:', incomingError);
+      toast.error('Failed to load incoming requests');
+    }
+    if (outgoingError) {
+      console.error('Outgoing requests error:', outgoingError);
+      toast.error('Failed to load sent requests');
+    }
+    if (contactsError) {
+      console.error('Contacts error:', contactsError);
+      toast.error('Failed to load contacts');
+    }
+    if (suggestionsError) {
+      console.error('Suggestions error:', suggestionsError);
+      toast.error('Failed to load suggestions');
+    }
+  }, [friendsError, incomingError, outgoingError, contactsError, suggestionsError]);
 
   // --- MUTATIONS ---
   
@@ -359,7 +397,7 @@ export default function Friends() {
     mutationFn: async (targetProfile: Profile) => {
       if (!userId) throw new Error("Not authenticated");
 
-      // Robust check for existing relationship in both directions
+      // Check for existing relationship
       const { data: existing } = await supabase
         .from('friendships')
         .select('status')
@@ -367,8 +405,12 @@ export default function Friends() {
         .maybeSingle();
 
       if (existing) {
-        if (existing.status === 'accepted') throw new Error("You are already friends!");
-        if (existing.status === 'pending') throw new Error("Friend request already pending.");
+        if (existing.status === 'accepted') {
+          throw new Error("You are already friends!");
+        }
+        if (existing.status === 'pending') {
+          throw new Error("Friend request already pending.");
+        }
       }
 
       const { data, error } = await supabase
@@ -383,41 +425,43 @@ export default function Friends() {
 
       if (error) throw error;
 
-      // Safe notification dispatch
-      try {
-        await supabase.from('notifications').insert({
-          user_id: targetProfile.user_id,
-          type: 'friend_request',
-          title: 'New Friend Request',
-          content: `You have a new friend request.`,
-          data: { requester_id: userId },
-        });
-      } catch (e) {
-        console.warn("Failed to send notification:", e);
-      }
+      // Send notification (non-blocking)
+      supabase.from('notifications').insert({
+        user_id: targetProfile.user_id,
+        type: 'friend_request',
+        title: 'New Friend Request',
+        content: 'You have a new friend request.',
+        data: { requester_id: userId },
+      }).then(({ error }) => {
+        if (error) console.warn("Failed to send notification:", error);
+      });
       
       return data;
     },
+    onMutate: async (variables) => {
+      // Optimistic update
+      setRecentlySent(prev => new Set(prev).add(variables.user_id));
+    },
     onSuccess: async (_, variables) => {
       toast.success('Friend request sent');
-      
-      // FIX 1c: Update local state immediately
-      setRecentlySent(prev => new Set(prev).add(variables.user_id));
-
       await Promise.all([
         refetchOutgoing(),
         queryClient.invalidateQueries({ queryKey: ['suggestions'] }),
       ]);
     },
-    onError: (error: any, variables) => {
+    onError: (error: Error, variables) => {
       const message = error.message || "Failed to send request";
       
-      // FIX 1d: Handle "Pending" error gracefully by updating UI state
       if (message.includes("pending")) {
-        setRecentlySent(prev => new Set(prev).add(variables.user_id));
         toast.info("Friend request already pending.");
       } else {
         toast.error(message);
+        // Rollback optimistic update on failure
+        setRecentlySent(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(variables.user_id);
+          return newSet;
+        });
       }
     }
   });
@@ -438,7 +482,8 @@ export default function Friends() {
         refetchIncoming(),
       ]);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
+      console.error('Accept request error:', error);
       toast.error(error.message || 'Failed to accept request');
     }
   });
@@ -456,7 +501,8 @@ export default function Friends() {
       toast.info('Request declined');
       await refetchIncoming();
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
+      console.error('Reject request error:', error);
       toast.error(error.message || 'Failed to decline request');
     }
   });
@@ -474,98 +520,110 @@ export default function Friends() {
       toast.info('Request cancelled');
       await refetchOutgoing();
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
+      console.error('Cancel request error:', error);
       toast.error(error.message || 'Failed to cancel request');
     }
   });
 
-  // Contact Mutations
   const addContact = useMutation({
     mutationFn: async () => {
       if (!userId) throw new Error("Not authenticated");
       
-      // Allow Name only (for username search) OR Name + Contact Info
-      if (!newContactName.trim()) throw new Error("Name is required");
+      if (!newContactName.trim()) {
+        throw new Error("Name is required");
+      }
 
       const name = newContactName.trim();
       const email = newContactEmail.trim().toLowerCase();
       const phoneRaw = newContactPhone.trim();
       
-      // --- IMPROVED SEARCH LOGIC ---
-      // We build a query to find a matching user by Email OR Phone OR Display Name
-      let query = supabase.from('profiles').select('user_id, display_name, avatar_url, email, phone')
-        .neq('user_id', userId); // Exclude self
+      // Search for existing user
+      let query = supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url, email, phone')
+        .neq('user_id', userId);
       
       const conditions: string[] = [];
       
-      // 1. Check Username/Display Name (REQ: "include name as (username)")
       if (name) conditions.push(`display_name.ilike.${name}`);
-      // 2. Check Email
       if (email) conditions.push(`email.eq.${email}`);
-      // 3. Check Phone
-      if (phoneRaw) conditions.push(`phone.eq.${phoneRaw}`);
+      if (phoneRaw) {
+        const cleanPhone = sanitizePhone(phoneRaw);
+        conditions.push(`phone.eq.${cleanPhone}`);
+        conditions.push(`phone.eq.${phoneRaw}`);
+      }
 
       if (conditions.length > 0) {
-        // Execute the OR query
         query = query.or(conditions.join(','));
         const { data: existingUsers, error: searchError } = await query;
         
-        if (searchError) console.error("Search Error:", searchError);
+        if (searchError) {
+          console.error("Search Error:", searchError);
+        }
 
         if (existingUsers && existingUsers.length > 0) {
-           // We found a matching user!
-           const foundUser = existingUsers[0];
-           
-           // Check existing relationship
-           const { data: relationship } = await supabase
-             .from('friendships')
-             .select('status')
-             .or(`and(requester_id.eq.${userId},addressee_id.eq.${foundUser.user_id}),and(requester_id.eq.${foundUser.user_id},addressee_id.eq.${userId})`)
-             .maybeSingle();
+          const foundUser = existingUsers[0];
+          
+          // Check existing relationship
+          const { data: relationship } = await supabase
+            .from('friendships')
+            .select('status')
+            .or(`and(requester_id.eq.${userId},addressee_id.eq.${foundUser.user_id}),and(requester_id.eq.${foundUser.user_id},addressee_id.eq.${userId})`)
+            .maybeSingle();
 
-           if (relationship) {
-             if (relationship.status === 'accepted') {
-                return { status: 'already_friends', user: foundUser };
-             } else {
-                return { status: 'pending_exists', user: foundUser };
-             }
-           } else {
-             // --- SEND FRIEND REQUEST ---
-             const { error: reqError } = await supabase.from('friendships').insert({
-               requester_id: userId,
-               addressee_id: foundUser.user_id,
-               status: 'pending' // This ensures it shows up in "Sent Requests"
-             });
-             
-             if (reqError) throw reqError;
-             
-             // --- SEND NOTIFICATION ---
-             await supabase.from('notifications').insert({
-                user_id: foundUser.user_id,
-                type: 'friend_request',
-                title: 'New Friend Request',
-                content: `You have a new friend request from ${user?.email || 'a user'}.`,
-                data: { requester_id: userId },
-                is_read: false
-             });
+          if (relationship) {
+            if (relationship.status === 'accepted') {
+              return { status: 'already_friends', user: foundUser };
+            } else {
+              return { status: 'pending_exists', user: foundUser };
+            }
+          } else {
+            // Send friend request
+            const { error: reqError } = await supabase
+              .from('friendships')
+              .insert({
+                requester_id: userId,
+                addressee_id: foundUser.user_id,
+                status: 'pending'
+              });
+            
+            if (reqError) throw reqError;
+            
+            // Send notification (non-blocking)
+            supabase.from('notifications').insert({
+              user_id: foundUser.user_id,
+              type: 'friend_request',
+              title: 'New Friend Request',
+              content: `You have a new friend request from ${user?.email || 'a user'}.`,
+              data: { requester_id: userId },
+              is_read: false
+            }).then(({ error }) => {
+              if (error) console.warn("Failed to send notification:", error);
+            });
 
-             return { status: 'request_sent', user: foundUser };
-           }
+            return { status: 'request_sent', user: foundUser };
+          }
         }
       }
 
-      // --- FALLBACK: No User Found on App ---
-      
-      // If we didn't find a user, we can ONLY save as contact if we have contact info.
-      // If they only provided a name (hoping for a username match) and it failed, we throw error.
+      // No user found - save as contact
       if (!email && !phoneRaw) {
         throw new Error(`User "${name}" not found on the app. Please add email or phone to save as a contact.`);
       }
 
-      // Check for duplicate in contacts
+      // Check for duplicate contact
       if (email) {
-        const { data: existingByEmail } = await supabase.from('contacts').select('id, name').eq('user_id', userId).eq('email', email).maybeSingle();
-        if (existingByEmail) throw new Error(`Contact with this email already exists: ${existingByEmail.name}`);
+        const { data: existingByEmail } = await supabase
+          .from('contacts')
+          .select('id, name')
+          .eq('user_id', userId)
+          .eq('email', email)
+          .maybeSingle();
+        
+        if (existingByEmail) {
+          throw new Error(`Contact with this email already exists: ${existingByEmail.name}`);
+        }
       }
 
       const { data, error } = await supabase
@@ -591,13 +649,11 @@ export default function Friends() {
 
       if (result.status === 'request_sent') {
         toast.success(`User found! Friend request sent to ${result.user.display_name}.`);
-        // Refresh outgoing requests tab
         setRecentlySent(prev => new Set(prev).add(result.user.user_id));
         await Promise.all([
-            refetchOutgoing(), 
-            queryClient.invalidateQueries({ queryKey: ['suggestions'] })
+          refetchOutgoing(), 
+          queryClient.invalidateQueries({ queryKey: ['suggestions'] })
         ]);
-        // Switch tab to requests so they see it
         setActiveTab('requests');
         setRequestView('sent');
       } else if (result.status === 'already_friends') {
@@ -609,7 +665,8 @@ export default function Friends() {
         await refetchContacts();
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
+      console.error('Add contact error:', error);
       toast.error(error.message || 'Failed to process contact');
     }
   });
@@ -628,36 +685,43 @@ export default function Friends() {
       toast.info('Contact removed');
       await refetchContacts();
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
+      console.error('Delete contact error:', error);
       toast.error(error.message || 'Failed to remove contact');
     }
   });
 
-  // FIX 2: Modified logic to Support "Add" button with SMS fallback
   const inviteOrAddContact = useMutation({
     mutationFn: async (contact: Contact) => {
       if (!userId) throw new Error("Not authenticated");
       
-      // 1. Search for user on App
-      let query = supabase.from('profiles').select('*').neq('user_id', userId);
+      // Search for user on app
+      let query = supabase
+        .from('profiles')
+        .select('*')
+        .neq('user_id', userId);
+      
       const conditions: string[] = [];
-      if (contact.email) conditions.push(`email.eq.${contact.email}`);
+      
+      if (contact.email) {
+        conditions.push(`email.eq.${contact.email}`);
+      }
       if (contact.phone) {
-         const cleanPhone = contact.phone.replace(/\D/g, ''); 
-         conditions.push(`phone.eq.${cleanPhone}`);
-         conditions.push(`phone.eq.${contact.phone}`);
+        const cleanPhone = sanitizePhone(contact.phone);
+        conditions.push(`phone.eq.${cleanPhone}`);
+        conditions.push(`phone.eq.${contact.phone}`);
       }
       
-      // If we have search terms, execute search
       if (conditions.length > 0) {
         query = query.or(conditions.join(','));
         const { data: matches } = await query;
+        
         if (matches && matches.length > 0) {
-           return { type: 'found', user: matches[0], contact };
+          return { type: 'found', user: matches[0], contact };
         }
       }
 
-      // 2. Fallback to Invite Logic (SMS/Email)
+      // Fallback to invite
       const { error: updateError } = await supabase
         .from('contacts')
         .update({ invited_at: new Date().toISOString() })
@@ -672,7 +736,7 @@ export default function Friends() {
       
       // Trigger native sharing
       if (contact.phone) {
-        const cleanPhone = contact.phone.replace(/\D/g, '');
+        const cleanPhone = sanitizePhone(contact.phone);
         const ua = navigator.userAgent.toLowerCase();
         const isiOS = /iphone|ipad|ipod/.test(ua);
         const separator = isiOS ? '&' : '?';
@@ -687,23 +751,22 @@ export default function Friends() {
     },
     onSuccess: async (result) => {
       if (result.type === 'found') {
-        // User found, send request instead of SMS
         sendFriendRequest.mutate(result.user);
       } else {
-        // SMS triggered
         await refetchContacts();
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
+      console.error('Invite contact error:', error);
       toast.error(error.message || 'Failed to invite contact');
     }
   });
 
-  // Render Profile Helper
+  // Render helpers
   const renderProfile = useCallback((profile: SuggestionProfile, subtext?: string) => (
     <>
       <Avatar className="w-12 h-12 border border-border/50">
-        <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
+        <AvatarImage src={profile.avatar_url || undefined} className="object-cover" alt={profile.display_name || 'User avatar'} />
         <AvatarFallback className="bg-muted text-muted-foreground">
           {profile.display_name?.[0]?.toUpperCase() || 'U'}
         </AvatarFallback>
@@ -712,16 +775,15 @@ export default function Friends() {
         <div className="font-semibold truncate">{profile.display_name || 'Unknown User'}</div>
         <div className="text-xs text-muted-foreground">
           {profile.reason ? (
-             <span className={profile.score && profile.score > 50 ? "text-blue-600 font-medium" : ""}>
-               {profile.reason}
-             </span>
+            <span className={profile.score && profile.score > 50 ? "text-blue-600 font-medium" : ""}>
+              {profile.reason}
+            </span>
           ) : subtext}
         </div>
       </div>
     </>
   ), []);
 
-  // Render Contact Helper
   const renderContact = useCallback((contact: Contact) => (
     <>
       <Avatar className="w-12 h-12 border border-border/50">
@@ -786,6 +848,7 @@ export default function Friends() {
             onChange={(e) => setSearch(e.target.value)} 
             placeholder="Search friends..."
             className="pl-10 bg-background/50 backdrop-blur-sm"
+            aria-label="Search friends"
           />
           {search !== debouncedSearch && (
             <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
@@ -793,7 +856,7 @@ export default function Friends() {
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon">
+            <Button variant="outline" size="icon" aria-label="Sort options">
               <Filter className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -808,7 +871,7 @@ export default function Friends() {
         </DropdownMenu>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabValue)} className="w-full">
         <TabsList className="grid w-full grid-cols-3 bg-muted/30 p-1 rounded-xl">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="requests" className="relative">
@@ -855,7 +918,7 @@ export default function Friends() {
                         <Button variant="ghost" size="icon" onClick={(e) => {
                           e.stopPropagation();
                           navigate(`/messages?userId=${p.user_id}`);
-                        }}>
+                        }} aria-label="Send message">
                           <MessageSquare className="w-5 h-5 text-primary" />
                         </Button>
                       </div>
@@ -877,6 +940,7 @@ export default function Friends() {
                   ? 'bg-background shadow-sm font-medium text-foreground' 
                   : 'text-muted-foreground hover:text-foreground'
               }`}
+              aria-label="Received requests"
             >
               Received {incomingRequests.length > 0 && `(${incomingRequests.length})`}
             </button>
@@ -887,6 +951,7 @@ export default function Friends() {
                   ? 'bg-background shadow-sm font-medium text-foreground' 
                   : 'text-muted-foreground hover:text-foreground'
               }`}
+              aria-label="Sent requests"
             >
               Sent {outgoingRequests.length > 0 && `(${outgoingRequests.length})`}
             </button>
@@ -914,6 +979,7 @@ export default function Friends() {
                         className="text-red-500 hover:bg-red-50 hover:text-red-600" 
                         onClick={() => rejectFriendRequest.mutate(r.id)}
                         disabled={rejectFriendRequest.isPending}
+                        aria-label="Reject request"
                       >
                         <X className="w-5 h-5" />
                       </Button>
@@ -922,6 +988,7 @@ export default function Friends() {
                         className="bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full hover:from-blue-600 hover:to-purple-600" 
                         onClick={() => acceptFriendRequest.mutate(r.id)}
                         disabled={acceptFriendRequest.isPending}
+                        aria-label="Accept request"
                       >
                         {acceptFriendRequest.isPending ? (
                           <Loader2 className="w-5 h-5 animate-spin" />
@@ -980,6 +1047,7 @@ export default function Friends() {
                   ? 'bg-background shadow-sm font-medium text-foreground' 
                   : 'text-muted-foreground hover:text-foreground'
               }`}
+              aria-label="Suggestions"
             >
               Suggestions
             </button>
@@ -990,6 +1058,7 @@ export default function Friends() {
                   ? 'bg-background shadow-sm font-medium text-foreground' 
                   : 'text-muted-foreground hover:text-foreground'
               }`}
+              aria-label="My contacts"
             >
               My Contacts {contacts.length > 0 && `(${contacts.length})`}
             </button>
@@ -1022,6 +1091,7 @@ export default function Friends() {
                         variant={isPending ? "outline" : "default"}
                         disabled={isPending || sendFriendRequest.isPending}
                         onClick={() => !isPending && sendFriendRequest.mutate(p)}
+                        aria-label={isPending ? "Request pending" : "Add friend"}
                       >
                         {sendFriendRequest.isPending && sendFriendRequest.variables?.user_id === p.user_id ? (
                           <Loader2 className="w-4 h-4 mr-1 animate-spin" />
@@ -1057,6 +1127,7 @@ export default function Friends() {
                           setNewContactEmail("");
                           setNewContactPhone("");
                         }}
+                        aria-label="Close form"
                       >
                         <X className="w-4 h-4" />
                       </Button>
@@ -1067,6 +1138,7 @@ export default function Friends() {
                       value={newContactName}
                       onChange={(e) => setNewContactName(e.target.value)}
                       className="bg-background"
+                      aria-label="Contact name"
                     />
                     
                     <Input
@@ -1075,6 +1147,7 @@ export default function Friends() {
                       value={newContactEmail}
                       onChange={(e) => setNewContactEmail(e.target.value)}
                       className="bg-background"
+                      aria-label="Contact email"
                     />
                     
                     <Input
@@ -1083,6 +1156,7 @@ export default function Friends() {
                       value={newContactPhone}
                       onChange={(e) => setNewContactPhone(e.target.value)}
                       className="bg-background"
+                      aria-label="Contact phone"
                     />
                     
                     <div className="flex gap-2">
@@ -1121,9 +1195,7 @@ export default function Friends() {
               ) : (
                 <div className="space-y-2">
                   {filteredContacts.map(contact => {
-                    const wasInvited = !!contact.invited_at;
-                    const invitedRecently = wasInvited && 
-                      (new Date().getTime() - new Date(contact.invited_at!).getTime()) < 24 * 60 * 60 * 1000;
+                    const invitedRecently = wasInvitedRecently(contact.invited_at);
                     
                     return (
                       <div 
@@ -1133,23 +1205,23 @@ export default function Friends() {
                         {renderContact(contact)}
                         
                         <div className="flex gap-1">
-                          {/* FIX 2: Replaced Invite Button with Add Button (invites if not found) */}
                           <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="text-xs h-8"
-                              onClick={() => inviteOrAddContact.mutate(contact)}
-                              disabled={inviteOrAddContact.isPending || (!contact.email && !contact.phone)}
-                            >
-                              {inviteOrAddContact.isPending && inviteOrAddContact.variables?.id === contact.id ? (
-                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                              ) : wasInvited && invitedRecently ? (
-                                <Send className="w-3 h-3 mr-1" />
-                              ) : (
-                                <UserPlus className="w-3 h-3 mr-1" />
-                              )}
-                              {wasInvited && invitedRecently ? 'Invited' : 'Add'}
-                            </Button>
+                            size="sm" 
+                            variant="outline"
+                            className="text-xs h-8"
+                            onClick={() => inviteOrAddContact.mutate(contact)}
+                            disabled={inviteOrAddContact.isPending || (!contact.email && !contact.phone)}
+                            aria-label={invitedRecently ? "Invited" : "Add or invite contact"}
+                          >
+                            {inviteOrAddContact.isPending && inviteOrAddContact.variables?.id === contact.id ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : invitedRecently ? (
+                              <Send className="w-3 h-3 mr-1" />
+                            ) : (
+                              <UserPlus className="w-3 h-3 mr-1" />
+                            )}
+                            {invitedRecently ? 'Invited' : 'Add'}
+                          </Button>
                           
                           <Button 
                             size="sm" 
@@ -1157,6 +1229,7 @@ export default function Friends() {
                             className="text-xs h-8 text-red-500 hover:bg-red-50 hover:text-red-600"
                             onClick={() => deleteContact.mutate(contact.id)}
                             disabled={deleteContact.isPending}
+                            aria-label="Delete contact"
                           >
                             {deleteContact.isPending ? (
                               <Loader2 className="w-3 h-3 animate-spin" />
