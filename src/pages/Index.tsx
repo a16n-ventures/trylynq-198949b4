@@ -20,27 +20,36 @@ const Index = () => {
   const currentYear = new Date().getFullYear();
 
   useEffect(() => {
-    // Check if we are on the specific subdomain
-    const isSubdomain = window.location.hostname === 'try.usecorridor.xyz';
-    
-    // Redirect Logic:
-    // Only redirect if:
-    // 1. Auth is finished loading (!isLoading)
-    // 2. User exists
-    // 3. We are NOT on the 'try' subdomain
-    if (!isLoading && user && !isSubdomain) {
+    // 1. Wait for Auth to finish loading
+    if (isLoading) return;
+
+    // 2. If user is NOT logged in, do nothing (stay on landing page)
+    if (!user) return;
+
+    // 3. IDENTIFY LOCATION
+    const hostname = window.location.hostname;
+    const isSubdomain = hostname === 'try.usecorridor.xyz';
+
+    // 4. EXECUTE REDIRECT
+    if (isSubdomain) {
+      // 🚨 CRITICAL: We must leave the subdomain entirely!
+      // We cannot use navigate() here because /app doesn't exist on this subdomain.
+      // Use the FULL URL of your main site.
+      window.location.href = 'https://try.usecorridor.xyz/app';
+    } else {
+      // If we are on localhost or the main domain, standard navigation works.
       navigate("/app", { replace: true });
     }
   }, [user, isLoading, navigate]);
 
-  // --- FIX START ---
-  // If we are still checking authentication, show a Loading Spinner instead of a blank screen
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+  // --- PREVENT FLICKER ---
+  // While loading or redirecting, show a spinner
+  if (isLoading || user) {
+     return (
+       <div className="min-h-screen flex items-center justify-center bg-background">
+         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+       </div>
+     );
   }
   // --- FIX END ---
 
