@@ -35,10 +35,6 @@ import AdminWallet from "./pages/admin/AdminWallet";
 const queryClient = new QueryClient();
 
 const App = () => {
-  // 1. Check if we are on the 'try' subdomain
-  const hostname = window.location.hostname;
-  const isTrySubdomain = hostname === "try.usecorridor.xyz";
-
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
@@ -47,23 +43,15 @@ const App = () => {
           <Sonner />
           
           <BrowserRouter>
-            {/* 2. Conditional Routing based on Subdomain */}
-            {isTrySubdomain ? (
-              <Routes>
-                {/* CASE A: User visits root 'try.usecorridor.xyz' -> Redirect to '/lynq-africa' */}
-                <Route path="/" element={<Navigate to="/lynq-africa" replace />} />
-                
-                {/* CASE B: User is at '/lynq-africa' -> Show the Index (Landing) page */}
-                <Route path="/lynq-africa" element={<Index />} />
-                
-                {/* CASE C: Catch-all (e.g. 404s on subdomain) -> Redirect back to '/lynq-africa' */}
-                <Route path="*" element={<Navigate to="/lynq-africa" replace />} />
-              </Routes>
-            ) : (
-              /* 3. STANDARD ROUTING (Main Domain) */
               <Routes>
                 {/* Public Route */}
-                <Route path="/" element={<Index />} />
+                <Route path="/lynq-africa" element={<Index />} />
+                <Routes>
+  {/* The Landing Page */}
+  <Route path="/lynq-africa" element={<Index />} />
+  
+  {/* Optional: Redirect root to landing */}
+  <Route path="/" element={<Navigate to="/lynq-africa" replace />} />
 
                 {/* Admin Routes */}
                 <Route path="/admin" element={<AdminLayout />}>
