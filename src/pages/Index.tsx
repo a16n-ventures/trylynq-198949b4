@@ -237,7 +237,7 @@ const Index = () => {
               <h4 className="font-semibold mb-4">Support</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                  {footerLinks.support.map((link, i) => (
-                  <li key={i}><a href={link.href} className="hover:text-foreground transition-colors">{link.label}</a></li>
+                  <li key={i}><a href="https://chat.whatsapp.com/Fe2gkrxSOtZHuwMQXJltKR?mode=wwt" className="hover:text-foreground transition-colors">{link.label}</a></li>
                 ))}
               </ul>
             </div>
