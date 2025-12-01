@@ -130,16 +130,8 @@ const EventInvitePage = () => {
 
       if (error) throw error;
 
-      // Send notifications
-      const notifications = friendIds.map(friendId => ({
-        user_id: friendId,
-        type: 'event_invitation',
-        title: 'Event Invitation',
-        content: `You've been invited to ${event?.title}`,
-        data: { event_id: eventId, inviter_id: user.id }
-      }));
-
-      await supabase.from('notifications').insert(notifications);
+      // Note: Notifications table not yet implemented
+      // TODO: Add notifications when table is created
     },
     onSuccess: () => {
       toast.success('Invitations sent successfully!');

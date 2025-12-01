@@ -411,7 +411,8 @@ export const notifyNearbyFriends = async (
       data: { friend_id: userId },
     }));
 
-    await supabase.from('notifications').insert(notifications);
+    // TODO: Implement when notifications table is created
+    console.log('Would send notifications to', notifications.length, 'friends');
   } catch (error) {
     console.error('Failed to send nearby notifications:', error);
   }

@@ -24,9 +24,9 @@ export const useContactImport = () => {
       // Import contacts to database
       const contactsToInsert = contacts.map(contact => ({
         user_id: user.id,
-        contact_name: contact.name,
-        contact_phone: contact.phone,
-        contact_email: contact.email,
+        name: contact.name,
+        phone: contact.phone || null,
+        email: contact.email || null,
       }));
 
       const { error } = await supabase
@@ -71,7 +71,7 @@ export const useContactImport = () => {
       const matches = userContacts
         .map(contact => {
           const match = matchedUsers.find(
-            u => u.email === contact.contact_email
+            u => u.email === contact.email
           );
           return match ? { contact_id: contact.id, matched_user_id: match.user_id } : null;
         })

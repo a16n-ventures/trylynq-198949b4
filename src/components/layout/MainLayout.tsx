@@ -41,22 +41,23 @@ const MainLayout = () => {
       .single()
       .then(({ data }) => setProfile(data));
 
-    // 2. Get Initial Unread Count
+    // 2. Get Initial Unread Count from friendships
     const fetchNotifications = async () => {
       const { count } = await supabase
-        .from('notifications')
+        .from('friendships')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('read', false);
+        .eq('addressee_id', user.id)
+        .eq('status', 'pending');
       setNotificationCount(count || 0);
     };
     fetchNotifications();
 
+    // Listen for new friend requests
     const channel = supabase
-      .channel('notifications_counter')
+      .channel('friend_requests_counter')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        { event: 'INSERT', schema: 'public', table: 'friendships', filter: `addressee_id=eq.${user.id}` },
         () => { setNotificationCount((prev) => prev + 1); }
       )
       .subscribe();
