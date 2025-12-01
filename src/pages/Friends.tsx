@@ -425,16 +425,8 @@ export default function Friends() {
 
       if (error) throw error;
 
-      // Send notification (non-blocking)
-      supabase.from('notifications').insert({
-        user_id: targetProfile.user_id,
-        type: 'friend_request',
-        title: 'New Friend Request',
-        content: 'You have a new friend request.',
-        data: { requester_id: userId },
-      }).then(({ error }) => {
-        if (error) console.warn("Failed to send notification:", error);
-      });
+      // Note: Notifications table not yet implemented
+      // TODO: Add notification when notifications table is created
       
       return data;
     },
@@ -590,17 +582,8 @@ export default function Friends() {
             
             if (reqError) throw reqError;
             
-            // Send notification (non-blocking)
-            supabase.from('notifications').insert({
-              user_id: foundUser.user_id,
-              type: 'friend_request',
-              title: 'New Friend Request',
-              content: `You have a new friend request from ${user?.email || 'a user'}.`,
-              data: { requester_id: userId },
-              is_read: false
-            }).then(({ error }) => {
-              if (error) console.warn("Failed to send notification:", error);
-            });
+            // Note: Notifications table not yet implemented
+            // TODO: Add notification when notifications table is created
 
             return { status: 'request_sent', user: foundUser };
           }

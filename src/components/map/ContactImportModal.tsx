@@ -108,15 +108,8 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
             if (!reqError) {
                 requestsSent++;
                 
-                // Create Real Notification
-                await supabase.from('notifications').insert({
-                    user_id: existingUser.user_id,
-                    type: 'friend_request',
-                    title: 'New Friend Request',
-                    content: `${user?.email || 'Someone'} sent you a friend request.`,
-                    data: { requester_id: user?.id },
-                    is_read: false
-                });
+                // Note: Notifications table not yet implemented
+                // TODO: Add notification when notifications table is created
             }
           }
         } else {

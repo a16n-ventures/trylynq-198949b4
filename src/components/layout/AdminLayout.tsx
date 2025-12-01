@@ -29,21 +29,23 @@ export default function AdminLayout() {
     const checkRole = async () => {
       if (!user) return;
       
-      // Replace in AdminLayout.tsx:
-      const { data: isAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
+      const { data: hasRole, error } = await supabase.rpc('has_role', { 
+        _user_id: user.id, 
+        _role: 'admin' 
+      });
 
-      if (error || !data) {
+      if (error) {
         console.error("Role check failed", error);
-        navigate('/app'); // Kick out
+        toast.error("Authorization check failed");
+        navigate('/app');
         return;
       }
 
-      const role = data.role;
-      if (role === 'admin' || role === 'super_admin') {
+      if (hasRole) {
         setIsAdmin(true);
       } else {
         toast.error("Unauthorized access");
-        navigate('/app'); // Kick out
+        navigate('/app');
       }
     };
 
