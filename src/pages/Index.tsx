@@ -36,11 +36,11 @@ const Index = () => {
   const isSubdomain = window.location.hostname === 'try.usecorridor.xyz';
   if (session && !isSubdomain) return null;
   
-  {/* useEffect(() => {
+  useEffect(() => {
     if (user) {
       navigate('/app', { replace: true });
     }
-  }, [user, navigate]); */}
+  }, [user, navigate]);
 
   const handleAuth = (mode: 'login' | 'signup') => {
     setAuthMode(mode);
