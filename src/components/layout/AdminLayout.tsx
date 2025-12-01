@@ -29,11 +29,8 @@ export default function AdminLayout() {
     const checkRole = async () => {
       if (!user) return;
       
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
+      // Replace in AdminLayout.tsx:
+      const { data: isAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
 
       if (error || !data) {
         console.error("Role check failed", error);
