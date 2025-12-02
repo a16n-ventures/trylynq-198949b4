@@ -76,6 +76,7 @@ type Contact = {
   phone?: string | null;
   created_at: string;
   invited_at?: string | null;
+  matched_user_id?: string | null;
 };
 
 type SortOption = 'newest' | 'alphabetical';
@@ -1173,6 +1174,18 @@ export default function Friends() {
                   {filteredContacts.map(contact => {
                     const invitedRecently = wasInvitedRecently(contact.invited_at);
                     
+                    // Check if there's a pending friend request for this contact
+                    const hasPendingRequest = outgoingRequests.some(req => {
+                      // Match by matched_user_id or by email
+                      if (contact.matched_user_id && req.addressee_id === contact.matched_user_id) {
+                        return true;
+                      }
+                      if (contact.email && req.addressee?.email === contact.email) {
+                        return true;
+                      }
+                      return false;
+                    }) || recentlySent.has(contact.matched_user_id || '');
+                    
                     return (
                       <div 
                         key={contact.id} 
@@ -1184,19 +1197,21 @@ export default function Friends() {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            className="text-xs h-8"
-                            onClick={() => inviteOrAddContact.mutate(contact)}
-                            disabled={inviteOrAddContact.isPending || (!contact.email && !contact.phone)}
-                            aria-label={invitedRecently ? "Invited" : "Add or invite contact"}
+                            className={`text-xs h-8 ${hasPendingRequest ? 'text-amber-600 border-amber-300' : ''}`}
+                            onClick={() => !hasPendingRequest && inviteOrAddContact.mutate(contact)}
+                            disabled={inviteOrAddContact.isPending || (!contact.email && !contact.phone) || hasPendingRequest}
+                            aria-label={hasPendingRequest ? "Request pending" : invitedRecently ? "Invited" : "Add or invite contact"}
                           >
                             {inviteOrAddContact.isPending && inviteOrAddContact.variables?.id === contact.id ? (
                               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : hasPendingRequest ? (
+                              <Clock className="w-3 h-3 mr-1" />
                             ) : invitedRecently ? (
                               <Send className="w-3 h-3 mr-1" />
                             ) : (
                               <UserPlus className="w-3 h-3 mr-1" />
                             )}
-                            {invitedRecently ? 'Invited' : 'Add'}
+                            {hasPendingRequest ? 'Pending' : invitedRecently ? 'Invited' : 'Add'}
                           </Button>
                           
                           <Button 
