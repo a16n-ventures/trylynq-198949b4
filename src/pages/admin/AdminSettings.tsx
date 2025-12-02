@@ -10,12 +10,15 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Loader2, Save, AlertCircle } from "lucide-react";
 
+type PriceSettings = { monthly: number; yearly: number };
+type FlagSettings = { maintenance_mode: boolean; allow_signups: boolean; enable_referrals: boolean };
+
 export default function AdminSettings() {
   const queryClient = useQueryClient();
   
   // Local state for form handling
-  const [prices, setPrices] = useState({ monthly: 0, yearly: 0 });
-  const [flags, setFlags] = useState({ maintenance_mode: false, allow_signups: true, enable_referrals: true });
+  const [prices, setPrices] = useState<PriceSettings>({ monthly: 0, yearly: 0 });
+  const [flags, setFlags] = useState<FlagSettings>({ maintenance_mode: false, allow_signups: true, enable_referrals: true });
 
   // 1. Fetch Settings
   const { data: settings, isLoading } = useQuery({
@@ -33,8 +36,21 @@ export default function AdminSettings() {
       const priceData = settings.find(s => s.key === 'premium_prices')?.value;
       const flagData = settings.find(s => s.key === 'system_flags')?.value;
       
-      if (priceData) setPrices(priceData);
-      if (flagData) setFlags(flagData);
+      if (priceData && typeof priceData === 'object' && !Array.isArray(priceData)) {
+        const p = priceData as Record<string, unknown>;
+        setPrices({
+          monthly: typeof p.monthly === 'number' ? p.monthly : 0,
+          yearly: typeof p.yearly === 'number' ? p.yearly : 0
+        });
+      }
+      if (flagData && typeof flagData === 'object' && !Array.isArray(flagData)) {
+        const f = flagData as Record<string, unknown>;
+        setFlags({
+          maintenance_mode: typeof f.maintenance_mode === 'boolean' ? f.maintenance_mode : false,
+          allow_signups: typeof f.allow_signups === 'boolean' ? f.allow_signups : true,
+          enable_referrals: typeof f.enable_referrals === 'boolean' ? f.enable_referrals : true
+        });
+      }
     }
   }, [settings]);
 
@@ -46,13 +62,13 @@ export default function AdminSettings() {
       // Update Prices
       const { error: err1 } = await supabase
         .from('app_settings')
-        .update({ value: prices, updated_by: user?.id, updated_at: new Date().toISOString() })
+        .update({ value: prices as any, updated_by: user?.id, updated_at: new Date().toISOString() })
         .eq('key', 'premium_prices');
 
       // Update Flags
       const { error: err2 } = await supabase
         .from('app_settings')
-        .update({ value: flags, updated_by: user?.id, updated_at: new Date().toISOString() })
+        .update({ value: flags as any, updated_by: user?.id, updated_at: new Date().toISOString() })
         .eq('key', 'system_flags');
 
       if (err1 || err2) throw new Error("Failed to save settings");
@@ -89,7 +105,7 @@ export default function AdminSettings() {
                   type="number" 
                   className="pl-8"
                   value={prices.monthly}
-                  onChange={(e) => setPrices({...prices, monthly: parseInt(e.target.value)})}
+                  onChange={(e) => setPrices({...prices, monthly: parseInt(e.target.value) || 0})}
                 />
               </div>
             </div>
@@ -101,7 +117,7 @@ export default function AdminSettings() {
                   type="number" 
                   className="pl-8"
                   value={prices.yearly}
-                  onChange={(e) => setPrices({...prices, yearly: parseInt(e.target.value)})}
+                  onChange={(e) => setPrices({...prices, yearly: parseInt(e.target.value) || 0})}
                 />
               </div>
             </div>
@@ -179,4 +195,3 @@ export default function AdminSettings() {
     </div>
   );
 }
-        
