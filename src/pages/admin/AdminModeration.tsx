@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { AlertTriangle, CheckCircle, Ban, XCircle, Calendar, User, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle, Ban, Calendar, Loader2, Trash2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -13,22 +13,43 @@ type Report = {
   id: string;
   target_id: string;
   target_type: 'user' | 'event';
-  reason: string;
-  created_at: string;
-  reporter_id: string;
+  reason: string | null;
+  created_at: string | null;
+  reporter_id: string | null;
 };
+
+type UserContent = {
+  _kind: 'user';
+  avatar_url: string | null;
+  display_name: string | null;
+  bio: string | null;
+  is_banned: boolean | null;
+  role: string | null;
+};
+
+type EventContent = {
+  _kind: 'event';
+  title: string;
+  location: string | null;
+  description: string | null;
+  image_url: string | null;
+};
+
+type ContentData = UserContent | EventContent | null;
 
 // --- Sub-Component: Fetches & Displays the Accused Content ---
 const ContentPreview = ({ type, id }: { type: 'user' | 'event', id: string }) => {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<ContentData>({
     queryKey: ['content_preview', type, id],
     queryFn: async () => {
       if (type === 'user') {
-        const { data } = await supabase.from('profiles').select('*').eq('user_id', id).single();
-        return { ...data, _kind: 'user' };
+        const { data } = await supabase.from('profiles').select('avatar_url, display_name, bio, is_banned, role').eq('user_id', id).maybeSingle();
+        if (!data) return null;
+        return { ...data, _kind: 'user' as const };
       } else {
-        const { data } = await supabase.from('events').select('*').eq('id', id).single();
-        return { ...data, _kind: 'event' };
+        const { data } = await supabase.from('events').select('title, location, description, image_url').eq('id', id).maybeSingle();
+        if (!data) return null;
+        return { ...data, _kind: 'event' as const };
       }
     }
   });
@@ -36,26 +57,26 @@ const ContentPreview = ({ type, id }: { type: 'user' | 'event', id: string }) =>
   if (isLoading) return <div className="p-4"><Loader2 className="animate-spin w-5 h-5" /></div>;
   if (!data) return <div className="p-4 text-red-500">Content already deleted or not found.</div>;
 
-  if (type === 'user') {
+  if (data._kind === 'user') {
     return (
       <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
         <Avatar className="w-16 h-16">
-          <AvatarImage src={data.avatar_url} />
+          <AvatarImage src={data.avatar_url || undefined} />
           <AvatarFallback>User</AvatarFallback>
         </Avatar>
         <div>
-          <h3 className="font-bold text-lg">{data.display_name}</h3>
+          <h3 className="font-bold text-lg">{data.display_name || 'Unknown User'}</h3>
           <p className="text-sm text-muted-foreground">{data.bio || "No bio provided."}</p>
           <div className="flex gap-2 mt-2">
              <Badge variant="outline">{data.is_banned ? 'Already Banned' : 'Active Status'}</Badge>
-             <Badge>{data.role}</Badge>
+             <Badge>{data.role || 'user'}</Badge>
           </div>
         </div>
       </div>
     );
   }
 
-  if (type === 'event') {
+  if (data._kind === 'event') {
     return (
       <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
         <div className="flex items-start gap-3">
@@ -64,10 +85,10 @@ const ContentPreview = ({ type, id }: { type: 'user' | 'event', id: string }) =>
           </div>
           <div>
             <h3 className="font-bold text-lg">{data.title}</h3>
-            <p className="text-sm text-muted-foreground">{data.location}</p>
+            <p className="text-sm text-muted-foreground">{data.location || 'No location'}</p>
           </div>
         </div>
-        <p className="text-sm italic border-l-2 border-primary pl-2">{data.description}</p>
+        <p className="text-sm italic border-l-2 border-primary pl-2">{data.description || 'No description'}</p>
         {data.image_url && (
           <img src={data.image_url} alt="Event" className="w-full h-40 object-cover rounded-md" />
         )}
@@ -88,9 +109,12 @@ export default function AdminModeration() {
         .from('reports')
         .select('*')
         .eq('status', 'pending')
-        .order('created_at', { ascending: true }); // Oldest first
+        .order('created_at', { ascending: true });
       if (error) throw error;
-      return data;
+      return (data || []).map(r => ({
+        ...r,
+        target_type: r.target_type as 'user' | 'event'
+      }));
     }
   });
 
@@ -162,13 +186,13 @@ export default function AdminModeration() {
                       {report.target_type.toUpperCase()}
                     </Badge>
                     <span className="text-sm text-muted-foreground">
-                      Reported {new Date(report.created_at).toLocaleDateString()}
+                      Reported {report.created_at ? new Date(report.created_at).toLocaleDateString() : 'Unknown date'}
                     </span>
                   </div>
                   <AlertTriangle className="w-5 h-5 text-red-500" />
                 </div>
                 <CardTitle className="text-base font-medium pt-2">
-                  Reason: "{report.reason}"
+                  Reason: "{report.reason || 'No reason provided'}"
                 </CardTitle>
               </CardHeader>
               

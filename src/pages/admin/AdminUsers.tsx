@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Table, 
@@ -28,9 +28,9 @@ type UserProfile = {
   user_id: string;
   display_name: string | null;
   avatar_url: string | null;
-  email: string | null; // Ensure your profiles table has email, or join auth.users
-  role: 'user' | 'moderator' | 'admin' | 'super_admin';
-  is_banned: boolean;
+  email: string | null;
+  role: string | null;
+  is_banned: boolean | null;
   created_at: string;
 };
 
@@ -41,12 +41,12 @@ export default function AdminUsers() {
   const pageSize = 20;
 
   // 1. Fetch Users
-  const { data: users = [], isLoading } = useQuery({
+  const { data: users = [], isLoading } = useQuery<UserProfile[]>({
     queryKey: ['admin_users', search, page],
     queryFn: async () => {
       let query = supabase
         .from('profiles')
-        .select('*')
+        .select('user_id, display_name, avatar_url, email, role, is_banned, created_at')
         .order('created_at', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -59,9 +59,9 @@ export default function AdminUsers() {
         toast.error("Failed to load users");
         throw error;
       }
-      return data as UserProfile[];
+      return (data || []) as UserProfile[];
     },
-    keepPreviousData: true // Smooth pagination
+    placeholderData: keepPreviousData
   });
 
   // 2. Mutation: Update Role
@@ -97,7 +97,7 @@ export default function AdminUsers() {
   });
 
   // --- Helpers ---
-  const getRoleBadge = (role: string) => {
+  const getRoleBadge = (role: string | null) => {
     switch (role) {
       case 'super_admin': return <Badge className="bg-purple-600 hover:bg-purple-700">Super Admin</Badge>;
       case 'admin': return <Badge className="bg-indigo-500 hover:bg-indigo-600">Admin</Badge>;
@@ -157,11 +157,10 @@ export default function AdminUsers() {
                   <TableCell className="flex items-center gap-3">
                     <Avatar className="w-8 h-8">
                       <AvatarImage src={user.avatar_url || undefined} />
-                      <AvatarFallback>{user.display_name?.slice(0,2).toUpperCase()}</AvatarFallback>
+                      <AvatarFallback>{user.display_name?.slice(0,2).toUpperCase() || 'U'}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
                       <span className="font-medium">{user.display_name || 'Unknown'}</span>
-                      {/* Note: If email isn't in profiles, you might just show ID or join auth table */}
                       <span className="text-xs text-muted-foreground">ID: {user.user_id.slice(0,8)}...</span>
                     </div>
                   </TableCell>
@@ -210,7 +209,7 @@ export default function AdminUsers() {
                         
                         <DropdownMenuItem 
                           className={user.is_banned ? "text-green-600" : "text-red-600"}
-                          onClick={() => toggleBanMutation.mutate({ userId: user.user_id, currentStatus: user.is_banned })}
+                          onClick={() => toggleBanMutation.mutate({ userId: user.user_id, currentStatus: !!user.is_banned })}
                         >
                           {user.is_banned ? (
                             <>
@@ -251,5 +250,4 @@ export default function AdminUsers() {
       </div>
     </div>
   );
-  }
-  
+}

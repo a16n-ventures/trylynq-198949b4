@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Table, 
@@ -21,7 +21,6 @@ import {
 import { 
   Search, 
   MoreHorizontal, 
-  Calendar, 
   MapPin, 
   Trash2, 
   ExternalLink,
@@ -35,14 +34,13 @@ type EventRow = {
   id: string;
   title: string;
   start_date: string;
-  location: string;
+  location: string | null;
   is_public: boolean;
   creator_id: string;
-  ticket_price: number;
+  ticket_price: number | null;
   creator?: {
-    display_name: string;
-    email?: string;
-  };
+    display_name: string | null;
+  }[];
 };
 
 export default function AdminEvents() {
@@ -52,7 +50,7 @@ export default function AdminEvents() {
   const pageSize = 20;
 
   // 1. Fetch Events
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [], isLoading } = useQuery<EventRow[]>({
     queryKey: ['admin_events', search, page],
     queryFn: async () => {
       let query = supabase
@@ -61,7 +59,7 @@ export default function AdminEvents() {
           *,
           creator:profiles!creator_id(display_name)
         `)
-        .order('start_date', { ascending: false }) // Newest first
+        .order('start_date', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
       if (search) {
@@ -73,9 +71,9 @@ export default function AdminEvents() {
         toast.error("Failed to load events");
         throw error;
       }
-      return data as unknown as EventRow[];
+      return (data || []) as EventRow[];
     },
-    keepPreviousData: true
+    placeholderData: keepPreviousData
   });
 
   // 2. Mutation: Delete Event
@@ -153,13 +151,13 @@ export default function AdminEvents() {
                     <div className="flex flex-col">
                       <span className="font-medium">{event.title}</span>
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <MapPin className="w-3 h-3" /> {event.location}
+                        <MapPin className="w-3 h-3" /> {event.location || 'No location'}
                       </span>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col text-sm">
-                      <span>{event.creator?.display_name || 'Unknown'}</span>
+                      <span>{event.creator?.[0]?.display_name || 'Unknown'}</span>
                       <span className="text-xs text-muted-foreground">ID: {event.creator_id.slice(0,6)}...</span>
                     </div>
                   </TableCell>
@@ -170,8 +168,8 @@ export default function AdminEvents() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {event.ticket_price > 0 ? (
-                      <span className="font-medium text-green-600">₦{event.ticket_price.toLocaleString()}</span>
+                    {(event.ticket_price || 0) > 0 ? (
+                      <span className="font-medium text-green-600">₦{(event.ticket_price || 0).toLocaleString()}</span>
                     ) : (
                       <span className="text-muted-foreground">Free</span>
                     )}
@@ -224,4 +222,3 @@ export default function AdminEvents() {
     </div>
   );
 }
-                                     
