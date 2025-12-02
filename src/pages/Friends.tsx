@@ -244,50 +244,71 @@ export default function Friends() {
     return ids;
   }, [friends, incomingRequests, outgoingRequests, userId, recentlySent]);
 
-  // 5. Suggestions (Smart matching algorithm)
-  const { data: suggestions = [], isPending: loadingSuggestions, error: suggestionsError } = useQuery({
-    queryKey: ['suggestions', userId, debouncedSearch, existingIds.size, friends.length, contacts.length],
+  // 5. Suggestions - Fetch from DB and filter out existing relationships
+  const { data: suggestions = [], isPending: loadingSuggestions, error: suggestionsError, refetch: refetchSuggestions } = useQuery({
+    queryKey: ['suggestions', userId, debouncedSearch],
     queryFn: async (): Promise<SuggestionProfile[]> => {
       if (!userId) return [];
       
+      // First, get ALL existing friendship IDs to exclude
+      const { data: allFriendships } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+      
+      const excludeIds = new Set<string>([userId]);
+      allFriendships?.forEach(f => {
+        excludeIds.add(f.requester_id);
+        excludeIds.add(f.addressee_id);
+      });
+      
       const suggestionsMap = new Map<string, SuggestionProfile>();
-      const excludeIds = Array.from(existingIds);
+      const excludeArray = Array.from(excludeIds);
 
       // --- STRATEGY A: MATCH CONTACTS (High Priority) ---
-      if (contacts.length > 0) {
-        const contactEmails = contacts.map(c => c.email).filter(Boolean) as string[];
+      const { data: userContacts } = await supabase
+        .from('contacts')
+        .select('email')
+        .eq('user_id', userId);
+      
+      if (userContacts && userContacts.length > 0) {
+        const contactEmails = userContacts.map(c => c.email).filter(Boolean) as string[];
 
         if (contactEmails.length > 0) {
-          const { data: matches, error } = await supabase
+          const { data: matches } = await supabase
             .from('profiles')
             .select('user_id, display_name, avatar_url, email')
             .in('email', contactEmails);
           
-          if (!error && matches) {
-            matches.forEach((p: any) => {
-              if (p.user_id !== userId && !excludeIds.includes(p.user_id)) {
-                suggestionsMap.set(p.user_id, { 
-                  user_id: p.user_id, 
-                  display_name: p.display_name, 
-                  avatar_url: p.avatar_url, 
-                  score: 100, 
-                  reason: 'From your contacts' 
-                });
-              }
-            });
-          }
+          matches?.forEach((p: any) => {
+            if (!excludeIds.has(p.user_id)) {
+              suggestionsMap.set(p.user_id, { 
+                user_id: p.user_id, 
+                display_name: p.display_name, 
+                avatar_url: p.avatar_url, 
+                score: 100, 
+                reason: 'From your contacts' 
+              });
+            }
+          });
         }
       }
 
       // --- STRATEGY B: MUTUAL FRIENDS (Medium Priority) ---
-      const myFriendIds = friends.map(f => 
+      const { data: myFriends } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+        .eq('status', 'accepted');
+      
+      const myFriendIds = myFriends?.map(f => 
         f.requester_id === userId ? f.addressee_id : f.requester_id
-      );
+      ) || [];
       
       if (myFriendIds.length > 0) {
         const recentFriendIds = myFriendIds.slice(0, MAX_MUTUAL_FRIENDS_CHECK);
         
-        const { data: mutualsData, error } = await supabase
+        const { data: mutualsData } = await supabase
           .from('friendships')
           .select(`
             requester_id, addressee_id,
@@ -298,41 +319,38 @@ export default function Friends() {
           .eq('status', 'accepted')
           .limit(MAX_MUTUAL_FRIENDS_QUERY);
 
-        if (!error && mutualsData) {
-          mutualsData.forEach(m => {
-            let potential: Profile | null = null;
-            let potentialId = '';
+        mutualsData?.forEach(m => {
+          let potential: any = null;
+          let potentialId = '';
 
-            if (myFriendIds.includes(m.requester_id)) {
-              potential = m.addressee;
-              potentialId = m.addressee_id;
-            } else {
-              potential = m.requester;
-              potentialId = m.requester_id;
+          if (myFriendIds.includes(m.requester_id)) {
+            potential = m.addressee;
+            potentialId = m.addressee_id;
+          } else {
+            potential = m.requester;
+            potentialId = m.requester_id;
+          }
+
+          if (potentialId && !excludeIds.has(potentialId) && potential) {
+            const existing = suggestionsMap.get(potentialId);
+            let mutualCount = 0;
+            
+            if (existing?.reason?.includes('mutual')) {
+              const match = existing.reason.match(/(\d+)/);
+              if (match) mutualCount = parseInt(match[0], 10);
             }
 
-            if (potentialId && potentialId !== userId && !excludeIds.includes(potentialId) && potential) {
-              const existing = suggestionsMap.get(potentialId);
-              let currentScore = existing?.score || 0;
-              let mutualCount = 0;
-              
-              if (existing?.reason?.includes('mutual')) {
-                const match = existing.reason.match(/(\d+)/);
-                if (match) mutualCount = parseInt(match[0], 10);
-              }
-
-              const newCount = mutualCount + 1;
-              
-              suggestionsMap.set(potentialId, { 
-                user_id: potential.user_id,
-                display_name: potential.display_name,
-                avatar_url: potential.avatar_url,
-                score: currentScore + 20,
-                reason: `${newCount} mutual friend${newCount > 1 ? 's' : ''}` 
-              });
-            }
-          });
-        }
+            const newCount = mutualCount + 1;
+            
+            suggestionsMap.set(potentialId, { 
+              user_id: potential.user_id,
+              display_name: potential.display_name,
+              avatar_url: potential.avatar_url,
+              score: (existing?.score || 0) + 20,
+              reason: `${newCount} mutual friend${newCount > 1 ? 's' : ''}` 
+            });
+          }
+        });
       }
 
       // --- STRATEGY C: DISCOVERY (Fallback) ---
@@ -345,25 +363,23 @@ export default function Friends() {
           discoveryQuery = discoveryQuery.ilike('display_name', `%${debouncedSearch}%`);
         }
         
-        const allExclusions = [...excludeIds, ...Array.from(suggestionsMap.keys())];
+        const allExclusions = [...excludeArray, ...Array.from(suggestionsMap.keys())];
         if (allExclusions.length > 0) {
           discoveryQuery = discoveryQuery.not('user_id', 'in', `(${allExclusions.join(',')})`);
         }
 
-        const { data: randomUsers, error } = await discoveryQuery.limit(MAX_SUGGESTIONS - suggestionsMap.size);
+        const { data: randomUsers } = await discoveryQuery.limit(MAX_SUGGESTIONS - suggestionsMap.size);
         
-        if (!error && randomUsers) {
-          randomUsers.forEach(p => {
-            suggestionsMap.set(p.user_id, { ...p, score: 1, reason: 'Suggested for you' });
-          });
-        }
+        randomUsers?.forEach(p => {
+          suggestionsMap.set(p.user_id, { ...p, score: 1, reason: 'Suggested for you' });
+        });
       }
 
       return Array.from(suggestionsMap.values())
         .sort((a, b) => (b.score || 0) - (a.score || 0));
     },
     enabled: activeTab === 'discover' && discoverView === 'suggestions' && !!userId,
-    staleTime: SUGGESTION_STALE_TIME,
+    staleTime: 30000, // 30 seconds
     retry: 2,
   });
 
@@ -431,15 +447,13 @@ export default function Friends() {
       return data;
     },
     onMutate: async (variables) => {
-      // Optimistic update
       setRecentlySent(prev => new Set(prev).add(variables.user_id));
     },
-    onSuccess: async (_, variables) => {
+    onSuccess: async () => {
       toast.success('Friend request sent');
-      await Promise.all([
-        refetchOutgoing(),
-        queryClient.invalidateQueries({ queryKey: ['suggestions'] }),
-      ]);
+      // Invalidate and refetch all related queries
+      await queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+      await queryClient.invalidateQueries({ queryKey: ['suggestions'] });
     },
     onError: (error: Error, variables) => {
       const message = error.message || "Failed to send request";
@@ -448,7 +462,6 @@ export default function Friends() {
         toast.info("Friend request already pending.");
       } else {
         toast.error(message);
-        // Rollback optimistic update on failure
         setRecentlySent(prev => {
           const newSet = new Set(prev);
           newSet.delete(variables.user_id);
@@ -469,10 +482,9 @@ export default function Friends() {
     },
     onSuccess: async () => {
       toast.success('Friend added!');
-      await Promise.all([
-        refetchFriends(),
-        refetchIncoming(),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+      await queryClient.invalidateQueries({ queryKey: ['friends'] });
+      await queryClient.invalidateQueries({ queryKey: ['suggestions'] });
     },
     onError: (error: Error) => {
       console.error('Accept request error:', error);
@@ -491,7 +503,8 @@ export default function Friends() {
     },
     onSuccess: async () => {
       toast.info('Request declined');
-      await refetchIncoming();
+      await queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+      await queryClient.invalidateQueries({ queryKey: ['suggestions'] });
     },
     onError: (error: Error) => {
       console.error('Reject request error:', error);
@@ -510,7 +523,8 @@ export default function Friends() {
     },
     onSuccess: async () => {
       toast.info('Request cancelled');
-      await refetchOutgoing();
+      await queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+      await queryClient.invalidateQueries({ queryKey: ['suggestions'] });
     },
     onError: (error: Error) => {
       console.error('Cancel request error:', error);
@@ -627,10 +641,8 @@ export default function Friends() {
       if (result.status === 'request_sent') {
         toast.success(`User found! Friend request sent to ${result.user.display_name}.`);
         setRecentlySent(prev => new Set(prev).add(result.user.user_id));
-        await Promise.all([
-          refetchOutgoing(), 
-          queryClient.invalidateQueries({ queryKey: ['suggestions'] })
-        ]);
+        await queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+        await queryClient.invalidateQueries({ queryKey: ['suggestions'] });
         setActiveTab('requests');
         setRequestView('sent');
       } else if (result.status === 'already_friends') {
@@ -639,7 +651,7 @@ export default function Friends() {
         toast.info(`A request is already pending for ${result.user.display_name}.`);
       } else {
         toast.success('User not on app. Saved to contacts list.');
-        await refetchContacts();
+        await queryClient.invalidateQueries({ queryKey: ['contacts'] });
       }
     },
     onError: (error: Error) => {
@@ -660,7 +672,7 @@ export default function Friends() {
     },
     onSuccess: async () => {
       toast.info('Contact removed');
-      await refetchContacts();
+      await queryClient.invalidateQueries({ queryKey: ['contacts'] });
     },
     onError: (error: Error) => {
       console.error('Delete contact error:', error);
@@ -672,26 +684,13 @@ export default function Friends() {
     mutationFn: async (contact: Contact) => {
       if (!userId) throw new Error("Not authenticated");
       
-      // Search for user on app
-      let query = supabase
-        .from('profiles')
-        .select('*')
-        .neq('user_id', userId);
-      
-      const conditions: string[] = [];
-      
+      // Search for user on app by email only (profiles table doesn't have phone)
       if (contact.email) {
-        conditions.push(`email.eq.${contact.email}`);
-      }
-      if (contact.phone) {
-        const cleanPhone = sanitizePhone(contact.phone);
-        conditions.push(`phone.eq.${cleanPhone}`);
-        conditions.push(`phone.eq.${contact.phone}`);
-      }
-      
-      if (conditions.length > 0) {
-        query = query.or(conditions.join(','));
-        const { data: matches } = await query;
+        const { data: matches } = await supabase
+          .from('profiles')
+          .select('user_id, display_name, avatar_url, email')
+          .neq('user_id', userId)
+          .eq('email', contact.email);
         
         if (matches && matches.length > 0) {
           return { type: 'found', user: matches[0], contact };
@@ -730,7 +729,7 @@ export default function Friends() {
       if (result.type === 'found') {
         sendFriendRequest.mutate(result.user);
       } else {
-        await refetchContacts();
+        await queryClient.invalidateQueries({ queryKey: ['contacts'] });
       }
     },
     onError: (error: Error) => {

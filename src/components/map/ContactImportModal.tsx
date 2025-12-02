@@ -7,6 +7,7 @@ import { Users, Upload, Loader2, Plus, X } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ContactImportModalProps {
   open: boolean;
@@ -15,6 +16,7 @@ interface ContactImportModalProps {
 
 export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalProps) => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [contacts, setContacts] = useState<Array<{ name: string; phone: string; email: string }>>([
     { name: '', phone: '', email: '' }
@@ -37,7 +39,6 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
   };
 
   const handleImport = async () => {
-    // Filter out empty rows, but allow rows with JUST name (to search by username)
     const validContacts = contacts.filter(c => c.name.trim() !== '');
     
     if (validContacts.length === 0) {
@@ -52,41 +53,30 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
 
     try {
       await Promise.all(validContacts.map(async (contact) => {
-        // 1. Prepare Search Conditions (Email OR Phone OR Username)
+        // Search by display_name or email (profiles doesn't have phone column)
         const conditions: string[] = [];
         
-        // Search by Username (display_name)
-        if (contact.name) conditions.push(`display_name.ilike.${contact.name.trim()}`);
-        
-        // Search by Email
+        if (contact.name) conditions.push(`display_name.ilike.%${contact.name.trim()}%`);
         if (contact.email) conditions.push(`email.eq.${contact.email.trim().toLowerCase()}`);
-        
-        // Search by Phone (Strip non-digits for cleaner matching if needed, or exact match)
-        if (contact.phone) {
-             const phoneRaw = contact.phone.trim();
-             conditions.push(`phone.eq.${phoneRaw}`);
-        }
 
         let existingUser = null;
         
-        // 2. Execute Search
         if (conditions.length > 0) {
           const { data, error } = await supabase
             .from('profiles')
-            .select('id, user_id, display_name, email, phone')
-            .neq('user_id', user?.id) // Don't find yourself
+            .select('user_id, display_name, email, avatar_url')
+            .neq('user_id', user?.id)
             .or(conditions.join(','))
+            .limit(1)
             .maybeSingle();
 
           if (!error && data) {
-              existingUser = data;
+            existingUser = data;
           }
         }
 
         if (existingUser) {
-          // --- SCENARIO A: USER FOUND ON APP ---
-          
-          // Check if friendship already exists (in either direction)
+          // USER FOUND - Check for existing friendship
           const { data: existingFriendship } = await supabase
             .from('friendships')
             .select('status')
@@ -96,45 +86,42 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
           if (existingFriendship) {
             alreadyConnected++;
           } else {
-             // Create Friend Request
             const { error: reqError } = await supabase
               .from('friendships')
               .insert({ 
                 requester_id: user?.id,
                 addressee_id: existingUser.user_id,
-                status: 'pending' // STRICTLY PENDING
+                status: 'pending'
               });
 
             if (!reqError) {
-                requestsSent++;
-                
-                // Note: Notifications table not yet implemented
-                // TODO: Add notification when notifications table is created
+              requestsSent++;
             }
           }
-        } else {
-          // --- SCENARIO B: USER NOT FOUND -> Save as Contact ---
-          // Only save to contacts if we have actual contact info (email/phone), name alone isn't enough for a contact book
-          if (contact.email || contact.phone) {
-              const { error: saveError } = await supabase
-                .from('contacts')
-                .insert({
-                  user_id: user?.id,
-                  name: contact.name,
-                  phone: contact.phone ? contact.phone.replace(/[\s\-\(\)]/g, '') : null,
-                  email: contact.email || null 
-                });
+        } else if (contact.email || contact.phone) {
+          // USER NOT FOUND - Save as contact
+          const { error: saveError } = await supabase
+            .from('contacts')
+            .insert({
+              user_id: user?.id,
+              name: contact.name,
+              phone: contact.phone ? contact.phone.replace(/[\s\-\(\)]/g, '') : null,
+              email: contact.email || null 
+            });
 
-              if (!saveError) contactsSaved++;
-          }
+          if (!saveError) contactsSaved++;
         }
       }));
 
-      // Feedback Message
+      // Invalidate queries to refresh data
+      await queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
+      await queryClient.invalidateQueries({ queryKey: ['suggestions'] });
+      await queryClient.invalidateQueries({ queryKey: ['contacts'] });
+
       let msg = "Import complete.";
-      if (requestsSent > 0) msg += ` Sent ${requestsSent} friend requests.`;
-      if (contactsSaved > 0) msg += ` Saved ${contactsSaved} contacts.`;
-      if (alreadyConnected > 0) msg += ` ${alreadyConnected} were already connected.`;
+      if (requestsSent > 0) msg += ` Sent ${requestsSent} friend request${requestsSent > 1 ? 's' : ''}.`;
+      if (contactsSaved > 0) msg += ` Saved ${contactsSaved} contact${contactsSaved > 1 ? 's' : ''}.`;
+      if (alreadyConnected > 0) msg += ` ${alreadyConnected} already connected.`;
       
       toast.success(msg);
       onOpenChange(false);
