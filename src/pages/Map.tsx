@@ -146,9 +146,9 @@ const Map = () => {
   const mapRef = useRef<LeafletMapHandle>(null);
 
   // --- Fetch Nearby Events ---
-  const { data: nearbyEvents = [], isLoading: loadingEvents } = useQuery<EventOnMap[]>({
+  const { data: nearbyEvents = [], isLoading: loadingEvents } = useQuery({
     queryKey: ['events', 'nearby', location?.latitude, location?.longitude],
-    queryFn: async () => {
+    queryFn: async (): Promise<EventOnMap[]> => {
       if (!location?.latitude || !location?.longitude) return [];
 
       // Get public upcoming events
@@ -175,7 +175,7 @@ const Map = () => {
 
       // Geocode event locations and calculate distances
       const eventsWithLocations = await Promise.all(
-        events.map(async (event) => {
+        events.map(async (event: any) => {
           // Try to geocode the location
           const coords = await geocodeLocation(event.location);
           
@@ -186,8 +186,18 @@ const Map = () => {
             .eq('event_id', event.id)
             .eq('status', 'confirmed');
 
+          const creatorData = Array.isArray(event.creator) ? event.creator[0] : event.creator;
+
           return {
-            ...event,
+            id: event.id,
+            title: event.title,
+            location: event.location,
+            start_date: event.start_date,
+            event_type: (event.event_type as 'physical' | 'virtual') || 'physical',
+            category: event.category,
+            ticket_price: event.ticket_price,
+            image_url: event.image_url,
+            creator: creatorData,
             latitude: coords?.lat || null,
             longitude: coords?.lng || null,
             attendee_count: count || 0,
@@ -792,7 +802,6 @@ const Map = () => {
                                       <div className="flex items-center gap-1 truncate">
                                         <MapPin className="w-3 h-3 shrink-0" />
                                         {event.location}
-                                        {event.distanceKm && ` • ${event.distanceKm}km`}
                                       </div>
                                       <div className="flex items-center gap-1 mt-0.5">
                                         <Users className="w-3 h-3 shrink-0" />

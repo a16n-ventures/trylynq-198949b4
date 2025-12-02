@@ -16,8 +16,8 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
 // --- TYPES ---
-interface Profile { id: string; username: string | null; avatar_url: string | null; }
-interface Story { id: string; media_url: string; media_type: 'image' | 'video'; caption?: string; created_at: string; user_id: string; }
+interface Profile { id: string; display_name: string | null; avatar_url: string | null; }
+interface Story { id: string; content: string | null; created_at: string; author_id: string | null; }
 interface Community { 
   id: string; 
   name: string; 
@@ -42,7 +42,7 @@ interface Event {
   is_attending?: boolean;
 }
 
-type ProfileWithStoryInner = Profile & { stories: { id: string; created_at: string }[]; };
+type ProfileWithStoryInner = { id: string; display_name: string | null; avatar_url: string | null; stories: { id: string; created_at: string }[]; };
 
 // --- EVENT DETAIL MODAL ---
 function EventDetailModal({ event, isOpen, onClose, onRSVP }: { 
@@ -202,7 +202,7 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
   useEffect(() => {
     const load = async () => {
       const yesterday = new Date(Date.now() - 864e5).toISOString();
-      const { data } = await supabase.from('stories').select('id, media_url, media_type, caption, created_at, user_id').eq('user_id', user.id).gte('created_at', yesterday).order('created_at', { ascending: true });
+      const { data } = await supabase.from('stories').select('id, content, created_at, author_id').eq('author_id', user.id).gte('created_at', yesterday).order('created_at', { ascending: true });
       if (data) setStories(data);
       setLoading(false);
     };
@@ -225,12 +225,12 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
         </div>
         <div className="absolute top-6 left-0 w-full p-4 z-20 flex items-center gap-3 bg-gradient-to-b from-black/60 to-transparent">
           <img src={user.avatar_url || '/default-avatar.png'} className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" />
-          <span className="text-white font-bold text-sm drop-shadow-md">{user.username}</span>
+          <span className="text-white font-bold text-sm drop-shadow-md">{user.display_name || 'User'}</span>
         </div>
         <div className="flex-1 flex items-center justify-center bg-black relative" onClick={next}>
-          {current.media_type === 'video' ? <video src={current.media_url} className="w-full h-full object-contain" autoPlay playsInline /> : <img src={current.media_url} className="w-full h-full object-contain" />}
-          {current.caption && <div className="absolute bottom-24 w-full text-center px-6"><span className="bg-black/40 text-white px-4 py-2 rounded-xl backdrop-blur-md text-lg font-medium inline-block">{current.caption}</span></div>}
-          <div className="absolute inset-y-0 left-0 w-1/3 z-10" onClick={(e) => { e.stopPropagation(); prev(); }} />
+          <div className="w-full h-full flex items-center justify-center p-8">
+            <p className="text-white text-xl text-center">{current.content || ''}</p>
+          </div>
         </div>
         <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
           <Input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Reply..." className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0" onClick={(e) => e.stopPropagation()} />
@@ -264,12 +264,14 @@ export default function Discover() {
     if (!user) return;
     const init = async () => {
       // 1. Profiles
-      const { data: me } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      setCurrentUserProfile(me);
+      const { data: me } = await supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+      if (me) {
+        setCurrentUserProfile({ id: me.id, display_name: me.display_name, avatar_url: me.avatar_url });
+      }
       
       const yesterday = new Date(Date.now() - 864e5).toISOString();
-      const { data: storyData } = await supabase.from('profiles').select('id, username, avatar_url, stories!inner(id, created_at)').filter('stories.created_at', 'gte', yesterday).returns<ProfileWithStoryInner[]>();
-      if (storyData) setStoryUsers(Array.from(new Map(storyData.map(i => [i.id, i])).values()));
+      const { data: storyData } = await supabase.from('profiles').select('id, display_name, avatar_url, stories:stories!author_id(id, created_at)').filter('stories.created_at', 'gte', yesterday).returns<ProfileWithStoryInner[]>();
+      if (storyData) setStoryUsers(Array.from(new Map(storyData.map(i => [i.id, { id: i.id, display_name: i.display_name, avatar_url: i.avatar_url }])).values()));
 
       // 2. Communities with membership status
       const { data: comms } = await supabase.from('communities').select(`
@@ -366,10 +368,8 @@ export default function Discover() {
       await supabase.storage.from('stories').upload(path, preview.file);
       const { data: { publicUrl } } = supabase.storage.from('stories').getPublicUrl(path);
       await supabase.from('stories').insert({ 
-        user_id: user.id, 
-        media_url: publicUrl, 
-        media_type: preview.file.type.startsWith('video') ? 'video' : 'image', 
-        caption 
+        author_id: user.id, 
+        content: caption || 'New story'
       });
       toast.success("Story posted!");
       setPreview(null);
@@ -470,7 +470,7 @@ export default function Discover() {
                 <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-orange-500 to-purple-600 group-hover:scale-105 transition-transform shadow-sm">
                   <img src={u.avatar_url || '/default-avatar.png'} className="w-full h-full rounded-full object-cover border-2 border-background" />
                 </div>
-                <span className="text-xs font-medium max-w-[70px] truncate">{u.username}</span>
+                <span className="text-xs font-medium max-w-[70px] truncate">{u.display_name || 'User'}</span>
               </div>
             ))}
           </div>

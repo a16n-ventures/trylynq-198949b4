@@ -155,9 +155,9 @@ export default function Events() {
   const [bankForm, setBankForm] = useState<BankDetails>({ bank_name: '', account_number: '', account_name: '' }); 
 
   // 1. Fetch My Events
-  const { data: myEvents = [], isLoading: loadingMy } = useQuery<EventWithStats[]>({
+  const { data: myEvents = [], isLoading: loadingMy } = useQuery({
     queryKey: ["events", "my", userId],
-    queryFn: async () => {
+    queryFn: async (): Promise<EventWithStats[]> => {
       if (!userId) return [];
       
       const { data: events, error } = await supabase
@@ -185,6 +185,7 @@ export default function Events() {
 
       return events.map(event => ({
         ...event,
+        event_type: (event.event_type as 'physical' | 'virtual') || 'physical',
         attendee_count: countMap[event.id] || 0
       }));
     },
@@ -193,9 +194,9 @@ export default function Events() {
   });
 
 // 2. Fetch Attending Events (Optimized with Relational Join)
-  const { data: attendingEvents = [], isLoading: loadingAttending } = useQuery<EventWithStats[]>({
+  const { data: attendingEvents = [], isLoading: loadingAttending } = useQuery({
     queryKey: ["events", "attending", userId],
-    queryFn: async () => {
+    queryFn: async (): Promise<EventWithStats[]> => {
       if (!userId) return [];
       
       // Perform a relational join: Get attendee record AND the linked event details
@@ -213,19 +214,19 @@ export default function Events() {
       if (!rawData || rawData.length === 0) return [];
 
       // Normalize structure and map status
-      // We cast 'item.event' to unknown then Event to satisfy TS if generated types aren't perfect
       const events = rawData.map((item: any) => ({
         ...item.event,
+        event_type: (item.event?.event_type as 'physical' | 'virtual') || 'physical',
         my_status: item.status as 'confirmed' | 'pending'
       }));
 
       // Fetch global attendee counts for these events
-      const eventIds = events.map(e => e.id);
+      const eventIds = events.map((e: any) => e.id);
       const { data: allAttendees, error: countError } = await supabase
         .from("event_attendees")
         .select("event_id")
         .in("event_id", eventIds)
-        .eq("status", "confirmed"); // Only count confirmed users for the total stats
+        .eq("status", "confirmed");
 
       if (countError) throw countError;
 
@@ -235,10 +236,10 @@ export default function Events() {
       });
 
       // Merge counts and Sort by Start Date
-      return events.map(event => ({
+      return events.map((event: any) => ({
         ...event,
         attendee_count: countMap[event.id] || 0
-      })).sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+      })).sort((a: any, b: any) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
     },
     enabled: !!userId,
     staleTime: 30000,

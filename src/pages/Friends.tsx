@@ -123,9 +123,9 @@ export default function Friends() {
   // --- QUERIES ---
 
   // 1. Friends (Accepted)
-  const { data: friends = [], isPending: loadingFriends, refetch: refetchFriends, error: friendsError } = useQuery<Friendship[]>({
+  const { data: friends = [], isPending: loadingFriends, refetch: refetchFriends, error: friendsError } = useQuery({
     queryKey: ['friends', userId],
-    queryFn: async () => {
+    queryFn: async (): Promise<Friendship[]> => {
       if (!userId) return [];
       const { data, error } = await supabase
         .from('friendships')
@@ -138,7 +138,12 @@ export default function Friends() {
         .eq('status', 'accepted')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []).map((item: any) => ({
+        ...item,
+        status: item.status as 'pending' | 'accepted' | 'declined',
+        requester: item.requester || { user_id: item.requester_id, display_name: null, avatar_url: null },
+        addressee: item.addressee || { user_id: item.addressee_id, display_name: null, avatar_url: null }
+      }));
     },
     enabled: !!userId,
     staleTime: STALE_TIME,
@@ -146,9 +151,9 @@ export default function Friends() {
   });
 
   // 2. Incoming (Received)
-  const { data: incomingRequests = [], isPending: loadingIncoming, refetch: refetchIncoming, error: incomingError } = useQuery<Friendship[]>({
+  const { data: incomingRequests = [], isPending: loadingIncoming, refetch: refetchIncoming, error: incomingError } = useQuery({
     queryKey: ['friendRequests', 'incoming', userId],
-    queryFn: async () => {
+    queryFn: async (): Promise<Friendship[]> => {
       if (!userId) return [];
       const { data, error } = await supabase
         .from('friendships')
@@ -161,7 +166,12 @@ export default function Friends() {
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []).map((item: any) => ({
+        ...item,
+        status: item.status as 'pending' | 'accepted' | 'declined',
+        requester: item.requester || { user_id: item.requester_id, display_name: null, avatar_url: null },
+        addressee: item.addressee || { user_id: item.addressee_id, display_name: null, avatar_url: null }
+      }));
     },
     enabled: !!userId,
     staleTime: STALE_TIME,
@@ -169,9 +179,9 @@ export default function Friends() {
   });
 
   // 3. Outgoing (Sent)
-  const { data: outgoingRequests = [], isPending: loadingOutgoing, refetch: refetchOutgoing, error: outgoingError } = useQuery<Friendship[]>({
+  const { data: outgoingRequests = [], isPending: loadingOutgoing, refetch: refetchOutgoing, error: outgoingError } = useQuery({
     queryKey: ['friendRequests', 'outgoing', userId],
-    queryFn: async () => {
+    queryFn: async (): Promise<Friendship[]> => {
       if (!userId) return [];
       const { data, error } = await supabase
         .from('friendships')
@@ -184,7 +194,12 @@ export default function Friends() {
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []).map((item: any) => ({
+        ...item,
+        status: item.status as 'pending' | 'accepted' | 'declined',
+        requester: item.requester || { user_id: item.requester_id, display_name: null, avatar_url: null },
+        addressee: item.addressee || { user_id: item.addressee_id, display_name: null, avatar_url: null }
+      }));
     },
     enabled: !!userId,
     staleTime: STALE_TIME,
@@ -192,9 +207,9 @@ export default function Friends() {
   });
 
   // 4. Contacts
-  const { data: contacts = [], isPending: loadingContacts, refetch: refetchContacts, error: contactsError } = useQuery<Contact[]>({
+  const { data: contacts = [], isPending: loadingContacts, refetch: refetchContacts, error: contactsError } = useQuery({
     queryKey: ['contacts', userId],
-    queryFn: async () => {
+    queryFn: async (): Promise<Contact[]> => {
       if (!userId) return [];
       
       const { data, error } = await supabase
@@ -230,9 +245,9 @@ export default function Friends() {
   }, [friends, incomingRequests, outgoingRequests, userId, recentlySent]);
 
   // 5. Suggestions (Smart matching algorithm)
-  const { data: suggestions = [], isPending: loadingSuggestions, error: suggestionsError } = useQuery<SuggestionProfile[]>({
+  const { data: suggestions = [], isPending: loadingSuggestions, error: suggestionsError } = useQuery({
     queryKey: ['suggestions', userId, debouncedSearch, existingIds.size, friends.length, contacts.length],
-    queryFn: async () => {
+    queryFn: async (): Promise<SuggestionProfile[]> => {
       if (!userId) return [];
       
       const suggestionsMap = new Map<string, SuggestionProfile>();
@@ -241,40 +256,25 @@ export default function Friends() {
       // --- STRATEGY A: MATCH CONTACTS (High Priority) ---
       if (contacts.length > 0) {
         const contactEmails = contacts.map(c => c.email).filter(Boolean) as string[];
-        const contactPhones = contacts
-          .map(c => c.phone ? sanitizePhone(c.phone) : null)
-          .filter(Boolean) as string[];
 
-        if (contactEmails.length > 0 || contactPhones.length > 0) {
-          let matchQuery = supabase
+        if (contactEmails.length > 0) {
+          const { data: matches, error } = await supabase
             .from('profiles')
-            .select('user_id, display_name, avatar_url, email, phone');
+            .select('user_id, display_name, avatar_url, email')
+            .in('email', contactEmails);
           
-          const conditions = [];
-          if (contactEmails.length) {
-            conditions.push(`email.in.(${contactEmails.join(',')})`);
-          }
-          if (contactPhones.length) {
-            conditions.push(`phone.in.(${contactPhones.join(',')})`);
-          }
-
-          if (conditions.length > 0) {
-            matchQuery = matchQuery.or(conditions.join(','));
-            const { data: matches, error } = await matchQuery;
-            
-            if (!error && matches) {
-              matches.forEach(p => {
-                if (p.user_id !== userId && !excludeIds.includes(p.user_id)) {
-                  suggestionsMap.set(p.user_id, { 
-                    user_id: p.user_id, 
-                    display_name: p.display_name, 
-                    avatar_url: p.avatar_url, 
-                    score: 100, 
-                    reason: 'From your contacts' 
-                  });
-                }
-              });
-            }
+          if (!error && matches) {
+            matches.forEach((p: any) => {
+              if (p.user_id !== userId && !excludeIds.includes(p.user_id)) {
+                suggestionsMap.set(p.user_id, { 
+                  user_id: p.user_id, 
+                  display_name: p.display_name, 
+                  avatar_url: p.avatar_url, 
+                  score: 100, 
+                  reason: 'From your contacts' 
+                });
+              }
+            });
           }
         }
       }
@@ -528,23 +528,17 @@ export default function Friends() {
 
       const name = newContactName.trim();
       const email = newContactEmail.trim().toLowerCase();
-      const phoneRaw = newContactPhone.trim();
       
-      // Search for existing user
+      // Search for existing user by email or name
       let query = supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url, email, phone')
+        .select('user_id, display_name, avatar_url, email')
         .neq('user_id', userId);
       
       const conditions: string[] = [];
       
       if (name) conditions.push(`display_name.ilike.${name}`);
       if (email) conditions.push(`email.eq.${email}`);
-      if (phoneRaw) {
-        const cleanPhone = sanitizePhone(phoneRaw);
-        conditions.push(`phone.eq.${cleanPhone}`);
-        conditions.push(`phone.eq.${phoneRaw}`);
-      }
 
       if (conditions.length > 0) {
         query = query.or(conditions.join(','));
@@ -591,8 +585,8 @@ export default function Friends() {
       }
 
       // No user found - save as contact
-      if (!email && !phoneRaw) {
-        throw new Error(`User "${name}" not found on the app. Please add email or phone to save as a contact.`);
+      if (!email) {
+        throw new Error(`User "${name}" not found on the app. Please add email to save as a contact.`);
       }
 
       // Check for duplicate contact
@@ -615,7 +609,7 @@ export default function Friends() {
           user_id: userId,
           name: name,
           email: email || null,
-          phone: phoneRaw || null,
+          phone: newContactPhone.trim() || null,
         })
         .select()
         .single();

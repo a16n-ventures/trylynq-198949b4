@@ -89,10 +89,9 @@ const EventDetail = () => {
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch event details
-  const { data: event, isPending: loadingEvent } = useQuery<Event>({
+  const { data: event, isPending: loadingEvent } = useQuery({
     queryKey: ['event', eventId],
-    queryFn: async () => {
-      // FIX 1: Added join query for creator details
+    queryFn: async (): Promise<Event> => {
       const { data, error } = await supabase
         .from('events')
         .select(`
@@ -107,7 +106,14 @@ const EventDetail = () => {
         .single();
 
       if (error) throw error;
-      return data;
+      
+      // Map and cast data to Event type
+      const creatorData = Array.isArray(data.creator) ? data.creator[0] : data.creator;
+      return {
+        ...data,
+        event_type: (data.event_type as 'physical' | 'virtual') || 'physical',
+        creator: creatorData || { user_id: data.creator_id, display_name: 'Unknown', avatar_url: undefined }
+      } as Event;
     },
     enabled: !!eventId,
   });

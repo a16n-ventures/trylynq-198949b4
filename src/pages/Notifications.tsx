@@ -1,210 +1,275 @@
-import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Bell, UserPlus, Calendar, Heart, Loader2, Check, X } from "lucide-react";
+import { Bell, UserPlus, Calendar, Loader2, Check, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 // --- Types ---
-type NotificationType = 'friend_request' | 'event_invite' | 'like' | 'system';
-
-type Notification = {
+type NotificationItem = {
   id: string;
-  type: NotificationType;
+  type: 'friend_request' | 'event_invite';
   created_at: string;
-  read: boolean;
-  sender_id?: string;
-  event_id?: string; // Optional, for event invites
-  metadata?: any; // Flexible field for extra data
-  sender?: {
-    display_name: string;
-    avatar_url: string;
-  };
+  sender_id: string;
+  sender_name: string;
+  sender_avatar?: string;
+  event_id?: string;
+  event_title?: string;
 };
 
 export default function Notifications() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // 1. Fetch Notifications
-  const { data: notifications = [], isLoading } = useQuery<Notification[]>({
+  // Build notifications from friendships (pending requests) and event invitations
+  const { data: notifications = [], isLoading } = useQuery({
     queryKey: ["notifications", user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<NotificationItem[]> => {
       if (!user) return [];
       
-      const { data, error } = await supabase
-        .from("notifications") // Ensure this table exists
-        .select(`
-          id, type, created_at, read, metadata,
-          sender:profiles!sender_id (display_name, avatar_url)
-        `)
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(50);
+      const items: NotificationItem[] = [];
 
-      if (error) throw error;
-      return data || [];
+      // Get pending friend requests (incoming)
+      const { data: friendRequests } = await supabase
+        .from("friendships")
+        .select(`
+          id, created_at, requester_id,
+          requester:profiles!requester_id (display_name, avatar_url)
+        `)
+        .eq("addressee_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (friendRequests) {
+        friendRequests.forEach((req: any) => {
+          items.push({
+            id: req.id,
+            type: 'friend_request',
+            created_at: req.created_at,
+            sender_id: req.requester_id,
+            sender_name: req.requester?.display_name || 'Someone',
+            sender_avatar: req.requester?.avatar_url
+          });
+        });
+      }
+
+      // Get pending event invitations
+      const { data: eventInvites } = await supabase
+        .from("event_invitations")
+        .select(`
+          id, created_at, inviter_id, event_id,
+          inviter:profiles!inviter_id (display_name, avatar_url),
+          event:events!event_id (title)
+        `)
+        .eq("invitee_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (eventInvites) {
+        eventInvites.forEach((inv: any) => {
+          items.push({
+            id: inv.id,
+            type: 'event_invite',
+            created_at: inv.created_at,
+            sender_id: inv.inviter_id,
+            sender_name: inv.inviter?.display_name || 'Someone',
+            sender_avatar: inv.inviter?.avatar_url,
+            event_id: inv.event_id,
+            event_title: inv.event?.title || 'an event'
+          });
+        });
+      }
+
+      // Sort by date
+      return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     },
     enabled: !!user,
   });
 
-  // 2. Mutation: Mark all as read
-  const markAllReadMutation = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ read: true })
-        .eq("user_id", user?.id)
-        .eq("read", false);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      toast.success("All notifications cleared");
-    }
-  });
-
-  // 3. Mutation: Accept Friend Request (Directly from notification)
+  // Accept friend request
   const acceptFriendMutation = useMutation({
-    mutationFn: async ({ notificationId, senderId }: { notificationId: string, senderId: string }) => {
-      // 1. Accept the friendship
-      const { error: friendError } = await supabase
+    mutationFn: async ({ friendshipId }: { friendshipId: string }) => {
+      const { error } = await supabase
         .from("friendships")
-        .update({ status: 'accepted', accepted_at: new Date().toISOString() })
-        .eq("requester_id", senderId)
-        .eq("addressee_id", user?.id); // Ensure safety
+        .update({ status: 'accepted', updated_at: new Date().toISOString() })
+        .eq("id", friendshipId);
       
-      if (friendError) throw friendError;
-
-      // 2. Delete/Archive the notification so it doesn't show again
-      await supabase.from("notifications").delete().eq("id", notificationId);
+      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Friend request accepted!");
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["friends"] }); // Update friends list too
+      queryClient.invalidateQueries({ queryKey: ["friends"] });
     },
     onError: () => toast.error("Failed to accept request")
   });
 
+  // Decline friend request
   const declineFriendMutation = useMutation({
-    mutationFn: async ({ notificationId, senderId }: { notificationId: string, senderId: string }) => {
-      await supabase.from("friendships").delete().eq("requester_id", senderId).eq("addressee_id", user?.id);
-      await supabase.from("notifications").delete().eq("id", notificationId);
+    mutationFn: async ({ friendshipId }: { friendshipId: string }) => {
+      const { error } = await supabase
+        .from("friendships")
+        .delete()
+        .eq("id", friendshipId);
+      
+      if (error) throw error;
     },
     onSuccess: () => {
       toast.info("Request declined");
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
+    },
+    onError: () => toast.error("Failed to decline request")
   });
 
-  // --- Render Helpers ---
+  // Accept event invite
+  const acceptEventMutation = useMutation({
+    mutationFn: async ({ invitationId, eventId }: { invitationId: string; eventId: string }) => {
+      // Update invitation status
+      await supabase
+        .from("event_invitations")
+        .update({ status: 'accepted', updated_at: new Date().toISOString() })
+        .eq("id", invitationId);
 
-  const getIcon = (type: NotificationType) => {
+      // Add as attendee
+      await supabase
+        .from("event_attendees")
+        .insert({ event_id: eventId, user_id: user?.id, status: 'confirmed' });
+    },
+    onSuccess: () => {
+      toast.success("You're going to the event!");
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: () => toast.error("Failed to accept invitation")
+  });
+
+  // Decline event invite
+  const declineEventMutation = useMutation({
+    mutationFn: async ({ invitationId }: { invitationId: string }) => {
+      await supabase
+        .from("event_invitations")
+        .update({ status: 'declined', updated_at: new Date().toISOString() })
+        .eq("id", invitationId);
+    },
+    onSuccess: () => {
+      toast.info("Invitation declined");
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: () => toast.error("Failed to decline invitation")
+  });
+
+  const getIcon = (type: string) => {
     switch (type) {
-      case 'friend_request': return <UserPlus className="w-3 h-3 text-white" />;
-      case 'event_invite': return <Calendar className="w-3 h-3 text-white" />;
-      case 'like': return <Heart className="w-3 h-3 text-white" />;
-      default: return <Bell className="w-3 h-3 text-white" />;
+      case 'friend_request':
+        return <UserPlus className="w-4 h-4 text-blue-500" />;
+      case 'event_invite':
+        return <Calendar className="w-4 h-4 text-green-500" />;
+      default:
+        return <Bell className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
-  const getMessage = (n: Notification) => {
-    switch (n.type) {
-      case 'friend_request': return "sent you a friend request";
-      case 'event_invite': return `invited you to an event`;
-      case 'like': return "liked your post";
-      case 'system': return n.metadata?.message || "System notification";
-      default: return "New notification";
+  const getMessage = (item: NotificationItem) => {
+    switch (item.type) {
+      case 'friend_request':
+        return `${item.sender_name} sent you a friend request`;
+      case 'event_invite':
+        return `${item.sender_name} invited you to ${item.event_title}`;
+      default:
+        return 'New notification';
     }
   };
 
   return (
-    <div className="container-mobile py-4 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="container-mobile py-6 pb-24 space-y-4">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Notifications</h1>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => markAllReadMutation.mutate()}
-          disabled={notifications.length === 0 || markAllReadMutation.isPending}
-          className="text-xs text-muted-foreground"
-        >
-          Mark all read
-        </Button>
+        {notifications.length > 0 && (
+          <span className="text-sm text-muted-foreground">
+            {notifications.length} pending
+          </span>
+        )}
       </div>
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
         </div>
       ) : notifications.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center opacity-60">
-          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-            <Bell className="w-8 h-8 text-muted-foreground" />
-          </div>
-          <p className="text-lg font-medium">No notifications yet</p>
-          <p className="text-sm text-muted-foreground">We'll let you know when something happens.</p>
-        </div>
+        <Card className="border-dashed">
+          <CardContent className="py-12 text-center">
+            <Bell className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+            <p className="text-muted-foreground">You're all caught up!</p>
+            <p className="text-sm text-muted-foreground/70 mt-1">No pending notifications</p>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="space-y-2">
-          {notifications.map((n) => (
-            <Card key={n.id} className={`border-0 shadow-sm ${!n.read ? 'bg-primary/5' : 'bg-card'}`}>
-              <CardContent className="p-3">
+        <div className="space-y-3">
+          {notifications.map((item) => (
+            <Card key={item.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
                 <div className="flex items-start gap-3">
-                  <div className="relative shrink-0">
-                    <Avatar className="w-10 h-10 border border-border/50">
-                      <AvatarImage src={n.sender?.avatar_url} />
-                      <AvatarFallback>{n.sender?.display_name?.[0] || 'S'}</AvatarFallback>
-                    </Avatar>
-                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center border-2 border-background ${
-                        n.type === 'friend_request' ? 'bg-blue-500' : 
-                        n.type === 'event_invite' ? 'bg-purple-500' : 'bg-primary'
-                      }`}>
-                      {getIcon(n.type)}
-                    </div>
-                  </div>
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage src={item.sender_avatar} />
+                    <AvatarFallback>{item.sender_name[0]?.toUpperCase()}</AvatarFallback>
+                  </Avatar>
                   
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground leading-snug">
-                      <span className="font-semibold">{n.sender?.display_name || 'System'}</span>{' '}
-                      <span className="text-muted-foreground">{getMessage(n)}</span>
+                    <div className="flex items-center gap-2 mb-1">
+                      {getIcon(item.type)}
+                      <span className="text-sm font-medium truncate">{getMessage(item)}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
                     </p>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                    </p>
+                  </div>
 
-                    {/* Action Buttons for Friend Requests */}
-                    {n.type === 'friend_request' && (
-                      <div className="flex gap-2 mt-2">
-                        <Button 
-                          size="sm" 
-                          className="h-7 text-xs gradient-primary text-white"
-                          onClick={() => acceptFriendMutation.mutate({ notificationId: n.id, senderId: n.sender_id! })}
-                          disabled={acceptFriendMutation.isPending}
-                        >
-                          {acceptFriendMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Confirm'}
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="h-7 text-xs"
-                          onClick={() => declineFriendMutation.mutate({ notificationId: n.id, senderId: n.sender_id! })}
+                  <div className="flex gap-2 shrink-0">
+                    {item.type === 'friend_request' && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => declineFriendMutation.mutate({ friendshipId: item.id })}
                           disabled={declineFriendMutation.isPending}
                         >
-                          Delete
+                          <X className="w-4 h-4" />
                         </Button>
-                      </div>
+                        <Button
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => acceptFriendMutation.mutate({ friendshipId: item.id })}
+                          disabled={acceptFriendMutation.isPending}
+                        >
+                          <Check className="w-4 h-4" />
+                        </Button>
+                      </>
+                    )}
+                    {item.type === 'event_invite' && item.event_id && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => declineEventMutation.mutate({ invitationId: item.id })}
+                          disabled={declineEventMutation.isPending}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => acceptEventMutation.mutate({ invitationId: item.id, eventId: item.event_id! })}
+                          disabled={acceptEventMutation.isPending}
+                        >
+                          <Check className="w-4 h-4" />
+                        </Button>
+                      </>
                     )}
                   </div>
-                  
-                  {!n.read && (
-                    <div className="w-2 h-2 bg-primary rounded-full shrink-0 mt-1" />
-                  )}
                 </div>
               </CardContent>
             </Card>
@@ -213,5 +278,4 @@ export default function Notifications() {
       )}
     </div>
   );
-    }
-        
+}

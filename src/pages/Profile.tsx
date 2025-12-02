@@ -124,8 +124,14 @@ const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
   
   const totalEventViews = eventViewsData?.reduce((acc, curr) => acc + (curr.event_views_30d || 0), 0) || 0;
 
+  // Cast preferences from Json to the expected type
+  const preferences = profileData?.preferences as { notifications: boolean; discovery_radius?: number } | null;
+
   return {
-    profile: profileData,
+    profile: profileData ? { 
+      ...profileData, 
+      preferences: preferences || { notifications: true }
+    } as ProfileData : null,
     location: locationData,
     stats: {
       friends: friendCount || 0,

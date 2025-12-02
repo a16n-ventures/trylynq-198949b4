@@ -15,13 +15,13 @@ const Index = () => {
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   
-  const { user, isLoading } = useAuth(); 
+  const { user, loading } = useAuth(); 
   const navigate = useNavigate();
   const currentYear = new Date().getFullYear(); 
 
     useEffect(() => {
     // 1. Wait for Auth to finish loading
-    if (isLoading) return;
+    if (loading) return;
 
     // 2. If user IS logged in, send them to the app
     if (user) {
@@ -30,11 +30,11 @@ const Index = () => {
 
     // 3. If user is NOT logged in, do nothing. 
     // They will stay on this page (Index.tsx) which renders the Landing Page.
-  }, [user, isLoading, navigate]);
+  }, [user, loading, navigate]);
   
   // --- FIX END ---
 
-  if (isLoading || user) {
+  if (loading || user) {
      return (
        <div className="min-h-screen flex items-center justify-center bg-background">
          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

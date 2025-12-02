@@ -117,20 +117,20 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   // --- Data Fetching with useQuery ---
-  const { data, isLoading: loading } = useQuery<DashboardData, Error>({
+  const { data, isLoading: loading, error } = useQuery({
     queryKey: ['dashboard', user?.id],
     queryFn: () => fetchDashboardData(user!.id),
     enabled: !!user,
     staleTime: 1000 * 60, // Cache for 1 minute
-    onError: (error) => {
-      toast.error('Failed to load dashboard: ' + error.message);
-    }
   });
+
+  // Handle error with useEffect
+  if (error) {
+    toast.error('Failed to load dashboard: ' + (error as Error).message);
+  }
   
-  const { stats, nearbyFriends } = data || { 
-    stats: { nearby: 0, messages: 0, events: 0 }, 
-    nearbyFriends: [] 
-  };
+  const stats = data?.stats || { nearby: 0, messages: 0, events: 0 };
+  const nearbyFriends = data?.nearbyFriends || [];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
