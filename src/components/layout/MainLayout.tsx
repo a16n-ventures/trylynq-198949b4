@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Users, MapPin, MessageSquare, Calendar, Bell, ShieldCheck } from 'lucide-react'; // Added ShieldCheck
+import { Compass, Users, MapPin, MessageSquare, Calendar, Bell, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,37 +32,91 @@ const MainLayout = () => {
   useEffect(() => {
     if (!user) return;
 
-    // 1. Get Profile AND Role
+    // Get Profile AND Role
     supabase
       .from('profiles')
-      .select('id, user_id, display_name, avatar_url, role') // <--- Added ROLE here
+      .select('id, user_id, display_name, avatar_url, role')
       .eq('user_id', user.id)
       .single()
       .then(({ data }) => setProfile(data));
 
-    // 2. Get Initial Unread Count from friendships
+    // Get Initial Unread Count (friend requests + event invitations)
     const fetchNotifications = async () => {
-      const { count } = await supabase
-        .from('friendships')
-        .select('*', { count: 'exact', head: true })
-        .eq('addressee_id', user.id)
-        .eq('status', 'pending');
-      setNotificationCount(count || 0);
+      const [friendRequestsResult, eventInvitesResult] = await Promise.all([
+        supabase
+          .from('friendships')
+          .select('*', { count: 'exact', head: true })
+          .eq('addressee_id', user.id)
+          .eq('status', 'pending'),
+        supabase
+          .from('event_invitations')
+          .select('*', { count: 'exact', head: true })
+          .eq('invitee_id', user.id)
+          .eq('status', 'pending')
+      ]);
+      
+      const total = (friendRequestsResult.count || 0) + (eventInvitesResult.count || 0);
+      setNotificationCount(total);
     };
     fetchNotifications();
 
-    // Listen for new friend requests
-    const channel = supabase
-      .channel('friend_requests_counter')
+    // Real-time subscription for friend requests
+    const friendRequestsChannel = supabase
+      .channel('notifications_friend_requests')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'friendships', filter: `addressee_id=eq.${user.id}` },
-        () => { setNotificationCount((prev) => prev + 1); }
+        (payload) => {
+          if (payload.new.status === 'pending') {
+            setNotificationCount((prev) => prev + 1);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `addressee_id=eq.${user.id}` },
+        (payload) => {
+          // If request was accepted/declined, decrement count
+          if (payload.old.status === 'pending' && payload.new.status !== 'pending') {
+            setNotificationCount((prev) => Math.max(0, prev - 1));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'friendships', filter: `addressee_id=eq.${user.id}` },
+        () => {
+          setNotificationCount((prev) => Math.max(0, prev - 1));
+        }
+      )
+      .subscribe();
+
+    // Real-time subscription for event invitations
+    const eventInvitesChannel = supabase
+      .channel('notifications_event_invites')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'event_invitations', filter: `invitee_id=eq.${user.id}` },
+        (payload) => {
+          if (payload.new.status === 'pending') {
+            setNotificationCount((prev) => prev + 1);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'event_invitations', filter: `invitee_id=eq.${user.id}` },
+        (payload) => {
+          if (payload.old.status === 'pending' && payload.new.status !== 'pending') {
+            setNotificationCount((prev) => Math.max(0, prev - 1));
+          }
+        }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(friendRequestsChannel);
+      supabase.removeChannel(eventInvitesChannel);
     };
   }, [user]);
 
@@ -113,13 +166,14 @@ const MainLayout = () => {
             size="icon"
             className="relative hover:bg-muted/50 rounded-full h-10 w-10"
             onClick={() => {
-              setNotificationCount(0); 
               navigate('/app/notifications');
             }}
           >
             <Bell className="w-5 h-5 text-foreground/80" />
             {notificationCount > 0 && (
-              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse ring-2 ring-background" />
+              <span className="absolute top-1 right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold animate-pulse ring-2 ring-background px-1">
+                {notificationCount > 99 ? '99+' : notificationCount}
+              </span>
             )}
           </Button>
         </div>

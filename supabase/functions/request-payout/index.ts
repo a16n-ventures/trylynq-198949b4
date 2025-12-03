@@ -47,15 +47,12 @@ serve(async (req) => {
     }
 
     // 4. Call the Secure Database RPC
-    // We use .rpc() to call the Postgres function we defined in the schema
-    // This ensures the transaction (deduct + insert) happens atomically inside the DB
     const { data, error: rpcError } = await supabase.rpc('request_payout', {
       withdraw_amount: amount
     })
 
     if (rpcError) {
       console.error('Payout RPC Error:', rpcError)
-      // Return the specific error message from the database (e.g. "Insufficient funds")
       return new Response(
         JSON.stringify({ error: rpcError.message }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -71,10 +68,11 @@ serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Edge Function Error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Internal Server Error'
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal Server Error' }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

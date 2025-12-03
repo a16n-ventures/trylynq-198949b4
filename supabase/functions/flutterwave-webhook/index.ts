@@ -3,12 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const FLUTTERWAVE_SECRET_HASH = Deno.env.get("FLUTTERWAVE_SECRET_HASH")!; // You set this in FW dashboard
+const FLUTTERWAVE_SECRET_HASH = Deno.env.get("FLUTTERWAVE_SECRET_HASH")!;
 
 serve(async (req) => {
   try {
     // 1. SECURITY CHECK: Verify it's actually from Flutterwave
-    // Flutterwave sends a specific hash in the headers
     const signature = req.headers.get("verif-hash");
     if (!signature || signature !== FLUTTERWAVE_SECRET_HASH) {
       return new Response("Unauthorized", { status: 401 });
@@ -36,9 +35,7 @@ serve(async (req) => {
         flw_ref: data.flw_ref,
       });
 
-      // B. Calculate Expiration (Simple logic)
-      // If amount ~2500, it's monthly. If ~20000, it's yearly.
-      // In production, pass the 'plan' in meta data to be precise.
+      // B. Calculate Expiration
       const isYearly = data.amount > 5000; 
       const duration = isYearly ? 365 : 30;
       
@@ -63,8 +60,8 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ received: true }), { status: 200 });
 
-  } catch (err) {
-    return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    return new Response(`Webhook Error: ${errorMessage}`, { status: 400 });
   }
 });
-      
