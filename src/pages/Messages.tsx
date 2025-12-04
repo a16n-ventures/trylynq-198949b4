@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo, useCallback } from "react";
+import React, { useRef, useEffect, useState, useMemo } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -53,7 +53,8 @@ interface Message {
   sender_name?: string;
   sender_avatar?: string;
   is_deleted?: boolean;
-  pending?: boolean; // For optimistic updates
+  pending?: boolean;
+  read?: boolean;
 }
 
 interface CommunityMember {
@@ -61,10 +62,11 @@ interface CommunityMember {
   role: 'admin' | 'moderator' | 'member';
   profile: { display_name: string; avatar_url: string; };
   joined_at: string;
+  is_banned?: boolean;
 }
 
 type SelectedChat = 
-  | { type: 'dm'; id: string; partner_id: string; name: string; avatar?: string; is_online?: boolean; }
+  | { type: 'dm'; id: string; partner_id: string; name: string; avatar?: string; is_online?: boolean; last_seen?: string; }
   | { 
       type: 'community'; 
       id: string; 
@@ -73,6 +75,7 @@ type SelectedChat =
       description?: string; 
       my_role: 'admin' | 'moderator' | 'member' | 'none'; 
       member_count: number;
+      is_banned?: boolean;
     };
 
 // --- HELPER: Safe Date Formatting ---
@@ -115,13 +118,11 @@ const useScrollToBottom = (messages: Message[]) => {
     const scrollContainer = scrollRef.current;
     if (!scrollContainer) return;
 
-    // Logic: If user is close to bottom OR it's a new message from me, scroll to bottom
     const isCloseToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 100;
     const lastMessage = messages[messages.length - 1];
     const isMe = lastMessage?.is_me;
 
     if (isCloseToBottom || isMe) {
-        // Use timeout to allow DOM to render image placeholders
         setTimeout(() => {
             scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
         }, 100);
@@ -149,7 +150,6 @@ const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | und
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: table, filter: selectedChat.type === 'community' ? filter : undefined },
         (payload: RealtimePostgresChangesPayload<any>) => {
-          // Verify DM filter manually since complex OR filters aren't fully supported in realtime subscribe string
           if (selectedChat.type === 'dm') {
             const newItem = payload.new;
             const isRelevant = (newItem.sender_id === userId && newItem.receiver_id === selectedChat.partner_id) ||
@@ -178,23 +178,41 @@ const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | und
 
 // --- COMPONENTS ---
 
-// Memoized Message Bubble for performance
+// Typing Indicator Component
+const TypingIndicator = ({ name, avatar }: { name: string; avatar?: string }) => (
+  <div className="flex items-center gap-2 mb-3 animate-in fade-in-50">
+    <Avatar className="h-7 w-7 ring-2 ring-background">
+      <AvatarImage src={avatar} />
+      <AvatarFallback className="text-xs">{name[0]}</AvatarFallback>
+    </Avatar>
+    <div className="bg-muted/80 rounded-2xl rounded-tl-md px-4 py-3 flex items-center gap-1.5">
+      <div className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+      <div className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+      <div className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+    </div>
+  </div>
+);
+
+// Memoized Message Bubble
 const MessageBubble = React.memo(({ 
   msg, 
   prevMsg, 
   isComm,
   canModerate,
-  onDelete 
+  onDelete,
+  onReply
 }: { 
   msg: Message;
   prevMsg: Message | null;
   isComm: boolean;
   canModerate: boolean;
   onDelete: (msgId: string) => void;
+  onReply: (msg: Message) => void;
 }) => {
+  const [showFullImage, setShowFullImage] = useState(false);
   const isSequence = prevMsg && prevMsg.sender_id === msg.sender_id;
   const timeDiff = prevMsg ? new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() : 0;
-  const showTimestamp = !prevMsg || timeDiff > 300000; // 5 minutes
+  const showTimestamp = !prevMsg || timeDiff > 300000;
   
   if (msg.is_deleted) {
     return (
@@ -208,293 +226,129 @@ const MessageBubble = React.memo(({
   }
 
   return (
-    <div className={`animate-in fade-in-50 slide-in-from-bottom-2 duration-200 ${msg.pending ? 'opacity-70' : ''}`}>
-      {showTimestamp && (
-        <div className="flex justify-center my-4">
-          <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
-            {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}
-          </span>
-        </div>
-      )}
-      
-      <div className={`flex w-full mb-1.5 group ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
-        {!msg.is_me && isComm && (
-          <div className="w-8 mr-2 flex-shrink-0 flex flex-col justify-end">
-            {!isSequence ? (
-              <Avatar className="w-8 h-8 ring-2 ring-background">
-                <AvatarImage src={msg.sender_avatar} />
-                <AvatarFallback className="text-xs">{msg.sender_name?.[0] || '?'}</AvatarFallback>
-              </Avatar>
-            ) : <div className="w-8" />}
+    <>
+      <div className={`animate-in fade-in-50 slide-in-from-bottom-2 duration-200 ${msg.pending ? 'opacity-70' : ''}`}>
+        {showTimestamp && (
+          <div className="flex justify-center my-4">
+            <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
+              {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}
+            </span>
           </div>
         )}
-
-        <div className={`flex flex-col max-w-[75%] ${msg.is_me ? 'items-end' : 'items-start'}`}>
-          {!msg.is_me && isComm && !isSequence && (
-            <span className="text-[11px] ml-2 mb-1 text-muted-foreground font-semibold">
-              {msg.sender_name || 'Unknown'}
-            </span>
+        
+        <div className={`flex w-full mb-1.5 group ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
+          {!msg.is_me && isComm && (
+            <div className="w-8 mr-2 flex-shrink-0 flex flex-col justify-end">
+              {!isSequence ? (
+                <Avatar className="w-8 h-8 ring-2 ring-background">
+                  <AvatarImage src={msg.sender_avatar} />
+                  <AvatarFallback className="text-xs">{msg.sender_name?.[0] || '?'}</AvatarFallback>
+                </Avatar>
+              ) : <div className="w-8" />}
+            </div>
           )}
 
-          <div className="relative group/message">
-            <div 
-              className={`
-                relative overflow-hidden transition-all
-                ${msg.is_me 
-                  ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-md' 
-                  : 'bg-white dark:bg-muted/80 border border-border/60 text-foreground shadow-sm'
-                }
-                ${msg.image_url ? 'p-1' : 'px-4 py-2.5'}
-                ${msg.is_me ? 'rounded-2xl rounded-tr-md' : 'rounded-2xl rounded-tl-md'}
-              `}
-            >
-              {msg.image_url && (
-                <div className="relative group/image">
-                  <img 
-                    src={msg.image_url} 
-                    alt="Attachment" 
-                    className="max-w-full rounded-xl object-cover cursor-pointer hover:opacity-95 transition-opacity" 
-                    style={{ maxHeight: '300px', minWidth: '200px' }} 
-                    loading="lazy"
-                  />
-                  {msg.content && (
-                    <div className={`p-3 mt-1 ${msg.is_me ? 'text-primary-foreground' : ''}`}>
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
-                    </div>
-                  )}
-                </div>
-              )}
+          <div className={`flex flex-col max-w-[75%] ${msg.is_me ? 'items-end' : 'items-start'}`}>
+            {!msg.is_me && isComm && !isSequence && (
+              <span className="text-[11px] ml-2 mb-1 text-muted-foreground font-semibold">
+                {msg.sender_name || 'Unknown'}
+              </span>
+            )}
 
-              {!msg.image_url && msg.content && (
-                <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+            <div className="relative group/message">
+              <div 
+                className={`
+                  relative overflow-hidden transition-all
+                  ${msg.is_me 
+                    ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-md' 
+                    : 'bg-white dark:bg-muted/80 border border-border/60 text-foreground shadow-sm'
+                  }
+                  ${msg.image_url ? 'p-1' : 'px-4 py-2.5'}
+                  ${msg.is_me ? 'rounded-2xl rounded-tr-md' : 'rounded-2xl rounded-tl-md'}
+                `}
+              >
+                {msg.image_url && (
+                  <div className="relative group/image">
+                    <img 
+                      src={msg.image_url} 
+                      alt="Attachment" 
+                      className="max-w-full rounded-xl object-cover cursor-pointer hover:opacity-95 transition-opacity" 
+                      style={{ maxHeight: '300px', minWidth: '200px' }} 
+                      loading="lazy"
+                      onClick={() => setShowFullImage(true)}
+                    />
+                    {msg.content && (
+                      <div className={`p-3 mt-1 ${msg.is_me ? 'text-primary-foreground' : ''}`}>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!msg.image_url && msg.content && (
+                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                )}
+              </div>
+              
+              {!msg.pending && (
+                <div className={`absolute top-1/2 -translate-y-1/2 ${msg.is_me ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/message:opacity-100 transition-opacity`}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-7 w-7 rounded-full bg-background/95 backdrop-blur-sm border shadow-sm hover:bg-accent"
+                      >
+                        <MoreVertical className="w-3.5 h-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align={msg.is_me ? "end" : "start"} className="w-48">
+                      <DropdownMenuItem onClick={() => onReply(msg)}>
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Reply
+                      </DropdownMenuItem>
+                      {msg.is_me && (
+                        <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-red-600 focus:text-red-600">
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete Message
+                        </DropdownMenuItem>
+                      )}
+                      {!msg.is_me && canModerate && (
+                        <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-red-600 focus:text-red-600">
+                          <Shield className="w-4 h-4 mr-2" />
+                          Remove Message
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               )}
             </div>
             
-            {/* Message Actions */}
-            {!msg.pending && (
-              <div className={`absolute top-1/2 -translate-y-1/2 ${msg.is_me ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/message:opacity-100 transition-opacity`}>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-7 w-7 rounded-full bg-background/95 backdrop-blur-sm border shadow-sm hover:bg-accent"
-                    >
-                      <MoreVertical className="w-3.5 h-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align={msg.is_me ? "end" : "start"} className="w-48">
-                    {msg.is_me && (
-                      <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-red-600 focus:text-red-600">
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Message
-                      </DropdownMenuItem>
-                    )}
-                    {!msg.is_me && canModerate && (
-                      <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-red-600 focus:text-red-600">
-                        <Shield className="w-4 h-4 mr-2" />
-                        Remove Message
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
+            <div className="flex items-center gap-1 mt-1 px-2">
+              <span className="text-[10px] text-muted-foreground opacity-60">
+                {msg.pending ? 'Sending...' : formatMessageTime(msg.created_at)}
+              </span>
+              {msg.is_me && !msg.pending && (
+                <Check className="w-3 h-3 text-primary opacity-60" />
+              )}
+            </div>
           </div>
-          
-          <div className="flex items-center gap-1 mt-1 px-2">
-             <span className="text-[10px] text-muted-foreground opacity-60">
-              {msg.pending ? 'Sending...' : formatMessageTime(msg.created_at)}
-            </span>
-          </div>
-         
         </div>
       </div>
-    </div>
-  );
-});
-MessageBubble.displayName = 'MessageBubble';
 
-// --- COMMUNITY INFO DIALOG ---
-const CommunityInfoDialog = ({ 
-  isOpen, 
-  onClose, 
-  community 
-}: { 
-  isOpen: boolean;
-  onClose: () => void;
-  community: SelectedChat | null;
-}) => {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-
-  const { data: members = [] } = useQuery({
-    queryKey: ['comm_members', community?.id],
-    queryFn: async () => {
-      if (!community || community.type !== 'community') return [];
-      const { data, error } = await supabase
-        .from('community_members')
-        .select('user_id, role, joined_at, profile:profiles(display_name, avatar_url)')
-        .eq('community_id', community.id)
-        .order('role', { ascending: true });
-      if (error) throw error;
-      return data as unknown as CommunityMember[];
-    },
-    enabled: isOpen && !!community
-  });
-
-  const promoteMutation = useMutation({
-    mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'moderator' | 'member' }) => {
-      if (!community || community.type !== 'community') return;
-      await supabase
-        .from('community_members')
-        .update({ role: newRole })
-        .match({ community_id: community.id, user_id: userId });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['comm_members'] });
-      toast.success("Role updated successfully");
-    }
-  });
-
-  const kickMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      if (!community || community.type !== 'community') return;
-      await supabase
-        .from('community_members')
-        .delete()
-        .match({ community_id: community.id, user_id: userId });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['comm_members'] });
-      toast.success("Member removed from community");
-    }
-  });
-
-  if (!community || community.type !== 'community') return null;
-
-  const canModerate = community.my_role === 'admin' || community.my_role === 'moderator';
-  const adminCount = members.filter(m => m.role === 'admin').length;
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[550px] max-h-[90vh] flex flex-col p-0">
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-purple-500/20 backdrop-blur-3xl" />
-          <div className="relative p-6 pb-4">
-            <div className="flex items-start gap-4">
-              <Avatar className="h-16 w-16 rounded-2xl ring-4 ring-background shadow-lg">
-                <AvatarImage src={community.avatar} />
-                <AvatarFallback className="text-2xl rounded-2xl">{community.name[0]}</AvatarFallback>
-              </Avatar>
-              <div className="flex-1">
-                <h2 className="text-2xl font-bold mb-1">{community.name}</h2>
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Users className="w-4 h-4" />
-                    {community.member_count} members
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <Crown className="w-4 h-4" />
-                    {adminCount} admin{adminCount !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {community.description && (
-          <div className="px-6 py-4 border-b bg-muted/30">
-            <p className="text-sm text-muted-foreground leading-relaxed">{community.description}</p>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-hidden px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-lg flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              Members
-            </h3>
-            <Badge variant="secondary" className="text-xs">
-              {members.length} total
-            </Badge>
-          </div>
-          
-          <ScrollArea className="h-[400px] pr-4">
-            <div className="space-y-2">
-              {members.map((m) => {
-                const isMe = m.user_id === user?.id;
-                const canManage = canModerate && !isMe && m.role !== 'admin';
-
-                return (
-                  <div 
-                    key={m.user_id} 
-                    className="flex items-center justify-between p-3 bg-muted/20 rounded-xl hover:bg-muted/40 transition-all group"
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <Avatar className="h-11 w-11 ring-2 ring-background">
-                        <AvatarImage src={m.profile?.avatar_url} />
-                        <AvatarFallback>{m.profile?.display_name?.[0] || '?'}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium truncate">
-                            {m.profile?.display_name || 'Unknown User'}
-                          </span>
-                          {isMe && <Badge variant="outline" className="text-[10px] px-1.5 py-0">You</Badge>}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {m.role === 'admin' && <Badge className="text-[10px] bg-amber-500">Admin</Badge>}
-                          {m.role === 'moderator' && <Badge className="text-[10px] bg-blue-500">Moderator</Badge>}
-                          {m.role === 'member' && <Badge variant="outline" className="text-[10px]">Member</Badge>}
-                        </div>
-                      </div>
-                    </div>
-
-                    {canManage && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                          <DropdownMenuLabel>Manage Member</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {community.my_role === 'admin' && m.role !== 'moderator' && (
-                            <DropdownMenuItem onClick={() => promoteMutation.mutate({ userId: m.user_id, newRole: 'moderator' })}>
-                              <Shield className="w-4 h-4 mr-2" /> Promote to Moderator
-                            </DropdownMenuItem>
-                          )}
-                          {community.my_role === 'admin' && m.role === 'moderator' && (
-                            <DropdownMenuItem onClick={() => promoteMutation.mutate({ userId: m.user_id, newRole: 'member' })}>
-                              <Users className="w-4 h-4 mr-2" /> Demote to Member
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-600" onClick={() => kickMutation.mutate(m.user_id)}>
-                            <Ban className="w-4 h-4 mr-2" /> Remove from Community
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </ScrollArea>
-        </div>
-        <div className="p-6 pt-4 border-t">
-          <Button variant="outline" className="w-full" onClick={onClose}>Close</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      {showFullImage && msg.image_url && (
+        <Dialog open={showFullImage} onOpenChange={setShowFullImage}>
+          <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95">
+            <img src={msg.image_url} alt="Full size" className="w-full h-auto" />
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 };
 
-// --- COMMUNITY SETTINGS DIALOG ---
+// Community Settings Dialog
 const CommunitySettingsDialog = ({ 
   isOpen, 
   onClose, 
@@ -536,7 +390,6 @@ const CommunitySettingsDialog = ({
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      // Deletes cascade usually, but manual cleanup ensures consistency
       await supabase.from('communities').delete().eq('id', communityId);
     },
     onSuccess: () => {
@@ -605,6 +458,7 @@ export default function Messages() {
   const { user } = useAuth() || {};
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const [activeTab, setActiveTab] = useState<ChatMode>('dm');
   const [selectedChat, setSelectedChat] = useState<SelectedChat | null>(null);
@@ -617,14 +471,15 @@ export default function Messages() {
   const [isCreateCommunityOpen, setIsCreateCommunityOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
   const [newCommName, setNewCommName] = useState('');
   const [newCommDesc, setNewCommDesc] = useState('');
   const [friendSearch, setFriendSearch] = useState('');
 
-  // Enable Real-time subscriptions
   useChatRealtime(selectedChat, user?.id);
 
-  // --- QUERIES ---
+  // Queries
   const { data: dmList = [], isLoading: loadingDMs } = useQuery({
     queryKey: ['dm_list', user?.id],
     queryFn: async () => {
@@ -652,7 +507,8 @@ export default function Messages() {
             avatar: partner.avatar_url,
             last_msg: msg.content || (msg.image_url ? '📷 Photo' : ''),
             time: msg.created_at,
-            is_online: false // Presence to be implemented
+            is_online: false,
+            unread_count: 0
           });
         }
       });
@@ -700,10 +556,16 @@ export default function Messages() {
         const rawProfile = f.requester_id === user.id ? f.addressee : f.requester;
         const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
         if (!profile) return null;
-        return { id: profile.user_id, name: profile.display_name, avatar: profile.avatar_url };
+        return { 
+          id: profile.user_id, 
+          name: profile.display_name, 
+          avatar: profile.avatar_url,
+          is_online: false,
+          last_seen: null
+        };
       }).filter(Boolean) || [];
     },
-    enabled: !!user?.id && isNewChatOpen,
+    enabled: !!user?.id,
   });
 
   const { data: messages = [] } = useQuery({
@@ -740,10 +602,9 @@ export default function Messages() {
       })) as Message[];
     },
     enabled: !!selectedChat && !!user?.id,
-    refetchOnWindowFocus: false, // Prevent jarring refetches
+    refetchOnWindowFocus: false,
   });
 
-  // Attach auto-scroller
   const scrollRef = useScrollToBottom(messages);
 
   const filteredFriends = useMemo(() => {
@@ -751,7 +612,13 @@ export default function Messages() {
     return friends.filter((f: any) => f.name.toLowerCase().includes(friendSearch.toLowerCase()));
   }, [friends, friendSearch]);
 
-  // --- MUTATIONS ---
+  const { onlineFriends, offlineFriends } = useMemo(() => {
+    const online = filteredFriends.filter((f: any) => f.is_online);
+    const offline = filteredFriends.filter((f: any) => !f.is_online);
+    return { onlineFriends: online, offlineFriends: offline };
+  }, [filteredFriends]);
+
+  // Mutations
   const joinCommunity = useMutation({
     mutationFn: async (communityId: string) => {
       if (!user) throw new Error("Not authenticated");
@@ -837,7 +704,6 @@ export default function Messages() {
         return old ? [...old, optimisticMessage] : [optimisticMessage];
       });
 
-      // Clear input immediately for UX
       setMessageInput('');
       setImageFile(null);
       setImagePreview(null);
@@ -846,12 +712,12 @@ export default function Messages() {
     },
     onError: (err, newTodo, context) => {
       if (context?.previousMessages) {
-        queryClient.setQueryData(['messages', selectedChat.type, selectedChat.id], context.previousMessages);
+        queryClient.setQueryData(['messages', selectedChat?.type, selectedChat?.id], context.previousMessages);
       }
       toast.error("Failed to send message");
     },
     onSettled: () => {
-       queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
+       queryClient.invalidateQueries({ queryKey: ['messages', selectedChat?.type, selectedChat?.id] });
     }
   });
 
@@ -871,7 +737,7 @@ export default function Messages() {
     onError: () => toast.error("Failed to delete message")
   });
 
-  // --- HANDLERS ---
+  // Handlers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
@@ -882,16 +748,33 @@ export default function Messages() {
     }
   };
 
+  const handleInputChange = (value: string) => {
+    setMessageInput(value);
+    
+    if (!isTyping && value.trim()) {
+      setIsTyping(true);
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+    }, 2000);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if ((messageInput.trim() || imageFile) && !sendMessage.isPending) {
         sendMessage.mutate({ content: messageInput.trim(), file: imageFile });
+        setReplyingTo(null);
+        setIsTyping(false);
       }
     }
   };
 
-  // Cleanup object URLs to avoid memory leaks
   useEffect(() => {
     return () => {
       if (imagePreview) URL.revokeObjectURL(imagePreview);
@@ -909,15 +792,13 @@ export default function Messages() {
     );
   }
 
-  // --- RENDER: CHAT VIEW ---
+  // Chat View
   if (selectedChat) {
     const isComm = selectedChat.type === 'community';
-    const canType = !isComm || (isComm && selectedChat.my_role !== 'none');
+    const canType = !isComm || (isComm && selectedChat.my_role !== 'none' && !selectedChat.is_banned);
     const canModerate = isComm && (selectedChat.my_role === 'admin' || selectedChat.my_role === 'moderator');
 
     return (
-      // FIX 1: Changed z-50 to z-[100] to cover the bottom nav bar
-      // FIX 2: Changed min-h-60 to h-[100dvh] (Dynamic Viewport Height) to respect mobile browser bars
       <div className="fixed inset-0 z-[100] bg-background flex flex-col h-[100dvh]">
         <div className="px-4 py-3 border-b flex items-center gap-3 bg-gradient-to-r from-background to-muted/20 backdrop-blur-xl shadow-sm shrink-0 z-10">
           <Button variant="ghost" size="icon" className="-ml-2 rounded-full hover:bg-muted" onClick={() => setSelectedChat(null)}>
@@ -938,9 +819,13 @@ export default function Messages() {
                   {selectedChat.my_role === 'admin' && <Badge variant="secondary" className="ml-1 text-[10px] bg-amber-100 text-amber-700">Admin</Badge>}
                 </>
               ) : (
-                <span className="flex items-center gap-1.5 text-green-600">
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/> Active now
-                </span>
+                selectedChat.is_online ? (
+                  <span className="flex items-center gap-1.5 text-green-600">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/> Active now
+                  </span>
+                ) : (
+                  <span>Tap to view profile</span>
+                )
               )}
             </p>
           </div>
@@ -992,24 +877,48 @@ export default function Messages() {
                 </p>
               </div>
             ) : (
-              messages.map((m, i) => (
-                <MessageBubble 
-                  key={m.id} 
-                  msg={m} 
-                  prevMsg={i > 0 ? messages[i-1] : null} 
-                  isComm={isComm}
-                  canModerate={canModerate}
-                  onDelete={(msgId) => deleteMessage.mutate(msgId)}
-                />
-              ))
+              <>
+                {messages.map((m, i) => (
+                  <MessageBubble 
+                    key={m.id} 
+                    msg={m} 
+                    prevMsg={i > 0 ? messages[i-1] : null} 
+                    isComm={isComm}
+                    canModerate={canModerate}
+                    onDelete={(msgId) => deleteMessage.mutate(msgId)}
+                    onReply={(msg) => setReplyingTo(msg)}
+                  />
+                ))}
+                {false && <TypingIndicator name={selectedChat.name} avatar={selectedChat.avatar} />}
+              </>
             )}
           </div>
         </div>
 
-        {/* FIX 3: Added pb-[env(safe-area-inset-bottom)] to respect iPhone home swipe bar */}
         <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t bg-background/95 backdrop-blur-xl shrink-0">
           {canType ? (
             <div className="flex flex-col gap-3">
+              {replyingTo && (
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-xl border-l-4 border-primary">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-primary mb-1">
+                      Replying to {replyingTo.is_me ? 'yourself' : replyingTo.sender_name}
+                    </p>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {replyingTo.content || '📷 Photo'}
+                    </p>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 rounded-full shrink-0"
+                    onClick={() => setReplyingTo(null)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+
               {imagePreview && (
                 <div className="relative w-32 h-32 bg-muted rounded-2xl overflow-hidden border-2 border-primary/30 shadow-md group">
                   <img src={imagePreview} className="w-full h-full object-cover" alt="preview" />
@@ -1031,7 +940,7 @@ export default function Messages() {
                 <div className="flex-1 relative">
                   <Textarea 
                     value={messageInput} 
-                    onChange={(e) => setMessageInput(e.target.value)} 
+                    onChange={(e) => handleInputChange(e.target.value)} 
                     placeholder="Type a message..." 
                     className="min-h-[48px] max-h-32 py-3.5 pr-12 resize-none rounded-3xl bg-muted/60 border-border/50 focus:border-primary focus:bg-background transition-all"
                     onKeyDown={handleKeyPress}
@@ -1041,7 +950,10 @@ export default function Messages() {
 
                 <Button 
                   size="icon" 
-                  onClick={() => sendMessage.mutate({ content: messageInput.trim(), file: imageFile })} 
+                  onClick={() => {
+                    sendMessage.mutate({ content: messageInput.trim(), file: imageFile });
+                    setReplyingTo(null);
+                  }} 
                   disabled={sendMessage.isPending || (!messageInput.trim() && !imageFile)}
                   className="rounded-full h-12 w-12 shadow-lg shrink-0"
                 >
@@ -1064,7 +976,7 @@ export default function Messages() {
     );
   }
 
-  // --- RENDER: LIST VIEW ---
+  // List View
   return (
     <div className="min-h-screen flex flex-col pb-20 bg-gradient-to-b from-background to-muted/10">
       <div className="container-mobile py-4 space-y-6 pb-24">
@@ -1112,13 +1024,21 @@ export default function Messages() {
                       <AvatarImage src={chat.avatar} />
                       <AvatarFallback>{chat.name?.[0] || '?'}</AvatarFallback>
                     </Avatar>
+                    {chat.is_online && (
+                      <div className="absolute bottom-0 right-0 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex justify-between items-center">
                       <h3 className="font-bold text-[15px] truncate">{chat.name}</h3>
                       <span className="text-[11px] text-muted-foreground font-medium">{formatTime(chat.time)}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground truncate font-medium">{chat.last_msg}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground truncate font-medium flex-1">{chat.last_msg}</p>
+                      {chat.unread_count > 0 && (
+                        <Badge className="ml-2 h-5 min-w-5 rounded-full text-xs px-1.5">{chat.unread_count}</Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
@@ -1145,6 +1065,7 @@ export default function Messages() {
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-bold text-[15px] truncate">{comm.name}</h3>
                       {comm.my_role === 'admin' && <Badge className="text-[10px] bg-amber-100 text-amber-700">Admin</Badge>}
+                      {comm.my_role === 'moderator' && <Badge className="text-[10px] bg-blue-100 text-blue-700">Mod</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                       <Users className="w-3 h-3"/> {comm.member_count} member{comm.member_count !== 1 ? 's' : ''}
@@ -1165,46 +1086,167 @@ export default function Messages() {
         </Tabs>
       </div>
 
+      {/* New Chat Dialog with Online Friends */}
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
-        <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>New Message</DialogTitle>
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle className="text-xl">New Message</DialogTitle>
             <DialogDescription>Start a conversation with your friends</DialogDescription>
           </DialogHeader>
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search friends..." className="pl-10 bg-muted/50 rounded-xl" value={friendSearch} onChange={(e) => setFriendSearch(e.target.value)} />
+          
+          <div className="px-6 pb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search friends..." 
+                className="pl-10 bg-muted/50 rounded-xl border-muted-foreground/20 focus:border-primary" 
+                value={friendSearch} 
+                onChange={(e) => setFriendSearch(e.target.value)} 
+              />
+            </div>
           </div>
-          <ScrollArea className="flex-1">
-            <div className="space-y-2 p-1">
-              {filteredFriends.map((f: any) => (
-                <div key={f.id} onClick={() => { setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar }); setIsNewChatOpen(false); }} className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage src={f.avatar} />
-                    <AvatarFallback>{f.name?.[0] || '?'}</AvatarFallback>
-                  </Avatar>
-                  <span className="font-semibold text-[15px] flex-1">{f.name}</span>
-                  <MessageSquare className="w-5 h-5 text-primary opacity-50" />
+
+          <ScrollArea className="flex-1 px-6">
+            <div className="space-y-6 pb-6">
+              {/* Online Friends */}
+              {onlineFriends.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3 px-1">
+                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Online • {onlineFriends.length}
+                    </h3>
+                  </div>
+                  <div className="space-y-1">
+                    {onlineFriends.map((f: any) => (
+                      <div 
+                        key={f.id} 
+                        onClick={() => { 
+                          setSelectedChat({ 
+                            type: 'dm', 
+                            id: f.id, 
+                            partner_id: f.id, 
+                            name: f.name, 
+                            avatar: f.avatar,
+                            is_online: f.is_online 
+                          }); 
+                          setIsNewChatOpen(false); 
+                        }} 
+                        className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
+                      >
+                        <div className="relative">
+                          <Avatar className="h-12 w-12 ring-2 ring-background">
+                            <AvatarImage src={f.avatar} />
+                            <AvatarFallback>{f.name?.[0] || '?'}</AvatarFallback>
+                          </Avatar>
+                          <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                          <p className="text-xs text-green-600 font-medium">Active now</p>
+                        </div>
+                        <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
+
+              {/* Offline Friends */}
+              {offlineFriends.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3 px-1">
+                    <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      All Friends • {offlineFriends.length}
+                    </h3>
+                  </div>
+                  <div className="space-y-1">
+                    {offlineFriends.map((f: any) => (
+                      <div 
+                        key={f.id} 
+                        onClick={() => { 
+                          setSelectedChat({ 
+                            type: 'dm', 
+                            id: f.id, 
+                            partner_id: f.id, 
+                            name: f.name, 
+                            avatar: f.avatar,
+                            is_online: f.is_online 
+                          }); 
+                          setIsNewChatOpen(false); 
+                        }} 
+                        className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
+                      >
+                        <Avatar className="h-12 w-12 ring-2 ring-background opacity-90 group-hover:opacity-100 transition-opacity">
+                          <AvatarImage src={f.avatar} />
+                          <AvatarFallback>{f.name?.[0] || '?'}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                          {f.last_seen && (
+                            <p className="text-xs text-muted-foreground">
+                              Active {formatDistanceToNow(new Date(f.last_seen), { addSuffix: true })}
+                            </p>
+                          )}
+                        </div>
+                        <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No Friends State */}
+              {friends.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                    <Users className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2">No friends yet</h3>
+                  <p className="text-sm text-muted-foreground max-w-xs">
+                    Add friends to start messaging them directly
+                  </p>
+                </div>
+              )}
+
+              {/* No Search Results */}
+              {friends.length > 0 && filteredFriends.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Search className="w-12 h-12 text-muted-foreground mb-4" />
+                  <h3 className="font-semibold text-lg mb-2">No results found</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Try searching with a different name
+                  </p>
+                </div>
+              )}
             </div>
           </ScrollArea>
         </DialogContent>
       </Dialog>
 
+      {/* Create Community Dialog */}
       <Dialog open={isCreateCommunityOpen} onOpenChange={setIsCreateCommunityOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Create Community</DialogTitle>
+            <DialogDescription>Create a space for your community to connect</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <Input placeholder="Community Name" value={newCommName} onChange={(e) => setNewCommName(e.target.value)} maxLength={50} />
-            <Textarea placeholder="Description" value={newCommDesc} onChange={(e) => setNewCommDesc(e.target.value)} rows={4} maxLength={200} />
+            <div className="space-y-2">
+              <Label>Community Name *</Label>
+              <Input placeholder="Enter community name" value={newCommName} onChange={(e) => setNewCommName(e.target.value)} maxLength={50} />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea placeholder="What's this community about?" value={newCommDesc} onChange={(e) => setNewCommDesc(e.target.value)} rows={4} maxLength={200} />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateCommunityOpen(false)}>Cancel</Button>
             <Button onClick={() => createCommunity.mutate()} disabled={!newCommName.trim() || createCommunity.isPending}>
-              {createCommunity.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
+              {createCommunity.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+              Create
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1212,3 +1254,323 @@ export default function Messages() {
     </div>
   );
 }
+});
+MessageBubble.displayName = 'MessageBubble';
+
+// Community Info Dialog with Full Moderation
+const CommunityInfoDialog = ({ 
+  isOpen, 
+  onClose, 
+  community 
+}: { 
+  isOpen: boolean;
+  onClose: () => void;
+  community: SelectedChat | null;
+}) => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [showModeration, setShowModeration] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<CommunityMember | null>(null);
+  const [moderationReason, setModerationReason] = useState('');
+  const [moderationAction, setModerationAction] = useState<'kick' | 'ban'>('kick');
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['comm_members', community?.id],
+    queryFn: async () => {
+      if (!community || community.type !== 'community') return [];
+      const { data, error } = await supabase
+        .from('community_members')
+        .select('user_id, role, joined_at, is_banned, profile:profiles(display_name, avatar_url)')
+        .eq('community_id', community.id)
+        .order('role', { ascending: true });
+      if (error) throw error;
+      return data as unknown as CommunityMember[];
+    },
+    enabled: isOpen && !!community
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'moderator' | 'member' }) => {
+      if (!community || community.type !== 'community') return;
+      await supabase
+        .from('community_members')
+        .update({ role: newRole })
+        .match({ community_id: community.id, user_id: userId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['comm_members'] });
+      toast.success("Role updated successfully");
+    }
+  });
+
+  const banMutation = useMutation({
+    mutationFn: async ({ userId, reason }: { userId: string; reason: string }) => {
+      if (!community || community.type !== 'community') return;
+      await supabase
+        .from('community_members')
+        .update({ is_banned: true })
+        .match({ community_id: community.id, user_id: userId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['comm_members'] });
+      setShowModeration(false);
+      setSelectedMember(null);
+      setModerationReason('');
+      toast.success("Member banned successfully");
+    }
+  });
+
+  const kickMutation = useMutation({
+    mutationFn: async ({ userId, reason }: { userId: string; reason: string }) => {
+      if (!community || community.type !== 'community') return;
+      await supabase
+        .from('community_members')
+        .delete()
+        .match({ community_id: community.id, user_id: userId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['comm_members'] });
+      setShowModeration(false);
+      setSelectedMember(null);
+      setModerationReason('');
+      toast.success("Member removed from community");
+    }
+  });
+
+  const unbanMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      if (!community || community.type !== 'community') return;
+      await supabase
+        .from('community_members')
+        .update({ is_banned: false })
+        .match({ community_id: community.id, user_id: userId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['comm_members'] });
+      toast.success("Member unbanned");
+    }
+  });
+
+  const handleModerationSubmit = () => {
+    if (!selectedMember || !moderationReason.trim()) {
+      toast.error("Please provide a reason");
+      return;
+    }
+
+    if (moderationAction === 'ban') {
+      banMutation.mutate({ userId: selectedMember.user_id, reason: moderationReason });
+    } else if (moderationAction === 'kick') {
+      kickMutation.mutate({ userId: selectedMember.user_id, reason: moderationReason });
+    }
+  };
+
+  if (!community || community.type !== 'community') return null;
+
+  const canModerate = community.my_role === 'admin' || community.my_role === 'moderator';
+  const adminCount = members.filter(m => m.role === 'admin').length;
+  const activeMemberCount = members.filter(m => !m.is_banned).length;
+
+  return (
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[550px] max-h-[90vh] flex flex-col p-0">
+          <div className="relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-purple-500/20 backdrop-blur-3xl" />
+            <div className="relative p-6 pb-4">
+              <div className="flex items-start gap-4">
+                <Avatar className="h-16 w-16 rounded-2xl ring-4 ring-background shadow-lg">
+                  <AvatarImage src={community.avatar} />
+                  <AvatarFallback className="text-2xl rounded-2xl">{community.name[0]}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold mb-1">{community.name}</h2>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Users className="w-4 h-4" />
+                      {activeMemberCount} members
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <Crown className="w-4 h-4" />
+                      {adminCount} admin{adminCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {community.description && (
+            <div className="px-6 py-4 border-b bg-muted/30">
+              <p className="text-sm text-muted-foreground leading-relaxed">{community.description}</p>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-hidden px-6 py-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary" />
+                Members
+              </h3>
+              <Badge variant="secondary" className="text-xs">
+                {activeMemberCount} active
+              </Badge>
+            </div>
+            
+            <ScrollArea className="h-[400px] pr-4">
+              <div className="space-y-2">
+                {members.map((m) => {
+                  const isMe = m.user_id === user?.id;
+                  const canManage = canModerate && !isMe && m.role !== 'admin';
+
+                  return (
+                    <div 
+                      key={m.user_id} 
+                      className={`flex items-center justify-between p-3 rounded-xl hover:bg-muted/40 transition-all group ${
+                        m.is_banned ? 'bg-red-50 dark:bg-red-950/20' : 'bg-muted/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <Avatar className="h-11 w-11 ring-2 ring-background">
+                          <AvatarImage src={m.profile?.avatar_url} />
+                          <AvatarFallback>{m.profile?.display_name?.[0] || '?'}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium truncate">
+                              {m.profile?.display_name || 'Unknown User'}
+                            </span>
+                            {isMe && <Badge variant="outline" className="text-[10px] px-1.5 py-0">You</Badge>}
+                            {m.is_banned && <Badge variant="destructive" className="text-[10px]">Banned</Badge>}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {m.role === 'admin' && <Badge className="text-[10px] bg-amber-500">Admin</Badge>}
+                            {m.role === 'moderator' && <Badge className="text-[10px] bg-blue-500">Moderator</Badge>}
+                            {m.role === 'member' && <Badge variant="outline" className="text-[10px]">Member</Badge>}
+                          </div>
+                        </div>
+                      </div>
+
+                      {canManage && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuLabel>Manage Member</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {community.my_role === 'admin' && m.role !== 'moderator' && !m.is_banned && (
+                              <DropdownMenuItem onClick={() => promoteMutation.mutate({ userId: m.user_id, newRole: 'moderator' })}>
+                                <Shield className="w-4 h-4 mr-2" /> Promote to Moderator
+                              </DropdownMenuItem>
+                            )}
+                            {community.my_role === 'admin' && m.role === 'moderator' && (
+                              <DropdownMenuItem onClick={() => promoteMutation.mutate({ userId: m.user_id, newRole: 'member' })}>
+                                <Users className="w-4 h-4 mr-2" /> Demote to Member
+                              </DropdownMenuItem>
+                            )}
+                            {m.is_banned ? (
+                              <DropdownMenuItem onClick={() => unbanMutation.mutate(m.user_id)}>
+                                <Check className="w-4 h-4 mr-2" /> Unban Member
+                              </DropdownMenuItem>
+                            ) : (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-orange-600"
+                                  onClick={() => {
+                                    setSelectedMember(m);
+                                    setModerationAction('kick');
+                                    setShowModeration(true);
+                                  }}
+                                >
+                                  <AlertCircle className="w-4 h-4 mr-2" /> Kick from Community
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-red-600" 
+                                  onClick={() => {
+                                    setSelectedMember(m);
+                                    setModerationAction('ban');
+                                    setShowModeration(true);
+                                  }}
+                                >
+                                  <Ban className="w-4 h-4 mr-2" /> Ban from Community
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </div>
+          <div className="p-6 pt-4 border-t">
+            <Button variant="outline" className="w-full" onClick={onClose}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showModeration} onOpenChange={setShowModeration}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-orange-500" />
+              {moderationAction === 'ban' ? 'Ban Member' : 'Kick Member'}
+            </DialogTitle>
+            <DialogDescription>
+              {moderationAction === 'ban' 
+                ? 'This will prevent the member from rejoining the community.' 
+                : 'The member will be removed but can rejoin later.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {selectedMember && (
+              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={selectedMember.profile?.avatar_url} />
+                  <AvatarFallback>{selectedMember.profile?.display_name?.[0]}</AvatarFallback>
+                </Avatar>
+                <span className="font-medium">{selectedMember.profile?.display_name}</span>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Reason *</Label>
+              <Textarea 
+                placeholder="Explain why this action is being taken..."
+                value={moderationReason}
+                onChange={(e) => setModerationReason(e.target.value)}
+                rows={4}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground">
+                This reason will be logged for moderation records.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowModeration(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleModerationSubmit}
+              disabled={!moderationReason.trim() || banMutation.isPending || kickMutation.isPending}
+            >
+              {(banMutation.isPending || kickMutation.isPending) && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              {moderationAction === 'ban' ? 'Ban Member' : 'Kick Member'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
