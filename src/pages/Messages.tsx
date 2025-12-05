@@ -517,24 +517,41 @@ export default function Messages() {
 
       if (partnerIds.size === 0) return [];
 
-      // 3. Batch fetch profile details for all partners
+      const idsList = Array.from(partnerIds);
+
+      // 3. Batch fetch profile details - Select * to ensure we get available name fields
+      // We try to match standard 'id' first.
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, display_name, avatar_url')
-        .in('id', Array.from(partnerIds));
+        .select('*')
+        .in('id', idsList);
 
-      const profileLookup = new Map(profiles?.map((p: any) => [p.id, p]));
+      // 4. Create a robust lookup map
+      const profileLookup = new Map();
+      profiles?.forEach((p: any) => {
+        // Map by 'id' (standard)
+        if (p.id) profileLookup.set(p.id, p);
+        // Map by 'user_id' (if your schema uses this for the Auth UUID)
+        if (p.user_id) profileLookup.set(p.user_id, p);
+      });
 
-      // 4. Combine data
-      return Array.from(partnerIds).map(partnerId => {
+      // 5. Combine data with Name Fallbacks
+      return idsList.map(partnerId => {
         const details = partnerMap.get(partnerId);
         const profile = profileLookup.get(partnerId);
         
+        // Try multiple fields for the name
+        const displayName = profile?.display_name || 
+                            profile?.username || 
+                            profile?.full_name || 
+                            profile?.name || 
+                            'Unknown User';
+
         return {
           type: 'dm',
           id: partnerId,
           partner_id: partnerId,
-          name: profile?.display_name || 'Unknown User',
+          name: displayName,
           avatar: profile?.avatar_url,
           last_msg: details.last_msg,
           time: details.time,
