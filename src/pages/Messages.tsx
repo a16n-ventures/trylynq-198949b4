@@ -486,43 +486,62 @@ export default function Messages() {
     queryFn: async () => {
       if (!user?.id) return [];
       
-      const { data, error } = await supabase
+      // 1. Fetch messages first (no Joins) to avoid Foreign Key errors
+      const { data: rawMessages, error } = await supabase
         .from('messages')
-        .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*)')
+        .select('*')
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
 
-      if (error || !data) {
+      if (error || !rawMessages) {
         console.error("Error fetching DMs:", error);
         return [];
       }
 
-      const map = new Map();
-      data.forEach((msg: any) => {
-        // 1. Get the partner ID directly from the message table (guaranteed to exist)
+      // 2. Identify unique partners and their latest message
+      const partnerMap = new Map();
+      const partnerIds = new Set<string>();
+
+      rawMessages.forEach((msg: any) => {
         const isMeSender = msg.sender_id === user.id;
         const partnerId = isMeSender ? msg.receiver_id : msg.sender_id;
+        
+        if (!partnerIds.has(partnerId)) {
+          partnerIds.add(partnerId);
+          partnerMap.set(partnerId, {
+            last_msg: msg.content || (msg.image_url ? '📷 Photo' : 'Message'),
+            time: msg.created_at,
+          });
+        }
+      });
 
-        // 2. Skip if we already processed this partner
-        if (map.has(partnerId)) return;
+      if (partnerIds.size === 0) return [];
 
-        // 3. Try to get profile details, fallback to safe defaults if missing
-        const rawProfile = isMeSender ? msg.receiver : msg.sender;
-        const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
+      // 3. Batch fetch profile details for all partners
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, display_name, avatar_url')
+        .in('id', Array.from(partnerIds));
 
-        map.set(partnerId, {
+      const profileLookup = new Map(profiles?.map((p: any) => [p.id, p]));
+
+      // 4. Combine data
+      return Array.from(partnerIds).map(partnerId => {
+        const details = partnerMap.get(partnerId);
+        const profile = profileLookup.get(partnerId);
+        
+        return {
           type: 'dm',
           id: partnerId,
           partner_id: partnerId,
           name: profile?.display_name || 'Unknown User',
           avatar: profile?.avatar_url,
-          last_msg: msg.content || (msg.image_url ? '📷 Photo' : 'Message'),
-          time: msg.created_at,
+          last_msg: details.last_msg,
+          time: details.time,
           is_online: false,
           unread_count: 0
-        });
+        };
       });
-      return Array.from(map.values());
     },
     enabled: !!user?.id,
   });
