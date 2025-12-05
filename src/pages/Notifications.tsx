@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Bell, UserPlus, Calendar, Loader2, Check, X } from "lucide-react";
+import { Bell, UserPlus, Calendar, Loader2, Check, X, MessageSquare, MapPin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -11,13 +12,14 @@ import { toast } from "sonner";
 // --- Types ---
 type NotificationItem = {
   id: string;
-  type: 'friend_request' | 'event_invite';
+  type: 'friend_request' | 'event_invite' | 'message' | 'location_share';
   created_at: string;
   sender_id: string;
   sender_name: string;
   sender_avatar?: string;
   event_id?: string;
   event_title?: string;
+  message_preview?: string;
 };
 
 export default function Notifications() {
@@ -83,11 +85,98 @@ export default function Notifications() {
         });
       }
 
+      // Get active location shares
+      const { data: locationShares } = await supabase
+        .from("location_shares")
+        .select(`
+          id, created_at, sharer_id, expires_at,
+          sharer:profiles!sharer_id (display_name, avatar_url)
+        `)
+        .eq("recipient_id", user.id)
+        .eq("is_active", true)
+        .gte("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false });
+
+      if (locationShares) {
+        locationShares.forEach((share: any) => {
+          items.push({
+            id: share.id,
+            type: 'location_share',
+            created_at: share.created_at,
+            sender_id: share.sharer_id,
+            sender_name: share.sharer?.display_name || 'Someone',
+            sender_avatar: share.sharer?.avatar_url
+          });
+        });
+      }
+
       // Sort by date
       return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     },
     enabled: !!user,
   });
+
+  // Real-time subscriptions for notifications
+  useEffect(() => {
+    if (!user) return;
+
+    // Subscribe to friendships changes
+    const friendshipChannel = supabase
+      .channel('friendships-notifications')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'friendships',
+        filter: `addressee_id=eq.${user.id}`
+      }, (payload) => {
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        toast.info("New friend request!", { duration: 3000 });
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'friendships',
+        filter: `addressee_id=eq.${user.id}`
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        queryClient.invalidateQueries({ queryKey: ['friends'] });
+      })
+      .subscribe();
+
+    // Subscribe to event invitations
+    const eventInviteChannel = supabase
+      .channel('event-invites-notifications')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'event_invitations',
+        filter: `invitee_id=eq.${user.id}`
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        toast.info("New event invitation!", { duration: 3000 });
+      })
+      .subscribe();
+
+    // Subscribe to location shares
+    const locationShareChannel = supabase
+      .channel('location-shares-notifications')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'location_shares',
+        filter: `recipient_id=eq.${user.id}`
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        toast.info("Someone shared their location with you!", { duration: 3000 });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(friendshipChannel);
+      supabase.removeChannel(eventInviteChannel);
+      supabase.removeChannel(locationShareChannel);
+    };
+  }, [user, queryClient]);
 
   // Accept friend request
   const acceptFriendMutation = useMutation({
@@ -160,12 +249,30 @@ export default function Notifications() {
     onError: () => toast.error("Failed to decline invitation")
   });
 
+  // Dismiss location share notification
+  const dismissLocationShare = useMutation({
+    mutationFn: async ({ shareId }: { shareId: string }) => {
+      // Just remove from view by setting is_active to false
+      await supabase
+        .from("location_shares")
+        .update({ is_active: false })
+        .eq("id", shareId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'friend_request':
         return <UserPlus className="w-4 h-4 text-blue-500" />;
       case 'event_invite':
         return <Calendar className="w-4 h-4 text-green-500" />;
+      case 'message':
+        return <MessageSquare className="w-4 h-4 text-purple-500" />;
+      case 'location_share':
+        return <MapPin className="w-4 h-4 text-amber-500" />;
       default:
         return <Bell className="w-4 h-4 text-muted-foreground" />;
     }
@@ -177,6 +284,10 @@ export default function Notifications() {
         return `${item.sender_name} sent you a friend request`;
       case 'event_invite':
         return `${item.sender_name} invited you to ${item.event_title}`;
+      case 'message':
+        return `${item.sender_name}: ${item.message_preview || 'New message'}`;
+      case 'location_share':
+        return `${item.sender_name} is sharing their location with you`;
       default:
         return 'New notification';
     }
@@ -268,6 +379,16 @@ export default function Notifications() {
                           <Check className="w-4 h-4" />
                         </Button>
                       </>
+                    )}
+                    {item.type === 'location_share' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={() => dismissLocationShare.mutate({ shareId: item.id })}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
                     )}
                   </div>
                 </div>
