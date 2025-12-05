@@ -515,7 +515,7 @@ export default function Messages() {
         }
       });
       return Array.from(map.values()
-    );
+    };
     enabled: !!user?.id,
   });
 
