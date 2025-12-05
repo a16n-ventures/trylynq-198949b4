@@ -613,7 +613,7 @@ const Map = () => {
                     <div className="grid grid-cols-2 gap-3">
                       <Button
                         className="gradient-primary text-white"
-                        onClick={() => navigate(`/messages?userId=${selectedFriend.id}`)}
+                        onClick={() => navigate(`/app/messages?userId=${selectedFriend.id}`)}
                       >
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Message
