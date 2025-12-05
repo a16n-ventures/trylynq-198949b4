@@ -364,7 +364,7 @@ const Profile = () => {
 
   const handleReferralCopy = () => {
     const refCode = `LYNQ-${user?.id.slice(0, 6).toUpperCase()}`;
-    const refLink = `${window.location.origin}/signup?ref=${refCode}`;
+    const refLink = `${window.location.origin}/lynq-africa?ref=${refCode}`;
     navigator.clipboard.writeText(refLink);
     toast.success("Referral link copied to clipboard!");
   };

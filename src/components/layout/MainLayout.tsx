@@ -6,6 +6,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 
 const MainLayout = () => {
   const navigate = useNavigate();
@@ -14,6 +15,10 @@ const MainLayout = () => {
   const [activeTab, setActiveTab] = useState('discover');
   const [profile, setProfile] = useState<any>(null);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+
+  // Global real-time notifications with toast alerts
+  useRealtimeNotifications();
 
   // Navigation Configuration
   const tabs = [
@@ -42,7 +47,7 @@ const MainLayout = () => {
 
     // Get Initial Unread Count (friend requests + event invitations)
     const fetchNotifications = async () => {
-      const [friendRequestsResult, eventInvitesResult] = await Promise.all([
+      const [friendRequestsResult, eventInvitesResult, unreadMessagesResult] = await Promise.all([
         supabase
           .from('friendships')
           .select('*', { count: 'exact', head: true })
@@ -52,11 +57,17 @@ const MainLayout = () => {
           .from('event_invitations')
           .select('*', { count: 'exact', head: true })
           .eq('invitee_id', user.id)
-          .eq('status', 'pending')
+          .eq('status', 'pending'),
+        supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('receiver_id', user.id)
+          .eq('is_read', false)
       ]);
       
       const total = (friendRequestsResult.count || 0) + (eventInvitesResult.count || 0);
       setNotificationCount(total);
+      setUnreadMessages(unreadMessagesResult.count || 0);
     };
     fetchNotifications();
 
@@ -114,9 +125,31 @@ const MainLayout = () => {
       )
       .subscribe();
 
+    // Real-time subscription for messages
+    const messagesChannel = supabase
+      .channel('messages_unread_count')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` },
+        () => {
+          setUnreadMessages((prev) => prev + 1);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` },
+        (payload) => {
+          if (payload.old.is_read === false && payload.new.is_read === true) {
+            setUnreadMessages((prev) => Math.max(0, prev - 1));
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(friendRequestsChannel);
       supabase.removeChannel(eventInvitesChannel);
+      supabase.removeChannel(messagesChannel);
     };
   }, [user]);
 
@@ -189,6 +222,7 @@ const MainLayout = () => {
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const showBadge = tab.id === 'messages' && unreadMessages > 0;
               return (
                 <button
                   key={tab.id}
@@ -201,6 +235,11 @@ const MainLayout = () => {
                   <div className={cn("relative p-1.5 rounded-xl transition-all", isActive && "bg-primary/10")}>
                     <Icon className={cn("w-5 h-5 transition-transform", isActive && "scale-110")} strokeWidth={isActive ? 2.5 : 2} />
                     {isActive && <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />}
+                    {showBadge && (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold px-1">
+                        {unreadMessages > 99 ? '99+' : unreadMessages}
+                      </span>
+                    )}
                   </div>
                   <span className="text-[10px] font-medium tracking-wide">{tab.label}</span>
                 </button>

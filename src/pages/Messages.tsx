@@ -346,7 +346,7 @@ const MessageBubble = React.memo(({
       )}
     </>
   );
-};
+});
 
 // Community Settings Dialog
 const CommunitySettingsDialog = ({ 
@@ -1254,7 +1254,6 @@ export default function Messages() {
     </div>
   );
 }
-});
 MessageBubble.displayName = 'MessageBubble';
 
 // Community Info Dialog with Full Moderation
@@ -1309,7 +1308,7 @@ const CommunityInfoDialog = ({
       if (!community || community.type !== 'community') return;
       await supabase
         .from('community_members')
-        .update({ is_banned: true })
+        .update({ role: 'banned' } as any)
         .eq('community_id', community.id)
         .eq('user_id', userId);
     },
@@ -1345,7 +1344,7 @@ const CommunityInfoDialog = ({
       if (!community || community.type !== 'community') return;
       await supabase
         .from('community_members')
-        .update({ is_banned: false })
+        .update({ role: 'member' } as any)
         .eq('community_id', community.id)
         .eq('user_id', userId);
     },

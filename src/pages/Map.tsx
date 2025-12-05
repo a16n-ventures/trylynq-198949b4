@@ -416,29 +416,36 @@ const Map = () => {
     };
   }, [user]);
 
-  // --- 6. Data Processing ---
+  // --- 6. Data Processing (with deduplication) ---
   const friendsMapped: FriendOnMap[] = useMemo(() => {
-    return friendsLocations.map((loc) => {
-      const lat = toNumber(loc.latitude);
-      const lng = toNumber(loc.longitude);
-      const name = loc.profiles?.display_name || 'Friend';
-      const avatar = loc.profiles?.avatar_url || undefined;
-      const coords = lat !== null && lng !== null ? { lat, lng } : null;
-      const online = friendsPresence[loc.user_id] === 'online';
+    const seen = new Set<string>();
+    return friendsLocations
+      .filter((loc) => {
+        if (seen.has(loc.user_id)) return false;
+        seen.add(loc.user_id);
+        return true;
+      })
+      .map((loc) => {
+        const lat = toNumber(loc.latitude);
+        const lng = toNumber(loc.longitude);
+        const name = loc.profiles?.display_name || 'Friend';
+        const avatar = loc.profiles?.avatar_url || undefined;
+        const coords = lat !== null && lng !== null ? { lat, lng } : null;
+        const online = friendsPresence[loc.user_id] === 'online';
 
-      return {
-        id: String(loc.user_id),
-        name,
-        avatar,
-        locationLabel: coords ? 'On the map' : 'Location hidden',
-        coordinates: coords,
-        status: online ? 'online' : 'offline',
-        lastSeen: online ? 'Active now' : 'Offline',
-        distanceKm: null,
-        latitude: lat,
-        longitude: lng,
-      };
-    });
+        return {
+          id: String(loc.user_id),
+          name,
+          avatar,
+          locationLabel: coords ? 'On the map' : 'Location hidden',
+          coordinates: coords,
+          status: online ? 'online' : 'offline',
+          lastSeen: online ? 'Active now' : 'Offline',
+          distanceKm: null,
+          latitude: lat,
+          longitude: lng,
+        };
+      });
   }, [friendsLocations, friendsPresence]);
 
   const friendsWithDistance = useMemo(() => {
