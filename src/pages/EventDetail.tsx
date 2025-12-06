@@ -66,7 +66,10 @@ type Attendee = {
 };
 
 const EventDetail = () => {
-  const { eventId } = useParams();
+  // FIXED: Handle both 'id' (standard) and 'eventId' (custom) parameter names
+  const params = useParams();
+  const eventId = params.eventId || params.id;
+  
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -88,31 +91,63 @@ const EventDetail = () => {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch event details
+  // Fetch event details (Robust Version)
   const { data: event, isPending: loadingEvent } = useQuery({
     queryKey: ['event', eventId],
     queryFn: async (): Promise<Event> => {
-      const { data, error } = await supabase
+      if (!eventId) throw new Error("No event ID");
+
+      // 1. Fetch Event first (No Joins to avoid FK errors)
+      const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select(`
-          *,
-          creator:profiles!creator_id (
-            user_id,
-            display_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('id', eventId)
         .single();
 
-      if (error) throw error;
+      if (eventError) throw eventError;
+
+      // 2. Fetch Creator Profile Separately
+      let creatorProfile = { 
+        user_id: eventData.creator_id, 
+        display_name: 'Unknown Host', 
+        avatar_url: undefined 
+      };
+
+      if (eventData.creator_id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id, display_name, avatar_url')
+          .eq('id', eventData.creator_id) // check against id
+          .maybeSingle(); // maybeSingle prevents error if profile missing
+        
+        if (!profile) {
+             // Fallback check for user_id if id didn't match
+             const { data: profileAlt } = await supabase
+              .from('profiles')
+              .select('user_id, display_name, avatar_url')
+              .eq('user_id', eventData.creator_id)
+              .maybeSingle();
+             
+             if (profileAlt) {
+                 creatorProfile = {
+                    user_id: eventData.creator_id,
+                    display_name: profileAlt.display_name || 'Unknown Host',
+                    avatar_url: profileAlt.avatar_url
+                 };
+             }
+        } else {
+             creatorProfile = {
+                user_id: eventData.creator_id,
+                display_name: profile.display_name || 'Unknown Host',
+                avatar_url: profile.avatar_url
+             };
+        }
+      }
       
-      // Map and cast data to Event type
-      const creatorData = Array.isArray(data.creator) ? data.creator[0] : data.creator;
       return {
-        ...data,
-        event_type: (data.event_type as 'physical' | 'virtual') || 'physical',
-        creator: creatorData || { user_id: data.creator_id, display_name: 'Unknown', avatar_url: undefined }
+        ...eventData,
+        event_type: (eventData.event_type as 'physical' | 'virtual') || 'physical',
+        creator: creatorProfile
       } as Event;
     },
     enabled: !!eventId,
@@ -122,23 +157,35 @@ const EventDetail = () => {
   const { data: attendees = [] } = useQuery<Attendee[]>({
     queryKey: ['event-attendees', eventId],
     queryFn: async () => {
-      // FIX 2: Added join query for profile details of attendees
-      const { data, error } = await supabase
+      if (!eventId) return [];
+
+      // 1. Get attendee IDs
+      const { data: rawAttendees, error } = await supabase
         .from('event_attendees')
-        .select(`
-          status,
-          profiles:user_id (
-            user_id,
-            display_name,
-            avatar_url
-          )
-        `)
+        .select('user_id, status')
         .eq('event_id', eventId)
         .eq('status', 'confirmed');
 
       if (error) throw error;
-      // Map the nested profile object to flat Attendee type
-      return data.map((a: any) => a.profiles) as Attendee[];
+      if (!rawAttendees?.length) return [];
+
+      const userIds = rawAttendees.map(a => a.user_id);
+
+      // 2. Fetch Profiles safely
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, user_id, display_name, avatar_url')
+        .or(`id.in.(${userIds.join(',')}),user_id.in.(${userIds.join(',')})`); // Check both ID columns
+
+      // Map back to format
+      return userIds.map(uid => {
+        const profile = profiles?.find(p => p.id === uid || p.user_id === uid);
+        return {
+            user_id: uid,
+            display_name: profile?.display_name || 'Attendee',
+            avatar_url: profile?.avatar_url
+        };
+      });
     },
     enabled: !!eventId,
   });
@@ -147,7 +194,7 @@ const EventDetail = () => {
   const { data: isAttending } = useQuery({
     queryKey: ['is-attending', eventId, user?.id],
     queryFn: async () => {
-      if (!user?.id) return false;
+      if (!user?.id || !eventId) return false;
       const { data } = await supabase
         .from('event_attendees')
         .select('id')
@@ -374,6 +421,7 @@ const EventDetail = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground">Event not found</p>
+        <Button variant="link" onClick={() => navigate('/events')}>Go back to Events</Button>
       </div>
     );
   }
@@ -414,6 +462,9 @@ const EventDetail = () => {
                 title: event.title,
                 url: window.location.href
               });
+            } else {
+              navigator.clipboard.writeText(window.location.href);
+              toast.success("Link copied!");
             }
           }}
         >
@@ -550,6 +601,7 @@ const EventDetail = () => {
                   <Button
                     variant="outline"
                     className="w-full"
+                    // FIXED: Removed '/app' prefix for Invite link
                     onClick={() => navigate(`/events/${eventId}/invite`)}
                   >
                     <UserPlus className="w-4 h-4 mr-2" />
@@ -560,7 +612,7 @@ const EventDetail = () => {
             )}
           </TabsContent>
 
-          <TabsContent value="attendees" className="space-y-2 mt-4">
+                    <TabsContent value="attendees" className="space-y-2 mt-4">
             {attendees.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No attendees yet
