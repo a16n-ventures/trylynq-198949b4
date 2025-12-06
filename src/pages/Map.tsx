@@ -417,9 +417,21 @@ const Map = () => {
   }, [user]);
 
   // --- 6. Data Processing (with deduplication) ---
+  const nearbyFriendsRaw = useMemo(() => {
+    if (!location?.latitude || !location?.longitude) return friendsLocations;
+    
+    return friendsLocations.filter(loc => {
+      const lat = toNumber(loc.latitude);
+      const lng = toNumber(loc.longitude);
+      if (lat === null || lng === null) return false;
+      const km = distanceKm(location.latitude, location.longitude, lat, lng);
+      return km <= 50; // Limit to 50km
+    });
+  }, [friendsLocations, location]);
+
   const friendsMapped: FriendOnMap[] = useMemo(() => {
     const seen = new Set<string>();
-    return friendsLocations
+    return nearbyFriendsRaw
       .filter((loc) => {
         if (seen.has(loc.user_id)) return false;
         seen.add(loc.user_id);
@@ -446,7 +458,7 @@ const Map = () => {
           longitude: lng,
         };
       });
-  }, [friendsLocations, friendsPresence]);
+  }, [nearbyFriendsRaw, friendsPresence]);
 
   const friendsWithDistance = useMemo(() => {
     if (!location?.latitude || !location?.longitude) return friendsMapped;
@@ -497,7 +509,7 @@ const Map = () => {
         <LeafletMap
           ref={mapRef}
           userLocation={location ?? { latitude: 6.5244, longitude: 3.3792 }}
-          friendsLocations={activeView === 'friends' ? friendsLocations : []}
+          friendsLocations={activeView === 'friends' ? nearbyFriendsRaw : []}
           loading={locationLoading}
           error={locationError}
         />
