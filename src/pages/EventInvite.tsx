@@ -192,7 +192,7 @@ const EventInvitePage = () => {
   };
 
   const getShareLink = () => {
-    return `${window.location.origin}/app/events/${eventId}`;
+    return `${window.location.origin}/events/${eventId}`;
   };
 
   const copyToClipboard = async () => {
@@ -248,7 +248,7 @@ const EventInvitePage = () => {
               variant="ghost"
               size="sm"
               className="text-white hover:bg-white/20 p-2"
-              onClick={() => navigate(`/app/events/${eventId}`)}
+              onClick={() => navigate(`/events/${eventId}`)}
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
