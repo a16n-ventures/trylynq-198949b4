@@ -248,7 +248,7 @@ const EventInvitePage = () => {
               variant="ghost"
               size="sm"
               className="text-white hover:bg-white/20 p-2"
-              onClick={() => navigate(`/events/${eventId}`)}
+              onClick={() => navigate(`/app/events/${eventId}`)}
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
