@@ -9,48 +9,10 @@ import {
 import { Search, Filter, ArrowUpDown, Loader2, MapPin, User, Mail } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Replaced generic useNearbyUsers with Smart AI Matcher
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
-  const [loadingNearby, setLoadingNearby] = useState(false);
-
-  const requestLocation = () => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(pos => {
-        setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-      });
-    }
-  };
-
-  // Smart Friend Fetcher
-  useEffect(() => {
-    if (activeTab === 'discover' && discoverView === 'nearby' && userLocation && userId) {
-      const fetchSmartFriends = async () => {
-        setLoadingNearby(true);
-        const { data, error } = await supabase.rpc('suggest_nearby_friends', {
-          requesting_user_id: userId,
-          user_lat: userLocation.latitude,
-          user_long: userLocation.longitude,
-          limit_count: 20
-        });
-
-        if (!error && data) {
-          // Map RPC result to Profile interface
-          const formatted = data.map((u: any) => ({
-            user_id: u.friend_id,
-            display_name: u.display_name,
-            avatar_url: u.avatar_url,
-            distance_km: u.distance_km, // Now available from AI
-            match_score: u.score // Usage: You can display this as a "% Match" badge
-          }));
-          setNearbyUsers(formatted);
-        }
-        setLoadingNearby(false);
-      };
-
-      fetchSmartFriends();
-    }
-  }, [activeTab, discoverView, userLocation, userId]);
+// Hooks
+import { useFriends, type Profile } from "@/hooks/useFriends";
+import { useNearbyUsers } from "@/hooks/useNearbyUsers";
+import { useContacts } from "@/hooks/useContacts";
 
 // Components
 import { FriendSkeleton } from "@/components/friends/FriendSkeleton";
