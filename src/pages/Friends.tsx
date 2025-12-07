@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,10 +8,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Search, Filter, ArrowUpDown, Loader2, MapPin, User, Mail } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 // Hooks
 import { useFriends, type Profile } from "@/hooks/useFriends";
-import { useNearbyUsers } from "@/hooks/useNearbyUsers";
 import { useContacts } from "@/hooks/useContacts";
 
 // Components
@@ -75,19 +75,64 @@ export default function Friends() {
   } = useFriends(userId);
 
   const {
-    nearbyUsers,
-    isLoading: loadingNearby,
-    userLocation,
-    requestLocation,
-  } = useNearbyUsers(userId, activeTab === 'discover' && discoverView === 'nearby');
-
-  const {
     contacts,
     isLoading: loadingContacts,
     addContact,
     deleteContact,
     inviteContact,
   } = useContacts(userId);
+
+  // --- SMART FRIEND FINDER LOGIC (Replaces useNearbyUsers) ---
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
+  const [loadingNearby, setLoadingNearby] = useState(false);
+
+  const requestLocation = () => {
+    if ('geolocation' in navigator) {
+      setLoadingNearby(true); // Show loading state while getting position
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+          setLoadingNearby(false);
+        },
+        (err) => {
+          console.error("Location error:", err);
+          setLoadingNearby(false);
+        }
+      );
+    }
+  };
+
+  // Smart Friend Fetcher Effect
+  useEffect(() => {
+    if (activeTab === 'discover' && discoverView === 'nearby' && userLocation && userId) {
+      const fetchSmartFriends = async () => {
+        setLoadingNearby(true);
+        const { data, error } = await supabase.rpc('suggest_nearby_friends', {
+          requesting_user_id: userId,
+          user_lat: userLocation.latitude,
+          user_long: userLocation.longitude,
+          limit_count: 20
+        });
+
+        if (!error && data) {
+          // Map RPC result to Profile interface
+          const formatted = data.map((u: any) => ({
+            user_id: u.friend_id,
+            display_name: u.display_name,
+            avatar_url: u.avatar_url,
+            distance_km: u.distance_km, // Now available from AI
+            match_score: u.score // Usage: You can display this as a "% Match" badge
+          }));
+          setNearbyUsers(formatted);
+        }
+        setLoadingNearby(false);
+      };
+
+      fetchSmartFriends();
+    }
+  }, [activeTab, discoverView, userLocation, userId]);
+  // -----------------------------------------------------------
 
   // Filtered data
   const filteredFriends = useMemo(() => {
