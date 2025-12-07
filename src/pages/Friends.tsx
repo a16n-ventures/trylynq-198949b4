@@ -85,23 +85,13 @@ export default function Friends() {
   // --- SMART FRIEND FINDER LOGIC (Replaces useNearbyUsers) ---
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
-  const [loadingNearby, setLoadingNearby] = useState(false);
+  const [loadingNearby, setLoadingNearby] = useState(false); 
 
   const requestLocation = () => {
     if ('geolocation' in navigator) {
-      setLoadingNearby(true); // Show loading state while getting position
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-          setLoadingNearby(false);
-        },
-        (err) => {
-          console.error("Location error:", err);
-          setLoadingNearby(false);
-        }
-      );
-    }
-  };
+      setLoadingNearby(true); // Show loading state while getting position 
+
+      const { location: userLocation, requestLocation, isLoading: loadingNearby } = useGeolocation();
 
   // Smart Friend Fetcher Effect
   useEffect(() => {
