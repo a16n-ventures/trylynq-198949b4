@@ -30,8 +30,8 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
           .single();
 
         // If no interests found, force onboarding
-        if ((!profile?.interests || profile.interests.length === 0) && location.pathname !== '/onboarding') {
-          navigate("/onboarding");
+        if ((!profile?.interests || profile.interests.length === 0) && location.pathname !== '/app/onboarding') {
+          navigate("/app/onboarding");
         }
       } catch (error) {
         console.error("Profile check failed", error);
