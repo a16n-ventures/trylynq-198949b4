@@ -11,30 +11,42 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
 
   useEffect(() => { 
-    // 1. Wait for Auth Context to initialize
+    // 1. Wait for Auth Context
     if (authLoading) return;
 
-    // 2. If not logged in, redirect to home/login
+    // 2. If not logged in, redirect to home
     if (!user) {
       navigate('/', { replace: true });
       return;
     }
 
-    // 3. If logged in, check Onboarding Status
+    // 3. Check Onboarding Status safely
     const checkOnboardingStatus = async () => {
       try {
-        const { data: profile } = await supabase
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('interests')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
-        // If no interests found, force onboarding
-        if ((!profile?.interests || profile.interests.length === 0) && location.pathname !== '/app/onboarding') {
+        // If DB error occurs, LOG it but DO NOT redirect (prevents infinite loop)
+        if (error) {
+          console.error("Profile check skipped due to error:", error);
+          setIsChecking(false);
+          return;
+        }
+
+        // Normalize path to avoid "/onboarding/" vs "/onboarding" mismatches
+        const currentPath = location.pathname.replace(/\/$/, "");
+        const isOnboarding = currentPath === '/app/onboarding';
+
+        // Only force redirect if we are CERTAIN interests are missing
+        if (profile && (!profile.interests || profile.interests.length === 0) && !isOnboarding) {
+          console.log("Missing interests, redirecting to onboarding");
           navigate("/app/onboarding");
         }
-      } catch (error) {
-        console.error("Profile check failed", error);
+      } catch (err) {
+        console.error("Unexpected route guard error:", err);
       } finally {
         setIsChecking(false);
       }
@@ -43,10 +55,9 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     checkOnboardingStatus();
   }, [user, authLoading, navigate, location.pathname]);
 
-  // Show loader while checking auth OR checking onboarding status
   if (authLoading || isChecking) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
           <p className="mt-4 text-muted-foreground">Loading...</p>
@@ -55,10 +66,8 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  // If user is not authenticated (and effect hasn't redirected yet), don't render children
-  if (!user) {
-    return null;
-  }
+  // If user is not authenticated, don't render children
+  if (!user) return null;
 
   return <>{children}</>;
 };
