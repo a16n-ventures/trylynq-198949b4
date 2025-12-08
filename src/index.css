@@ -9,19 +9,34 @@
 
 /* --- CRITICAL MAP FIXES --- */
 
-/* 1. Fix Tailwind Image Reset Conflict */
-/* Tailwind sets img { max-width: 100% }, which breaks Leaflet tiles */
+/* --- LEAFLET MAP FIXES --- */
+
+/* 1. Force map tiles to display correctly (Overrides Tailwind) */
 .leaflet-tile {
   max-width: none !important;
+  max-height: none !important;
 }
 
-/* 2. Fix Leaflet Container */
+/* 2. Ensure the map container has explicit stacking context */
 .leaflet-container {
-  height: 100%;
-  width: 100%;
-  /* Remove z-index here to let React control stacking via Tailwind classes */
-  z-index: auto; 
-  background-color: #f3f4f6; /* Fallback color while loading */
+  isolation: isolate;
+  z-index: 0;
+  background-color: #e5e7eb; /* Light grey placeholder */
+}
+
+/* 3. Fix marker visibility */
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+/* 4. Fix popup z-index */
+.leaflet-pane {
+  z-index: 1 !important;
+}
+.leaflet-bottom, .leaflet-top {
+  z-index: 1000 !important;
 }
 
 /* 3. Fix Marker Z-Index */
