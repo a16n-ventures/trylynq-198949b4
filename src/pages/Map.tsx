@@ -64,9 +64,9 @@ const Map = () => {
   const navigate = useNavigate();
   const mapRef = useRef<LeafletMapHandle>(null);
   
-  // --- Global State ---
+  // --- Global State (Context) ---
   const { location, requestLocation, isLoading: locationLoading, error: locationError } = useGeolocation();
-  const { friends = [] } = useFriends(user?.id); // Standardized Friend List
+  const { friends = [] } = useFriends(user?.id); 
 
   // --- Local State ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,7 +79,6 @@ const Map = () => {
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
 
   // --- 1. Fetch Friend Locations (Optimized) ---
-  // We extract IDs from the standardized hook and fetch their locations in one batch
   const friendIds = useMemo(() => {
     return friends.map(f => f.requester_id === user?.id ? f.addressee.id : f.requester.id);
   }, [friends, user?.id]);
@@ -92,19 +91,17 @@ const Map = () => {
         .from('user_locations')
         .select('user_id, latitude, longitude, is_sharing_location, updated_at')
         .in('user_id', friendIds)
-        .eq('is_sharing_location', true); // Only show visible friends
+        .eq('is_sharing_location', true); 
       return data || [];
     },
     enabled: friendIds.length > 0 && activeView === 'friends',
-    refetchInterval: 30000, // Refresh every 30s
+    refetchInterval: 30000, 
   });
 
   // --- 2. Data Processing & Deduplication ---
-  // Merge Profile Data (from Hook) with Location Data (from Query)
   const nearbyFriendsRaw = useMemo(() => {
     if (!location) return [];
 
-    // Create a Map to ensure uniqueness by User ID
     const uniqueFriendsMap = new Map();
 
     friends.forEach(friendship => {
@@ -133,8 +130,7 @@ const Map = () => {
     return nearbyFriendsRaw
       .map((loc: any) => {
         const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
-        // Filter by 50km Radius
-        if (dist > 50) return null;
+        if (dist > 50) return null; // 50km Limit
 
         const online = friendsPresence[loc.user_id] === 'online';
         return {
@@ -153,13 +149,11 @@ const Map = () => {
       .filter(Boolean) as FriendOnMap[];
   }, [nearbyFriendsRaw, friendsPresence, location]);
 
-  // --- 3. Events Fetching (Same logic, cleaner implementation) ---
+  // --- 3. Events Fetching ---
   const { data: events = [], isLoading: eventsLoading } = useQuery({
     queryKey: ['events', 'nearby', location?.latitude, location?.longitude],
     queryFn: async () => {
       if (!location) return [];
-      // Call the AI Smart Feed edge function for events if premium, 
-      // or standard fetch if basic. For now, using standard fetch + distance filter.
       const { data } = await supabase
         .from('events')
         .select('*, creator:profiles!creator_id(display_name, avatar_url)')
@@ -169,9 +163,7 @@ const Map = () => {
       if (!data) return [];
 
       return data.map((e: any) => {
-        // Mock geocoding/distance if coords missing (In prod, use PostGIS)
-        // This assumes events have lat/long. If not, we skip map placement.
-        const eLat = e.latitude || 6.5244; // Fallback
+        const eLat = e.latitude || 6.5244; 
         const eLng = e.longitude || 3.3792;
         const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
         
@@ -196,7 +188,20 @@ const Map = () => {
     enabled: !!location && activeView === 'events',
   });
 
-  // --- 4. Ghost Mode Toggle ---
+  // --- 4. Ghost Mode ---
+  useEffect(() => {
+    if (!user) return;
+    const checkStatus = async () => {
+      const { data } = await supabase
+        .from('user_locations')
+        .select('is_sharing_location')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (data) setIsGhostMode(!data.is_sharing_location);
+    };
+    checkStatus();
+  }, [user]);
+
   const toggleGhostMode = async () => {
     if (!user) return;
     const newValue = !isGhostMode;
@@ -213,7 +218,7 @@ const Map = () => {
     }
   };
 
-  // --- 5. Presence (Online Status) ---
+  // --- 5. Presence ---
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel('online-users', { config: { presence: { key: user.id } } });
@@ -240,23 +245,22 @@ const Map = () => {
   }, [searchQuery, friendsMapped, events, activeView]);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-background">
-      {/* MAP LAYER */}
-      <div className="absolute inset-0 z-0">
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-background">
+      {/* LAYER 1: MAP (Absolute Background) */}
+      <div className="absolute inset-0 z-0 h-full w-full">
         <LeafletMap
           ref={mapRef}
           userLocation={location}
-          // Pass the merged, deduplicated data to the map
           friendsLocations={activeView === 'friends' ? nearbyFriendsRaw : []} 
           loading={locationLoading}
           error={locationError}
-          // Assuming you update LeafletMap to accept this prop for the satellite view
           mapStyle={mapStyle} 
         />
       </div>
 
-      {/* UI OVERLAY */}
+      {/* LAYER 2: UI OVERLAY */}
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
+        
         {/* Header */}
         <div className="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pointer-events-auto">
           <div className="container-mobile flex items-center gap-3">
@@ -297,7 +301,6 @@ const Map = () => {
               </TabsList>
             </Tabs>
 
-            {/* Satellite Toggle */}
             <Button
               size="sm"
               variant="ghost"
@@ -312,65 +315,175 @@ const Map = () => {
 
         <div className="flex-grow" />
 
-        {/* Bottom Sheet List */}
-        <div className="relative pointer-events-auto pb-6">
+        {/* Bottom Sheet */}
+        <div className="relative pointer-events-auto pb-safe">
           <div className="container-mobile flex justify-end mb-4 px-4">
             <Button
-              onClick={() => requestLocation()}
+              onClick={() => location ? mapRef.current?.recenter() : requestLocation()}
               className="rounded-full shadow-lg h-12 w-12 bg-white text-black hover:bg-gray-100"
             >
-              <Crosshair className="h-6 w-6" />
+              {locationLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Crosshair className="h-6 w-6" />}
             </Button>
           </div>
 
-          <div className="max-h-[45vh] overflow-y-auto px-4 pb-safe">
-            {/* List Cards Logic (Same as before but using filteredList) */}
-            <Card className="gradient-card shadow-card border-0 backdrop-blur-xl bg-background/85">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold">{activeView === 'friends' ? 'Nearby Friends' : 'Nearby Events'}</h3>
-                  <Badge variant="secondary" className="text-xs">{filteredList.length}</Badge>
-                </div>
-
-                <div className="space-y-1">
-                  {filteredList.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground text-sm">
-                      No {activeView} found nearby.
-                    </div>
-                  ) : (
-                    filteredList.map((item: any) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
-                        onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
-                      >
-                        {activeView === 'friends' ? (
-                          <div className="relative">
-                            <Avatar className="w-10 h-10">
-                              <AvatarImage src={item.avatar} />
-                              <AvatarFallback>{item.name[0]}</AvatarFallback>
-                            </Avatar>
-                            {item.status === 'online' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />}
-                          </div>
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                            {format(new Date(item.start_date), 'd')}
-                          </div>
-                        )}
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between">
-                            <h4 className="font-medium text-sm truncate">{item.name || item.title}</h4>
-                            <span className="text-xs text-muted-foreground">{item.distanceKm}km</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">{item.locationLabel || item.location}</p>
+          <div className="max-h-[45vh] overflow-y-auto px-4 pb-6">
+            {/* Conditional Rendering: Friend Card OR Event Card OR List */}
+            {selectedFriend && activeView === 'friends' ? (
+                <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <Avatar className="w-14 h-14 border-2 border-white/20">
+                            <AvatarImage src={selectedFriend.avatar || undefined} />
+                            <AvatarFallback>{selectedFriend.name.slice(0,2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          {selectedFriend.status === 'online' && (
+                            <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-background rounded-full" />
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg leading-tight">{selectedFriend.name}</h3>
+                          <p className="text-sm text-muted-foreground flex items-center gap-1">
+                            <MapPin className="w-3 h-3" /> 
+                            {selectedFriend.locationLabel}
+                            {selectedFriend.distanceKm && ` • ${selectedFriend.distanceKm}km away`}
+                          </p>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                      <Button variant="ghost" size="icon" onClick={() => setSelectedFriend(null)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        className="gradient-primary text-white"
+                        onClick={() => navigate(`/messages?userId=${selectedFriend.id}`)}
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Message
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const { latitude, longitude } = selectedFriend;
+                          if (latitude && longitude) {
+                            const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+                            window.open(url, '_blank');
+                          } else {
+                            toast.error('Location unavailable');
+                          }
+                        }}
+                        disabled={!selectedFriend.latitude || !selectedFriend.longitude}
+                      >
+                        <Navigation className="w-4 h-4 mr-2" />
+                        Directions
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+            ) : selectedEvent && activeView === 'events' ? (
+                <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
+                  <CardContent className="p-4">
+                    <div className="flex gap-3 mb-4">
+                      {selectedEvent.image_url && (
+                        <img 
+                          src={selectedEvent.image_url} 
+                          alt={selectedEvent.title}
+                          className="w-20 h-20 rounded-lg object-cover"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-2 mb-2">
+                          <h3 className="font-bold text-lg leading-tight">{selectedEvent.title}</h3>
+                          <Button variant="ghost" size="icon" onClick={() => setSelectedEvent(null)}>
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {format(new Date(selectedEvent.start_date), 'MMM d, h:mm a')}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {selectedEvent.location}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        className="gradient-primary text-white"
+                        onClick={() => navigate(`/events/${selectedEvent.id}`)}
+                      >
+                        View Details
+                      </Button>
+                      {selectedEvent.latitude && selectedEvent.longitude && (
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedEvent.latitude},${selectedEvent.longitude}`;
+                            window.open(url, '_blank');
+                          }}
+                        >
+                          <Navigation className="w-4 h-4 mr-2" />
+                          Directions
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+            ) : (
+                <Card className="gradient-card shadow-card border-0 backdrop-blur-xl bg-background/85">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold">{activeView === 'friends' ? 'Nearby Friends' : 'Nearby Events'}</h3>
+                      <Badge variant="secondary" className="text-xs">{filteredList.length}</Badge>
+                    </div>
+
+                    <div className="space-y-1">
+                      {filteredList.length === 0 ? (
+                        <div className="text-center py-6 text-muted-foreground text-sm">
+                          {searchQuery ? `No ${activeView} match your search.` : `No ${activeView} found nearby.`}
+                        </div>
+                      ) : (
+                        filteredList.map((item: any) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
+                            onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
+                          >
+                            {activeView === 'friends' ? (
+                              <div className="relative">
+                                <Avatar className="w-10 h-10">
+                                  <AvatarImage src={item.avatar} />
+                                  <AvatarFallback>{item.name[0]}</AvatarFallback>
+                                </Avatar>
+                                {item.status === 'online' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />}
+                              </div>
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                {format(new Date(item.start_date), 'd')}
+                              </div>
+                            )}
+                            
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between">
+                                <h4 className="font-medium text-sm truncate">{item.name || item.title}</h4>
+                                <span className="text-xs text-muted-foreground">{item.distanceKm}km</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{item.locationLabel || item.location}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+            )}
           </div>
         </div>
       </div>
