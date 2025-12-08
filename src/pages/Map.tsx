@@ -7,7 +7,7 @@ import {
   Crosshair, 
   MapPin, 
   Search, 
-  Plus,
+  Plus, 
   Eye, 
   EyeOff, 
   Navigation,
