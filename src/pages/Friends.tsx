@@ -9,11 +9,11 @@ import {
 import { Search, Filter, ArrowUpDown, Loader2, MapPin, User, Mail } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useGeolocation } from '@/contexts/LocationContext';
 
 // Hooks
 import { useFriends, type Profile } from "@/hooks/useFriends";
 import { useContacts } from "@/hooks/useContacts";
-import { useGeolocation } from '@/contexts/LocationContext';
 
 // Components
 import { FriendSkeleton } from "@/components/friends/FriendSkeleton";
@@ -23,7 +23,7 @@ import { NearbyUserCard } from "@/components/friends/NearbyUserCard";
 import { ContactCard } from "@/components/friends/ContactCard";
 import { FriendProfilePreview } from "@/components/friends/FriendProfilePreview";
 import { BlockReportDialog } from "@/components/friends/BlockReportDialog";
-import { AddContactForm } from "@/components/friends/AddContactForm"; 
+import { AddContactForm } from "@/components/friends/AddContactForm";
 
 // Utilities
 const DEBOUNCE_DELAY = 500;
@@ -84,29 +84,26 @@ export default function Friends() {
   } = useContacts(userId);
 
   // --- SMART FRIEND FINDER LOGIC ---
-  // Use the centralized location context
   const { location: userLocation, requestLocation, isLoading: isLocationLoading } = useGeolocation();
   const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
   const [isFetchingFriends, setIsFetchingFriends] = useState(false);
 
-  // Combine loading states (GPS loading OR Database loading)
   const loadingNearby = isLocationLoading || isFetchingFriends;
 
-  // Smart Friend Fetcher Effect
   useEffect(() => {
-    // Only fetch if we are on the right tab
-    if (activeTab === 'discover' && discoverView === 'nearby' && userLocation && userId) {
+    // Only fetch if we are on the 'discover' -> 'nearby' tab
+    if (activeTab === 'discover' && discoverView === 'nearby') {
       
-      // If we don't have location yet, ask for it
       if (!userLocation) {
+        // If location is missing, trigger request (managed by Context)
         requestLocation(); 
         return; 
       }
 
-      // If we have location and user ID, fetch from AI
       if (userId) {
         const fetchSmartFriends = async () => {
           setIsFetchingFriends(true);
+          // Call the RPC function we created in SQL
           const { data, error } = await supabase.rpc('suggest_nearby_friends', {
             requesting_user_id: userId,
             user_lat: userLocation.latitude,
@@ -116,7 +113,7 @@ export default function Friends() {
 
           if (!error && data) {
             const formatted = data.map((u: any) => ({
-              user_id: u.friend_id,
+              user_id: u.friend_id, // Mapped from SQL alias
               display_name: u.display_name,
               avatar_url: u.avatar_url,
               distance_km: u.distance_km,
@@ -131,8 +128,6 @@ export default function Friends() {
       }
     }
   }, [activeTab, discoverView, userLocation, userId, requestLocation]);
-
-  // -----------------------------------------------------------
 
   // Filtered data
   const filteredFriends = useMemo(() => {
