@@ -4,28 +4,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
-  Crosshair, 
-  MapPin, 
-  Search, 
-  Plus, 
-  Eye, 
-  EyeOff, 
-  Navigation,
-  MessageSquare,
-  Calendar,
-  Users,
-  Loader2,
-  X,
-  MapPinned,
-  Video,
-  Globe, 
-  Layers
+  Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
+  MessageSquare, Calendar, Users, Loader2, X, MapPinned,
+  Video, Globe, Layers
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useGeolocation } from '@/contexts/LocationContext'; // FIXED: Use Context
-import { useFriends } from '@/hooks/useFriends'; // FIXED: Use Hook
+import { useGeolocation } from '@/contexts/LocationContext';
+import { useFriends } from '@/hooks/useFriends';
 import { ContactImportModal } from '@/components/map/ContactImportModal';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -64,9 +51,9 @@ const Map = () => {
   const navigate = useNavigate();
   const mapRef = useRef<LeafletMapHandle>(null);
   
-  // --- Global State (Context) ---
+  // --- Global State ---
   const { location, requestLocation, isLoading: locationLoading, error: locationError } = useGeolocation();
-  const { friends = [] } = useFriends(user?.id); 
+  const { friends = [] } = useFriends(user?.id);
 
   // --- Local State ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,7 +67,8 @@ const Map = () => {
 
   // --- 1. Fetch Friend Locations (Optimized) ---
   const friendIds = useMemo(() => {
-    return friends.map(f => f.requester_id === user?.id ? f.addressee.id : f.requester.id);
+    // FIXED: Using user_id instead of id
+    return friends.map(f => f.requester_id === user?.id ? f.addressee.user_id : f.requester.user_id);
   }, [friends, user?.id]);
 
   const { data: friendLocations = [] } = useQuery({
@@ -106,11 +94,13 @@ const Map = () => {
 
     friends.forEach(friendship => {
       const profile = friendship.requester_id === user?.id ? friendship.addressee : friendship.requester;
-      const loc = friendLocations.find(l => l.user_id === profile.id);
+      // FIXED: Using user_id
+      const loc = friendLocations.find(l => l.user_id === profile.user_id);
 
       if (loc && loc.latitude && loc.longitude) {
-        uniqueFriendsMap.set(profile.id, {
-          user_id: profile.id,
+        // FIXED: Using user_id
+        uniqueFriendsMap.set(profile.user_id, {
+          user_id: profile.user_id,
           latitude: loc.latitude,
           longitude: loc.longitude,
           profiles: {
@@ -245,9 +235,9 @@ const Map = () => {
   }, [searchQuery, friendsMapped, events, activeView]);
 
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-background">
-      {/* LAYER 1: MAP (Absolute Background) */}
-      <div className="absolute inset-0 z-0 h-full w-full">
+    <div className="relative h-screen w-screen overflow-hidden bg-background">
+      {/* MAP LAYER */}
+      <div className="absolute inset-0 z-0">
         <LeafletMap
           ref={mapRef}
           userLocation={location}
@@ -258,7 +248,7 @@ const Map = () => {
         />
       </div>
 
-      {/* LAYER 2: UI OVERLAY */}
+      {/* UI OVERLAY */}
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
         {/* Header */}
@@ -267,7 +257,7 @@ const Map = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70" />
               <Input 
-                placeholder={activeView === 'friends' ? "Find nearby friends..." : "Find events..."}
+                placeholder={activeView === 'friends' ? "Find friends..." : "Find events..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/60 backdrop-blur-md"
@@ -315,7 +305,7 @@ const Map = () => {
 
         <div className="flex-grow" />
 
-        {/* Bottom Sheet */}
+        {/* BOTTOM SHEET */}
         <div className="relative pointer-events-auto pb-safe">
           <div className="container-mobile flex justify-end mb-4 px-4">
             <Button
@@ -327,7 +317,7 @@ const Map = () => {
           </div>
 
           <div className="max-h-[45vh] overflow-y-auto px-4 pb-6">
-            {/* Conditional Rendering: Friend Card OR Event Card OR List */}
+            {/* Conditional Rendering */}
             {selectedFriend && activeView === 'friends' ? (
                 <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
                   <CardContent className="p-4">
