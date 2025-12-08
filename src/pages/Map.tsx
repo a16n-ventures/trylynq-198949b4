@@ -67,7 +67,7 @@ const Map = () => {
 
   // --- 1. Fetch Friend Locations (Optimized) ---
   const friendIds = useMemo(() => {
-    // FIXED: Using user_id instead of id
+    // FIX: Using user_id correctly as requested
     return friends.map(f => f.requester_id === user?.id ? f.addressee.user_id : f.requester.user_id);
   }, [friends, user?.id]);
 
@@ -94,11 +94,10 @@ const Map = () => {
 
     friends.forEach(friendship => {
       const profile = friendship.requester_id === user?.id ? friendship.addressee : friendship.requester;
-      // FIXED: Using user_id
+      // FIX: Match location by user_id
       const loc = friendLocations.find(l => l.user_id === profile.user_id);
 
       if (loc && loc.latitude && loc.longitude) {
-        // FIXED: Using user_id
         uniqueFriendsMap.set(profile.user_id, {
           user_id: profile.user_id,
           latitude: loc.latitude,
@@ -235,9 +234,9 @@ const Map = () => {
   }, [searchQuery, friendsMapped, events, activeView]);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-background">
-      {/* MAP LAYER */}
-      <div className="absolute inset-0 z-0">
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-background">
+      {/* LAYER 1: MAP */}
+      <div className="absolute inset-0 z-0 h-full w-full">
         <LeafletMap
           ref={mapRef}
           userLocation={location}
@@ -248,7 +247,7 @@ const Map = () => {
         />
       </div>
 
-      {/* UI OVERLAY */}
+      {/* LAYER 2: UI OVERLAY */}
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
         {/* Header */}
@@ -407,6 +406,7 @@ const Map = () => {
                     <div className="grid grid-cols-2 gap-3">
                       <Button
                         className="gradient-primary text-white"
+                        // FIX: Updated route to /events/...
                         onClick={() => navigate(`/events/${selectedEvent.id}`)}
                       >
                         View Details
