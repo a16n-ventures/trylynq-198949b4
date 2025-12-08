@@ -2,65 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-/* REMOVE the @import 'leaflet/dist/leaflet.css'; line.
-   It is already imported in LeafletMap.tsx. 
-   Keeping it here can cause build conflicts.
-*/
+/* --- CRITICAL MAP FIXES (Must be after @tailwind base) --- */
 
-/* --- CRITICAL MAP FIXES --- */
-
-/* --- LEAFLET MAP FIXES --- */
-
-/* 1. Force map tiles to display correctly (Overrides Tailwind) */
-.leaflet-tile {
+/* 1. OVERRIDE TAILWIND IMAGE RESET */
+/* This is the #1 reason maps show up white/broken in Tailwind projects */
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-tile-container,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-zoom-box,
+.leaflet-image-layer,
+.leaflet-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
   max-width: none !important;
   max-height: none !important;
 }
 
-/* 2. Ensure the map container has explicit stacking context */
+/* 2. FORCE CONTAINER STACKING */
 .leaflet-container {
+  height: 100%;
+  width: 100%;
   isolation: isolate;
   z-index: 0;
-  background-color: #e5e7eb; /* Light grey placeholder */
+  background-color: #e5e7eb; /* Light grey placeholder color */
 }
 
-/* 3. Fix marker visibility */
-.leaflet-marker-icon,
-.leaflet-marker-shadow {
-  max-width: none !important;
-  max-height: none !important;
-}
-
-/* 4. Fix popup z-index */
-.leaflet-pane {
-  z-index: 1 !important;
-}
-.leaflet-bottom, .leaflet-top {
-  z-index: 1000 !important;
-}
-
-/* 3. Fix Marker Z-Index */
-.leaflet-marker-pane {
-  z-index: 600;
-}
-
-/* 4. Fix Popup Styling */
+/* 3. FIX POPUP & MARKER Z-INDEX */
+.leaflet-pane { z-index: 1 !important; }
+.leaflet-bottom, .leaflet-top { z-index: 1000 !important; }
 .leaflet-popup-content-wrapper {
   border-radius: 12px;
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   padding: 0;
   overflow: hidden;
 }
-
 .leaflet-popup-content {
   margin: 0;
   width: auto !important;
 }
 
-/* Lynq App Design System */
+/* --- LYNQ APP DESIGN SYSTEM --- */
+
 @layer base {
   :root {
-    /* Core App Colors */
+    /* Core App Colors - Vibrant Purple to Blue Theme */
     --background: 250 20% 99%;
     --foreground: 230 15% 15%;
 
@@ -70,20 +60,24 @@
     --popover: 0 0% 100%;
     --popover-foreground: 230 15% 15%;
 
-    /* Primary Brand */
+    /* Primary Brand - Purple Gradient */
     --primary: 265 85% 58%;
     --primary-foreground: 0 0% 100%;
     --primary-glow: 270 75% 70%;
 
+    /* Secondary - Complementary Blue */
     --secondary: 220 25% 95%;
     --secondary-foreground: 230 15% 25%;
 
+    /* Accent - Vibrant Cyan */
     --accent: 195 85% 60%;
     --accent-foreground: 0 0% 100%;
 
+    /* Success - Green for online status */
     --success: 120 60% 50%;
     --success-foreground: 0 0% 100%;
 
+    /* Warning - Orange for away status */
     --warning: 35 85% 55%;
     --warning-foreground: 0 0% 100%;
 
@@ -99,19 +93,22 @@
 
     --radius: 0.75rem;
 
-    /* Design Tokens */
+    /* App-specific Design Tokens */
     --gradient-primary: linear-gradient(135deg, hsl(265 85% 58%), hsl(240 85% 65%));
     --gradient-secondary: linear-gradient(135deg, hsl(195 85% 60%), hsl(220 70% 60%));
     --gradient-hero: linear-gradient(135deg, hsl(265 85% 58%) 0%, hsl(240 85% 65%) 50%, hsl(195 85% 60%) 100%);
     --gradient-card: linear-gradient(145deg, hsl(0 0% 100%) 0%, hsl(220 25% 98%) 100%);
     
+    /* Shadows with Brand Colors */
     --shadow-primary: 0 10px 40px -10px hsl(265 85% 58% / 0.3);
     --shadow-card: 0 4px 20px -2px hsl(230 15% 15% / 0.1);
     --shadow-glow: 0 0 30px hsl(265 85% 58% / 0.4);
     
+    /* Animations */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
+    /* Typography Scale */
     --font-heading: 'Inter', system-ui, sans-serif;
     --font-body: 'Inter', system-ui, sans-serif;
 
@@ -127,6 +124,7 @@
   }
 
   .dark {
+    /* Dark Mode - Consistent with App Theme */
     --background: 230 25% 8%;
     --foreground: 220 15% 92%;
 
@@ -162,6 +160,7 @@
     --input: 230 15% 15%;
     --ring: 265 85% 65%;
     
+    /* Dark Mode Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(265 85% 65%), hsl(240 85% 70%));
     --gradient-secondary: linear-gradient(135deg, hsl(195 85% 65%), hsl(220 70% 65%));
     --gradient-hero: linear-gradient(135deg, hsl(265 85% 65%) 0%, hsl(240 85% 70%) 50%, hsl(195 85% 65%) 100%);
@@ -184,11 +183,31 @@
     font-variation-settings: 'opsz' 32;
   }
 
-  /* Utility Classes */
-  .heading-display { font-family: var(--font-heading); font-weight: 800; font-size: 3.5rem; line-height: 1.1; letter-spacing: -0.02em; }
-  .heading-xl { font-family: var(--font-heading); font-weight: 700; font-size: 2.25rem; line-height: 1.2; letter-spacing: -0.025em; }
-  .heading-lg { font-family: var(--font-heading); font-weight: 600; font-size: 1.5rem; line-height: 1.3; }
+  /* Typography Classes */
+  .heading-display {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 3.5rem;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
 
+  .heading-xl {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 2.25rem;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
+  }
+
+  .heading-lg {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  /* App-specific Utility Classes */
   .gradient-primary { background: var(--gradient-primary); }
   .gradient-secondary { background: var(--gradient-secondary); }
   .gradient-hero { background: var(--gradient-hero); }
@@ -201,13 +220,16 @@
   .transition-smooth { transition: var(--transition-smooth); }
   .transition-bounce { transition: var(--transition-bounce); }
 
+  /* Status Indicators */
   .status-online { @apply bg-success text-success-foreground; }
   .status-away { @apply bg-warning text-warning-foreground; }
   .status-offline { @apply bg-muted text-muted-foreground; }
 
+  /* Mobile-First Responsive Containers */
   .container-mobile { @apply w-full max-w-sm mx-auto px-4; }
   .container-tablet { @apply w-full max-w-2xl mx-auto px-6; }
 
+  /* Glassmorphism Effect */
   .glass {
     backdrop-filter: blur(12px);
     background: hsl(var(--card) / 0.8);
