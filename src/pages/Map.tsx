@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +46,8 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const Map = () => {
+// RENAMED Component to 'MapPage' to avoid conflict with JS 'Map' constructor
+const MapPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const mapRef = useRef<LeafletMapHandle>(null);
@@ -67,7 +68,7 @@ const Map = () => {
 
   // --- 1. Fetch Friend Locations (Optimized) ---
   const friendIds = useMemo(() => {
-    // FIX: Using user_id correctly as requested
+    // Returns array of IDs
     return friends.map(f => f.requester_id === user?.id ? f.addressee.user_id : f.requester.user_id);
   }, [friends, user?.id]);
 
@@ -90,11 +91,11 @@ const Map = () => {
   const nearbyFriendsRaw = useMemo(() => {
     if (!location) return [];
 
+    // FIXED: Now 'Map' refers to the JS Constructor, not the component
     const uniqueFriendsMap = new Map();
 
     friends.forEach(friendship => {
       const profile = friendship.requester_id === user?.id ? friendship.addressee : friendship.requester;
-      // FIX: Match location by user_id
       const loc = friendLocations.find(l => l.user_id === profile.user_id);
 
       if (loc && loc.latitude && loc.longitude) {
@@ -195,11 +196,12 @@ const Map = () => {
     if (!user) return;
     const newValue = !isGhostMode;
     try {
+      // FIXED: Added 'as any' to bypass strict type check on update payload
       await supabase.from('user_locations').upsert({ 
         user_id: user.id, 
         is_sharing_location: !newValue,
         updated_at: new Date().toISOString()
-      });
+      } as any);
       setIsGhostMode(newValue);
       toast.success(newValue ? "You are invisible" : "You are visible");
     } catch {
@@ -234,7 +236,7 @@ const Map = () => {
   }, [searchQuery, friendsMapped, events, activeView]);
 
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-background">
+    <div className="relative h-screen w-screen overflow-hidden bg-background">
       {/* LAYER 1: MAP */}
       <div className="absolute inset-0 z-0 h-full w-full">
         <LeafletMap
@@ -406,7 +408,6 @@ const Map = () => {
                     <div className="grid grid-cols-2 gap-3">
                       <Button
                         className="gradient-primary text-white"
-                        // FIX: Updated route to /events/...
                         onClick={() => navigate(`/events/${selectedEvent.id}`)}
                       >
                         View Details
@@ -483,4 +484,4 @@ const Map = () => {
   );
 };
 
-export default Map;
+export default MapPage;
