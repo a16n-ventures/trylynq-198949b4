@@ -41,6 +41,15 @@ type TabValue = 'friends' | 'requests' | 'discover';
 type RequestView = 'received' | 'sent';
 type DiscoverView = 'nearby' | 'contacts';
 
+// Interface for RPC response
+interface SuggestedFriend {
+  friend_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  distance_km: number;
+  score: number;
+}
+
 export default function Friends() {
   const { user } = useAuth();
   const userId = user?.id;
@@ -88,14 +97,13 @@ export default function Friends() {
   const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
   const [isFetchingFriends, setIsFetchingFriends] = useState(false);
 
+  // Combine loading states
   const loadingNearby = isLocationLoading || isFetchingFriends;
 
   useEffect(() => {
-    // Only fetch if we are on the 'discover' -> 'nearby' tab
     if (activeTab === 'discover' && discoverView === 'nearby') {
       
       if (!userLocation) {
-        // If location is missing, trigger request (managed by Context)
         requestLocation(); 
         return; 
       }
@@ -103,7 +111,6 @@ export default function Friends() {
       if (userId) {
         const fetchSmartFriends = async () => {
           setIsFetchingFriends(true);
-          // Call the RPC function we created in SQL
           const { data, error } = await supabase.rpc('suggest_nearby_friends', {
             requesting_user_id: userId,
             user_lat: userLocation.latitude,
@@ -112,8 +119,11 @@ export default function Friends() {
           });
 
           if (!error && data) {
-            const formatted = data.map((u: any) => ({
-              user_id: u.friend_id, // Mapped from SQL alias
+            // Fix: Cast data to specific type to avoid .map() error
+            const suggestions = data as unknown as SuggestedFriend[];
+            
+            const formatted = suggestions.map((u) => ({
+              user_id: u.friend_id, 
               display_name: u.display_name,
               avatar_url: u.avatar_url,
               distance_km: u.distance_km,
