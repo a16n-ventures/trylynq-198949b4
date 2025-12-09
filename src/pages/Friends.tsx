@@ -135,7 +135,7 @@ export default function Friends() {
           const { data: allLocations, error: locError } = await supabase
               .from('user_locations')
               .select('user_id, latitude, longitude')
-              .eq('is_sharing_location', false)
+              .eq('is_sharing_location', true || false)
               .limit(100); // Limit to 100 closest candidates for performance
 
             if (locError) throw locError; 
