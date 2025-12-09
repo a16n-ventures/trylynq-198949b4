@@ -67,11 +67,10 @@ const MapPage = () => {
 
   // --- 1. Fetch Friend Locations (Optimized) ---
   const friendIds = useMemo(() => {
-    // FIX: Reverted to .id because useFriends profiles usually use 'id' as PK, not 'user_id'
-    // We check for both just in case, but prioritize .id
+    // FIX: Changed .user_id back to .id (matches Profile interface)
     return friends.map(f => {
       const p = f.requester_id === user?.id ? f.addressee : f.requester;
-      return (p as any).user_id || p.id;
+      return p.id; 
     }).filter(Boolean);
   }, [friends, user?.id]);
 
@@ -99,14 +98,15 @@ const MapPage = () => {
 
     friends.forEach(friendship => {
       const profile = friendship.requester_id === user?.id ? friendship.addressee : friendship.requester;
-      const profileId = (profile as any).user_id || profile.id; // Safe check for ID
+      // FIX: Use .id here as well
+      const profileId = profile.id; 
       
-      // Match location by user_id (FK in locations table)
       const loc = friendLocations.find(l => l.user_id === profileId);
 
       if (loc && loc.latitude && loc.longitude) {
-        // FIX: Relaxed logic. We show them if they are sharing, regardless of how old the data is.
-        // We handle the "stale" visual in the UI mapping step instead.
+        // VISIBILITY LOGIC:
+        // 1. Friend MUST be sharing location (is_sharing_location = true)
+        // 2. We do NOT filter by time anymore (just show "Stale" label if old)
         if (loc.is_sharing_location) {
           uniqueFriendsMap.set(profileId, {
             user_id: profileId,
@@ -135,7 +135,7 @@ const MapPage = () => {
 
         const online = friendsPresence[loc.user_id] === 'online';
         
-        // Calculate freshness for status label
+        // Status Label Logic
         const hoursSinceUpdate = differenceInHours(new Date(), new Date(loc.updated_at));
         let statusText = 'Offline';
         if (online) statusText = 'Active now';
