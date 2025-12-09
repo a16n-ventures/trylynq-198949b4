@@ -24,7 +24,7 @@ const LOCAL_KEY = 'last_known_location';
 export function LocationProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   
-  // Initialize state from LocalStorage (Your original logic)
+  // Initialize state from LocalStorage
   const [location, setLocation] = useState<LocationData | null>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_KEY);
@@ -37,7 +37,6 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Refs for tracking state without re-renders
   const watchId = useRef<number | null>(null);
   const lastSentRef = useRef<number>(0);
   const hasShownErrorRef = useRef(false);
@@ -53,7 +52,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Helper: Update Database (Throttled)
-  const updateDatabase = useCallback(async (loc: LocationData, isSharing: boolean = true) => {
+  // NOTE: We only update coordinates here. We DO NOT force is_sharing_location to true/false automatically anymore.
+  const updateDatabase = useCallback(async (loc: LocationData) => {
     if (!user) return;
 
     // Throttle: Prevent too-frequent updates (30s)
@@ -62,6 +62,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     lastSentRef.current = now;
 
     try {
+      // We perform a partial update to avoid overwriting the user's preference
       const { error } = await supabase
         .from('user_locations')
         .upsert({
@@ -69,30 +70,14 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
           latitude: loc.latitude,
           longitude: loc.longitude,
           accuracy: loc.accuracy,
-          is_sharing_location: isSharing,
+          // Removed: is_sharing_location: true/false (Let the user control this via UI)
           last_seen: new Date().toISOString(),
-        });
+        }, { onConflict: 'user_id' }); // Ensure we strictly update the existing row
       
       if (error) throw error;
       console.log('Location synced to cloud');
     } catch (err) {
       console.error('Location sync error:', err);
-    }
-  }, [user]);
-
-  // Helper: Update Online Status only
-  const updateOnlineStatus = useCallback(async (isOnline: boolean) => {
-    if (!user) return;
-    try {
-      await supabase
-        .from('user_locations')
-        .update({
-          is_sharing_location: isOnline,
-          last_seen: new Date().toISOString(),
-        })
-        .eq('user_id', user.id);
-    } catch (err) {
-      console.error('Failed to update status:', err);
     }
   }, [user]);
 
@@ -109,12 +94,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setLoading(false);
     saveLocal(loc);
-    updateDatabase(loc, true);
+    updateDatabase(loc);
 
     if (!hasShownErrorRef.current) {
-      // Optional: Toast on first success? 
-      // toast.success('Location active');
-      hasShownErrorRef.current = true; // Mark as shown so we don't spam
+      hasShownErrorRef.current = true; 
     }
   }, [updateDatabase]);
 
@@ -131,7 +114,6 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       critical = false; 
     } else if (err.code === 3) {
       message = 'Location request timed out.';
-      // If we have cached data, timeout isn't critical
       if (location) critical = false; 
     }
 
@@ -143,12 +125,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setLoading(false);
-    
-    // If we have cached data, assume offline but keep data
-    if (location) {
-      updateOnlineStatus(false);
-    }
-  }, [location, updateOnlineStatus]);
+  }, [location]);
 
   // Manual Request (Exposed to UI)
   const requestLocation = useCallback(async () => {
@@ -158,7 +135,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
 
     setLoading(true);
-    hasShownErrorRef.current = false; // Reset to allow new error toasts
+    hasShownErrorRef.current = false; 
 
     navigator.geolocation.getCurrentPosition(
       handleSuccess,
@@ -183,13 +160,11 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       navigator.geolocation.getCurrentPosition(
         handleSuccess,
         (err) => {
-          // Retry on timeout (code 3) once
           if (err.code === 3 && attempts < 2) {
             console.log('Retrying location...');
             attemptFix();
           } else {
             handleError(err);
-            // Even if it fails, start watching (might get a fix later)
             startWatching();
           }
         },
@@ -209,20 +184,13 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
     attemptFix();
 
-    // 3. Visibility Listeners (Online/Offline)
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') updateOnlineStatus(false);
-      else updateOnlineStatus(true);
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('beforeunload', () => updateOnlineStatus(false));
+    // REMOVED: The visibility/unload listeners that were forcing status to offline.
+    // This allows the "Location Sharing" preference to persist in the DB.
 
     return () => {
       if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
-      document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [user, handleSuccess, handleError, updateOnlineStatus]);
+  }, [user, handleSuccess, handleError]);
 
   return (
     <LocationContext.Provider value={{ location, error, isLoading: loading, requestLocation }}>
