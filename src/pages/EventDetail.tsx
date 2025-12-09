@@ -469,7 +469,7 @@ const EventDetail = () => {
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Header with Image */}
-      <div className="relative h-64 bg-gradient-to-br from-purple-600 to-blue-600">
+      <div className="relative h-64 bg-gradient-to-br from-purple-600 to-blue-600 mb-6">
         {event.image_url ? (
           <img
             src={event.image_url}
@@ -508,7 +508,7 @@ const EventDetail = () => {
         </Button>
       </div>
 
-      <div className="container-mobile -mt-8 mb-4 space-y-4">
+      <div className="container-mobile -mt-8 space-y-4">
         {/* Main Info Card */}
         <Card className="gradient-card shadow-card border-0">
           <CardContent className="p-6 space-y-4">
