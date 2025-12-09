@@ -36,19 +36,22 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+// Haversine Formula for Client-Side Distance Calculation
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+  return R * c; // Distance in km
+}
+
 type SortOption = 'newest' | 'alphabetical';
 type TabValue = 'friends' | 'requests' | 'discover';
 type RequestView = 'received' | 'sent';
 type DiscoverView = 'nearby' | 'contacts';
-
-// Interface for RPC response
-interface SuggestedFriend {
-  friend_id: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  distance_km: number;
-  score: number;
-}
 
 export default function Friends() {
   const { user } = useAuth();
@@ -92,7 +95,7 @@ export default function Friends() {
     inviteContact,
   } = useContacts(userId);
 
-  // --- SMART FRIEND FINDER LOGIC ---
+  // --- STANDARD FRIEND FINDER LOGIC (NO RPC) ---
   const { location: userLocation, requestLocation, isLoading: isLocationLoading } = useGeolocation();
   const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
   const [isFetchingFriends, setIsFetchingFriends] = useState(false);
@@ -101,6 +104,7 @@ export default function Friends() {
   const loadingNearby = isLocationLoading || isFetchingFriends;
 
   useEffect(() => {
+    // Only fetch if we are on the 'discover' -> 'nearby' tab
     if (activeTab === 'discover' && discoverView === 'nearby') {
       
       if (!userLocation) {
@@ -109,37 +113,93 @@ export default function Friends() {
       }
 
       if (userId) {
-        const fetchSmartFriends = async () => {
+        const fetchStandardNearby = async () => {
           setIsFetchingFriends(true);
-          const { data, error } = await supabase.rpc('suggest_nearby_friends', {
-            requesting_user_id: userId,
-            user_lat: userLocation.latitude,
-            user_long: userLocation.longitude,
-            limit_count: 20
-          });
-
-          if (!error && data) {
-            // Fix: Cast data to specific type to avoid .map() error
-            const suggestions = data as unknown as SuggestedFriend[];
+          try {
+            // 1. Get IDs of people I am already friends with (to exclude them)
+            const { data: existingFriendships } = await supabase
+              .from('friendships')
+              .select('requester_id, addressee_id')
+              .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
             
-            const formatted = suggestions.map((u) => ({
-              user_id: u.friend_id, 
-              display_name: u.display_name,
-              avatar_url: u.avatar_url,
-              distance_km: u.distance_km,
-              match_score: u.score
-            }));
+            const excludedIds = new Set<string>();
+            excludedIds.add(userId); // Exclude myself
+            
+            existingFriendships?.forEach(f => {
+              excludedIds.add(f.requester_id);
+              excludedIds.add(f.addressee_id);
+            });
+
+            // 2. Fetch locations of ALL users who are sharing location
+            // (We fetch a batch, then filter by distance in JS)
+          {/* 
+          const { data: allLocations, error: locError } = await supabase
+              .from('user_locations')
+              .select('user_id, latitude, longitude')
+              .eq('is_sharing_location', true)
+              .limit(100); // Limit to 100 closest candidates for performance
+
+            if (locError) throw locError; 
+            */}
+
+            // 3. Client-Side Filtering: Distance & Exclusions
+            const validCandidates = (allLocations || [])
+              .filter(loc => !excludedIds.has(loc.user_id)) // Remove existing friends
+              .map(loc => {
+                const dist = calculateDistance(
+                  userLocation.latitude, 
+                  userLocation.longitude, 
+                  loc.latitude, 
+                  loc.longitude
+                );
+                return { ...loc, distance: dist };
+              })
+              .filter(loc => loc.distance <= 100) // 100km Limit
+              .sort((a, b) => a.distance - b.distance) // Sort closest first
+              .slice(0, 20); // Take top 20
+
+            if (validCandidates.length === 0) {
+              setNearbyUsers([]);
+              setIsFetchingFriends(false);
+              return;
+            }
+
+            // 4. Fetch Profiles for the valid candidates
+            const candidateIds = validCandidates.map(c => c.user_id);
+            const { data: profiles, error: profError } = await supabase
+              .from('profiles')
+              .select('user_id, display_name, avatar_url')
+              .in('user_id', candidateIds);
+
+            if (profError) throw profError;
+
+            // 5. Merge Data
+            const formatted = validCandidates.map(candidate => {
+              const profile = profiles?.find(p => p.user_id === candidate.user_id);
+              return {
+                user_id: candidate.user_id,
+                display_name: profile?.display_name || 'Unknown',
+                avatar_url: profile?.avatar_url,
+                distance_km: candidate.distance,
+                match_score: Math.max(0, 100 - candidate.distance) // Simple score
+              };
+            });
+
             setNearbyUsers(formatted);
+
+          } catch (err) {
+            console.error("Discovery error:", err);
+          } finally {
+            setIsFetchingFriends(false);
           }
-          setIsFetchingFriends(false);
         };
 
-        fetchSmartFriends();
+        fetchStandardNearby();
       }
     }
   }, [activeTab, discoverView, userLocation, userId, requestLocation]);
 
-  // Filtered data
+  // Filtered data (Search logic)
   const filteredFriends = useMemo(() => {
     let res = [...friends];
     if (debouncedSearch) {
