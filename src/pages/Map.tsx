@@ -141,7 +141,7 @@ const MapPage = () => {
         const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
         
         // Optional: You can comment this out if you want to see friends worldwide
-        if (dist > 50000) return null; // Increased range to ensure close friends show up
+        if (dist > 50) return null; // Increased range to ensure close friends show up
 
         const online = friendsPresence[loc.user_id] === 'online';
         
