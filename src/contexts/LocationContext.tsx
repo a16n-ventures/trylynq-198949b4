@@ -51,8 +51,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Helper: Update Database (Throttled)
-  // NOTE: We only update coordinates here. We DO NOT force is_sharing_location to true/false automatically anymore.
+  // Helper: Update Database (Safe Patch)
   const updateDatabase = useCallback(async (loc: LocationData) => {
     if (!user) return;
 
@@ -62,19 +61,35 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     lastSentRef.current = now;
 
     try {
-      // We perform a partial update to avoid overwriting the user's preference
-      const { error } = await supabase
+      const payload = {
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        accuracy: loc.accuracy,
+        last_seen: new Date().toISOString(),
+      };
+
+      // 1. Try to UPDATE existing row first (Preserves is_sharing_location)
+      const { error: updateError, count } = await supabase
         .from('user_locations')
-        .upsert({
-          user_id: user.id,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          accuracy: loc.accuracy,
-          // Removed: is_sharing_location: true/false (Let the user control this via UI)
-          last_seen: new Date().toISOString(),
-        }, { onConflict: 'user_id' }); // Ensure we strictly update the existing row
-      
-      if (error) throw error;
+        .update(payload)
+        .eq('user_id', user.id)
+        .select('user_id', { count: 'exact' });
+
+      if (updateError) throw updateError;
+
+      // 2. If no row existed, INSERT new row (Default is_sharing_location will apply)
+      if (count === 0) {
+        const { error: insertError } = await supabase
+          .from('user_locations')
+          .insert({
+            user_id: user.id,
+            ...payload,
+            is_sharing_location: false // Default to false for new rows
+          });
+        
+        if (insertError) throw insertError;
+      }
+
       console.log('Location synced to cloud');
     } catch (err) {
       console.error('Location sync error:', err);
@@ -183,9 +198,6 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     };
 
     attemptFix();
-
-    // REMOVED: The visibility/unload listeners that were forcing status to offline.
-    // This allows the "Location Sharing" preference to persist in the DB.
 
     return () => {
       if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
