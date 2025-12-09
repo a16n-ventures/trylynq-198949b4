@@ -113,8 +113,9 @@ const MapPage = () => {
 
       if (loc && loc.latitude && loc.longitude) {
         // Logic: Show them if they have coordinates.
-        // We use is_sharing_location mainly for UI status, but we display them on map
-        // to ensure "all contacts" appear if they have data.
+      if (!loc.is_sharing_location) {
+    return; // Skip to next iteration
+       }
         uniqueFriendsMap.set(friendId, {
           user_id: friendId,
           latitude: loc.latitude,
@@ -140,7 +141,7 @@ const MapPage = () => {
         const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
         
         // Optional: You can comment this out if you want to see friends worldwide
-        if (dist > 5000) return null; // Increased range to ensure close friends show up
+        if (dist > 50) return null; // Increased range to ensure close friends show up
 
         const online = friendsPresence[loc.user_id] === 'online';
         
