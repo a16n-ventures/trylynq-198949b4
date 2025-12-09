@@ -51,7 +51,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Helper: Update Database (Safe Patch)
+  // Helper: Update Database (Safe Patch Strategy)
+  // FIX: This function now ONLY updates coordinates. It NEVER touches is_sharing_location.
   const updateDatabase = useCallback(async (loc: LocationData) => {
     if (!user) return;
 
@@ -198,6 +199,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     };
 
     attemptFix();
+
+    // FIX: Removed the "beforeunload" listener that was resetting status to false on refresh.
 
     return () => {
       if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
