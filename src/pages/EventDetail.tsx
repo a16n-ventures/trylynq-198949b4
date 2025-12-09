@@ -28,12 +28,24 @@ import {
   UserPlus,
   ExternalLink,
   Clock,
-  Check
+  Check,
+  Trash2, // Ensure Trash2 is imported
+  AlertCircle // Ensure AlertCircle is imported
 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"; // Ensure Alert components are imported
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type Event = {
@@ -85,6 +97,9 @@ const EventDetail = () => {
   const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showRecordingDialog, setShowRecordingDialog] = useState(false);
+  
+  // NEW: Delete Dialog State
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -232,6 +247,27 @@ const EventDetail = () => {
     },
     onError: (error: any) => {
       toast.error('Failed to RSVP: ' + error.message);
+    }
+  });
+
+  // NEW: Delete Event Mutation
+  const deleteEventMutation = useMutation({
+    mutationFn: async () => {
+      if (!eventId || !user?.id) return;
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventId)
+        .eq('creator_id', user.id); // Security: Ensure only creator can delete
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Event deleted successfully');
+      navigate('/events'); // Redirect to main events list
+    },
+    onError: (error: any) => {
+      toast.error('Failed to delete event: ' + error.message);
     }
   });
 
@@ -607,12 +643,22 @@ const EventDetail = () => {
                     <UserPlus className="w-4 h-4 mr-2" />
                     Invite Friends
                   </Button>
+
+                  {/* NEW: Delete Button */}
+                  <Button
+                    variant="destructive"
+                    className="w-full mt-2"
+                    onClick={() => setShowDeleteDialog(true)}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Event
+                  </Button>
                 </CardContent>
               </Card>
             )}
           </TabsContent>
 
-                    <TabsContent value="attendees" className="space-y-2 mt-4">
+          <TabsContent value="attendees" className="space-y-2 mt-4">
             {attendees.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No attendees yet
@@ -783,6 +829,44 @@ const EventDetail = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* NEW: Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full">
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <AlertDialogTitle className="text-xl">Delete Event?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-base leading-relaxed">
+              Are you sure you want to delete this event? This action cannot be undone.
+              All attendees will be removed and the event page will no longer be accessible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => deleteEventMutation.mutate()}
+              disabled={deleteEventMutation.isPending}
+            >
+              {deleteEventMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Event
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
