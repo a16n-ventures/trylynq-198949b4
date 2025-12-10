@@ -264,7 +264,7 @@ const EventDetail = () => {
     },
     onSuccess: () => {
       toast.success('Event deleted successfully');
-      navigate('/events'); // Redirect to main events list
+      navigate('/app/events'); // Redirect to main events list
     },
     onError: (error: any) => {
       toast.error('Failed to delete event: ' + error.message);
@@ -457,7 +457,7 @@ const EventDetail = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground">Event not found</p>
-        <Button variant="link" onClick={() => navigate('/events')}>Go back to Events</Button>
+        <Button variant="link" onClick={() => navigate('/app/events')}>Go back to Events</Button>
       </div>
     );
   }
