@@ -71,10 +71,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
       // 1. Try to UPDATE existing row first (Preserves is_sharing_location)
       const { error: updateError, count } = await supabase
-        .from('user_locations')
-        .update(payload)
-        .eq('user_id', user.id)
-        .select('user_id', { count: 'exact' });
+  .from('user_locations')
+  .update(payload, { count: 'exact' })  // ✅ count goes here
+  .eq('user_id', user.id)
+  .select('user_id');  // ✅ select takes only columns
 
       if (updateError) throw updateError;
 
