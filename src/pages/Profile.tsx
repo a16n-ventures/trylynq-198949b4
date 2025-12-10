@@ -592,7 +592,7 @@ const Profile = () => {
             <div className="flex gap-2">
               <div className="bg-white/15 border border-white/30 backdrop-blur-sm rounded-xl px-4 py-3 flex-1 flex items-center justify-between">
                 <span className="text-xs font-mono text-white truncate">
-                  lynq-africa/ref/{user?.id.slice(0,6).toUpperCase()}
+                  ahmia/ref/{user?.id.slice(0,6).toUpperCase()}
                 </span>
               </div>
               <Button 
