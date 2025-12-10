@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -95,117 +95,188 @@ export default function Friends() {
     inviteContact,
   } = useContacts(userId);
 
-  // --- STANDARD FRIEND FINDER LOGIC (NO RPC) ---
+  // --- IMPROVED FRIEND FINDER LOGIC ---
   const { location: userLocation, requestLocation, isLoading: isLocationLoading } = useGeolocation();
   const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
   const [isFetchingFriends, setIsFetchingFriends] = useState(false);
+  
+  // Refs to prevent flickering and unnecessary refetches
+  const isFetchingRef = useRef(false);
+  const lastFetchLocationRef = useRef<{ lat: number; lon: number } | null>(null);
+  const nearbyDataCacheRef = useRef<any[]>([]);
+  const hasInitializedRef = useRef(false);
 
-  // Combine loading states
-  const loadingNearby = isLocationLoading || isFetchingFriends;
+  // Helper: Check if location has changed significantly (>1km)
+  const hasLocationChangedSignificantly = useCallback((newLat: number, newLon: number) => {
+    if (!lastFetchLocationRef.current) return true;
+    const { lat, lon } = lastFetchLocationRef.current;
+    const distance = calculateDistance(lat, lon, newLat, newLon);
+    return distance > 1; // Only refetch if moved >1km
+  }, []);
 
-  useEffect(() => {
-    // Only fetch if we are on the 'discover' -> 'nearby' tab
-    if (activeTab === 'discover' && discoverView === 'nearby') {
-      
-      if (!userLocation) {
-        requestLocation(); 
-        return; 
-      }
+  // Combine loading states - only show loading on initial load
+  const loadingNearby = (isLocationLoading || isFetchingFriends) && !hasInitializedRef.current;
 
-      if (userId) {
-        const fetchStandardNearby = async () => {
-          setIsFetchingFriends(true);
-          try {
-            // 1. Get IDs of people I am already friends with (to exclude them)
-            const { data: existingFriendships } = await supabase
-              .from('friendships')
-              .select('requester_id, addressee_id')
-              .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-            
-            const excludedIds = new Set<string>();
-            excludedIds.add(userId); // Exclude myself
-            
-            existingFriendships?.forEach(f => {
-              excludedIds.add(f.requester_id);
-              excludedIds.add(f.addressee_id);
-            });
-
-            // 2. Fetch locations of ALL users who are sharing location
-            const { data: allLocations, error: locError } = await supabase
-              .from('user_locations')
-              .select('user_id, latitude, longitude')
-              .eq('is_sharing_location', true)
-              .limit(100); 
-
-            if (locError) throw locError;
-
-            // 3. Client-Side Filtering & Deduplication
-            const uniqueCandidatesMap = new Map();
-            
-            (allLocations || []).forEach(loc => {
-                // Logic: Only add if not excluded AND not already in our map (Deduplication)
-                if (!excludedIds.has(loc.user_id) && !uniqueCandidatesMap.has(loc.user_id)) {
-                    const dist = calculateDistance(
-                      userLocation.latitude, 
-                      userLocation.longitude, 
-                      loc.latitude, 
-                      loc.longitude
-                    );
-                    
-                    if (dist <= 100) { // 100km Limit
-                        uniqueCandidatesMap.set(loc.user_id, { ...loc, distance: dist });
-                    }
-                }
-            });
-
-            const validCandidates = Array.from(uniqueCandidatesMap.values())
-                .sort((a: any, b: any) => a.distance - b.distance)
-                .slice(0, 20);
-
-            if (validCandidates.length === 0) {
-              setNearbyUsers([]);
-              setIsFetchingFriends(false);
-              return;
-            }
-
-            // 4. Fetch Profiles for the valid candidates
-            const candidateIds = validCandidates.map((c: any) => c.user_id);
-            const { data: profiles, error: profError } = await supabase
-              .from('profiles')
-              .select('user_id, display_name, avatar_url')
-              .in('user_id', candidateIds);
-
-            if (profError) throw profError;
-
-            // 5. Merge Data (Strict Matching)
-            const formatted = validCandidates.map((candidate: any) => {
-              const profile = profiles?.find(p => p.user_id === candidate.user_id);
-              
-              // FIX: If profile is missing, SKIP this user. Don't show "Unknown".
-              if (!profile) return null;
-
-              return {
-                user_id: candidate.user_id,
-                display_name: profile.display_name || 'Unknown',
-                avatar_url: profile.avatar_url,
-                distance_km: candidate.distance,
-                match_score: Math.max(0, 100 - candidate.distance)
-              };
-            }).filter(Boolean); // Removes the nulls (hidden unknowns)
-
-            setNearbyUsers(formatted);
-
-          } catch (err) {
-            console.error("Discovery error:", err);
-          } finally {
-            setIsFetchingFriends(false);
-          }
-        };
-
-        fetchStandardNearby();
+  // Main fetch function with optimizations
+  const fetchNearbyUsers = useCallback(async () => {
+    if (!userId || !userLocation) return;
+    
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return;
+    
+    // Check if location changed significantly
+    if (!hasLocationChangedSignificantly(userLocation.latitude, userLocation.longitude)) {
+      // Use cached data if location hasn't changed much
+      if (nearbyDataCacheRef.current.length > 0) {
+        setNearbyUsers(nearbyDataCacheRef.current);
+        return;
       }
     }
-  }, [activeTab, discoverView, userLocation, userId, requestLocation]);
+
+    isFetchingRef.current = true;
+    setIsFetchingFriends(true);
+
+    try {
+      // 1. Get IDs of people I am already friends with or have pending requests with
+      const { data: existingFriendships } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id, status')
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+      
+      const excludedIds = new Set<string>();
+      excludedIds.add(userId); // Exclude myself
+      
+      existingFriendships?.forEach(f => {
+        excludedIds.add(f.requester_id);
+        excludedIds.add(f.addressee_id);
+      });
+
+      // 2. Fetch locations of ALL users (not just those sharing location)
+      // This ensures we see all nearby friends within 100km radius
+      const { data: allLocations, error: locError } = await supabase
+        .from('user_locations')
+        .select('user_id, latitude, longitude, last_seen')
+        .not('user_id', 'eq', userId) // Exclude current user
+        .order('last_seen', { ascending: false })
+        .limit(500); // Increased limit for better coverage
+
+      if (locError) throw locError;
+
+      // 3. Client-Side Filtering & Deduplication
+      const uniqueCandidatesMap = new Map();
+      
+      (allLocations || []).forEach(loc => {
+        // Only add if not excluded AND not already in our map (Deduplication)
+        if (!excludedIds.has(loc.user_id) && !uniqueCandidatesMap.has(loc.user_id)) {
+          const dist = calculateDistance(
+            userLocation.latitude, 
+            userLocation.longitude, 
+            loc.latitude, 
+            loc.longitude
+          );
+          
+          if (dist <= 100) { // 100km Limit
+            uniqueCandidatesMap.set(loc.user_id, { 
+              ...loc, 
+              distance: dist 
+            });
+          }
+        }
+      });
+
+      const validCandidates = Array.from(uniqueCandidatesMap.values())
+        .sort((a: any, b: any) => a.distance - b.distance)
+        .slice(0, 50); // Show top 50 nearest
+
+      if (validCandidates.length === 0) {
+        setNearbyUsers([]);
+        nearbyDataCacheRef.current = [];
+        hasInitializedRef.current = true;
+        return;
+      }
+
+      // 4. Fetch Profiles for the valid candidates
+      const candidateIds = validCandidates.map((c: any) => c.user_id);
+      const { data: profiles, error: profError } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', candidateIds);
+
+      if (profError) throw profError;
+
+      // 5. Merge Data (Strict Matching)
+      const formatted = validCandidates
+        .map((candidate: any) => {
+          const profile = profiles?.find(p => p.user_id === candidate.user_id);
+          
+          // If profile is missing, SKIP this user
+          if (!profile) return null;
+
+          return {
+            user_id: candidate.user_id,
+            display_name: profile.display_name || 'Unknown',
+            avatar_url: profile.avatar_url,
+            distance_km: candidate.distance,
+            match_score: Math.max(0, 100 - candidate.distance)
+          };
+        })
+        .filter(Boolean); // Removes the nulls
+
+      // Update cache and state
+      nearbyDataCacheRef.current = formatted;
+      lastFetchLocationRef.current = {
+        lat: userLocation.latitude,
+        lon: userLocation.longitude
+      };
+      
+      setNearbyUsers(formatted);
+      hasInitializedRef.current = true;
+
+    } catch (err) {
+      console.error("Discovery error:", err);
+      // On error, use cached data if available
+      if (nearbyDataCacheRef.current.length > 0) {
+        setNearbyUsers(nearbyDataCacheRef.current);
+      }
+    } finally {
+      setIsFetchingFriends(false);
+      isFetchingRef.current = false;
+    }
+  }, [userId, userLocation, hasLocationChangedSignificantly]);
+
+  // Effect: Fetch nearby users with smart caching
+  useEffect(() => {
+    // Only fetch if we are on the 'discover' -> 'nearby' tab
+    if (activeTab !== 'discover' || discoverView !== 'nearby') {
+      return;
+    }
+
+    if (!userLocation) {
+      // Request location if not available
+      if (!isLocationLoading) {
+        requestLocation();
+      }
+      return;
+    }
+
+    // Use cached data immediately if available
+    if (nearbyDataCacheRef.current.length > 0 && !hasInitializedRef.current) {
+      setNearbyUsers(nearbyDataCacheRef.current);
+      hasInitializedRef.current = true;
+    }
+
+    // Fetch or use cache based on location change
+    fetchNearbyUsers();
+
+    // Set up periodic refresh (every 2 minutes) only if location changed
+    const refreshInterval = setInterval(() => {
+      if (userLocation && hasLocationChangedSignificantly(userLocation.latitude, userLocation.longitude)) {
+        fetchNearbyUsers();
+      }
+    }, 120000); // 2 minutes
+
+    return () => clearInterval(refreshInterval);
+  }, [activeTab, discoverView, userLocation, isLocationLoading, requestLocation, fetchNearbyUsers, hasLocationChangedSignificantly]);
 
   // Filtered data (Search logic)
   const filteredFriends = useMemo(() => {
