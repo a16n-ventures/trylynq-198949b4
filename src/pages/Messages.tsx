@@ -11,7 +11,7 @@ import {
   MessageSquare, X, Loader2, 
   MoreVertical, Info, UserPlus,
   Shield, Trash2, Ban, Crown, Image as ImageIcon,
-  Check, AlertCircle
+  Check, AlertCircle, Camera, UploadCloud
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -72,7 +72,8 @@ type SelectedChat =
       type: 'community'; 
       id: string; 
       name: string; 
-      avatar?: string; 
+      avatar?: string;
+      cover_url?: string; // Added cover_url
       description?: string; 
       my_role: 'admin' | 'moderator' | 'member' | 'none'; 
       member_count: number;
@@ -355,34 +356,69 @@ const CommunitySettingsDialog = ({
   onClose, 
   communityId, 
   currentName, 
-  currentDesc 
+  currentDesc,
+  currentCover 
 }: { 
   isOpen: boolean;
   onClose: () => void;
   communityId: string;
   currentName: string;
   currentDesc: string;
+  currentCover?: string;
 }) => {
   const queryClient = useQueryClient();
   const [name, setName] = useState(currentName);
   const [desc, setDesc] = useState(currentDesc);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(currentCover || null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     setName(currentName);
     setDesc(currentDesc);
-  }, [currentName, currentDesc, isOpen]);
+    setCoverPreview(currentCover || null);
+  }, [currentName, currentDesc, currentCover, isOpen]);
+
+  const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      setCoverFile(file);
+      setCoverPreview(URL.createObjectURL(file));
+    }
+  };
 
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error('Community name is required');
+      if (!user) throw new Error('Not authenticated');
+
+      let newCoverUrl = currentCover;
+
+      if (coverFile) {
+        const fileExt = coverFile.name.split('.').pop();
+        const filePath = `${communityId}/${Date.now()}_cover.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('community-covers').upload(filePath, coverFile);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage.from('community-covers').getPublicUrl(filePath);
+        newCoverUrl = publicUrl;
+      }
+
       await supabase
         .from('communities')
-        .update({ name: name.trim(), description: desc.trim() })
+        .update({ 
+          name: name.trim(), 
+          description: desc.trim(),
+          cover_url: newCoverUrl 
+        })
         .eq('id', communityId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comm_list'] });
+      // Also invalidate the specific community info if needed
       toast.success("Community updated");
       onClose();
     },
@@ -412,6 +448,27 @@ const CommunitySettingsDialog = ({
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+             {/* Cover Photo Upload */}
+             <div 
+              className="relative w-full h-32 bg-muted rounded-xl overflow-hidden cursor-pointer group border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 transition-all"
+              onClick={() => fileRef.current?.click()}
+            >
+              {coverPreview ? (
+                <>
+                  <img src={coverPreview} className="w-full h-full object-cover" alt="cover" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera className="w-8 h-8 text-white" />
+                  </div>
+                </>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <ImageIcon className="w-8 h-8 opacity-50" />
+                  <span className="text-xs">Change Cover Photo</span>
+                </div>
+              )}
+              <input type="file" ref={fileRef} className="hidden" accept="image/*" onChange={handleCoverSelect} />
+            </div>
+
             <div className="space-y-2">
               <Label>Community Name *</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} />
@@ -460,6 +517,7 @@ export default function Messages() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
   
   const [activeTab, setActiveTab] = useState<ChatMode>('dm');
   const [selectedChat, setSelectedChat] = useState<SelectedChat | null>(null);
@@ -474,8 +532,13 @@ export default function Messages() {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  
+  // Community Creation State
   const [newCommName, setNewCommName] = useState('');
   const [newCommDesc, setNewCommDesc] = useState('');
+  const [newCommCover, setNewCommCover] = useState<File | null>(null);
+  const [newCommCoverPreview, setNewCommCoverPreview] = useState<string | null>(null);
+
   const [friendSearch, setFriendSearch] = useState('');
 
   useChatRealtime(selectedChat, user?.id);
@@ -486,7 +549,6 @@ export default function Messages() {
     queryFn: async () => {
       if (!user?.id) return [];
       
-      // 1. Fetch messages first (no Joins) to avoid Foreign Key errors
       const { data: rawMessages, error } = await supabase
         .from('messages')
         .select('*')
@@ -498,7 +560,6 @@ export default function Messages() {
         return [];
       }
 
-      // 2. Identify unique partners and their latest message
       const partnerMap = new Map();
       const partnerIds = new Set<string>();
 
@@ -519,19 +580,16 @@ export default function Messages() {
 
       const idsList = Array.from(partnerIds);
 
-      // 3. Batch fetch profile details using user_id (the correct field)
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, display_name, avatar_url')
         .in('user_id', idsList);
 
-      // 4. Create a lookup map by user_id
       const profileLookup = new Map();
       profiles?.forEach((p: any) => {
         if (p.user_id) profileLookup.set(p.user_id, p);
       });
 
-      // 5. Combine data with profiles
       return idsList.map(partnerId => {
         const details = partnerMap.get(partnerId);
         const profile = profileLookup.get(partnerId);
@@ -568,6 +626,7 @@ export default function Messages() {
           name: c.name || 'Unnamed Community',
           description: c.description,
           avatar: c.avatar_url,
+          cover_url: c.cover_url,
           member_count: c.member_count || 0,
           my_role: myMembership ? myMembership.role : 'none',
           is_joined: !!myMembership
@@ -586,7 +645,7 @@ export default function Messages() {
       const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
       if (!profile) return null;
       return { 
-        id: profile.user_id || profile.id, // Fallback to id if user_id is missing
+        id: profile.user_id || profile.id,
         name: profile.display_name, 
         avatar: profile.avatar_url,
         is_online: false,
@@ -664,12 +723,37 @@ export default function Messages() {
       if (!user) throw new Error("Not authenticated");
       if (!newCommName.trim()) throw new Error("Community name is required");
       
+      // 1. Insert Community Record First
       const { data: comm, error } = await supabase
         .from('communities')
-        .insert({ name: newCommName.trim(), description: newCommDesc.trim(), creator_id: user.id, member_count: 1 })
-        .select().single();
+        .insert({ 
+          name: newCommName.trim(), 
+          description: newCommDesc.trim(), 
+          creator_id: user.id, 
+          member_count: 1 
+        })
+        .select()
+        .single();
       
       if (error) throw error;
+
+      // 2. Upload Cover if exists
+      let coverUrl = null;
+      if (newCommCover) {
+        const fileExt = newCommCover.name.split('.').pop();
+        const filePath = `${comm.id}/cover.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('community-covers').upload(filePath, newCommCover);
+        
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabase.storage.from('community-covers').getPublicUrl(filePath);
+          coverUrl = publicUrl;
+          
+          // Update the community record with the cover URL
+          await supabase.from('communities').update({ cover_url: coverUrl }).eq('id', comm.id);
+        }
+      }
+      
+            // 3. Add Creator as Admin
       await supabase.from('community_members').insert({ community_id: comm.id, user_id: user.id, role: 'admin' });
       return comm;
     },
@@ -677,6 +761,8 @@ export default function Messages() {
       setIsCreateCommunityOpen(false);
       setNewCommName('');
       setNewCommDesc('');
+      setNewCommCover(null);
+      setNewCommCoverPreview(null);
       queryClient.invalidateQueries({ queryKey: ['comm_list'] });
       toast.success("Community created!");
     },
@@ -772,6 +858,16 @@ export default function Messages() {
       if (!file.type.startsWith('image/')) return toast.error("Please select an image file");
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleCommunityCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      if (file.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
+      if (!file.type.startsWith('image/')) return toast.error("Please select an image file");
+      setNewCommCover(file);
+      setNewCommCoverPreview(URL.createObjectURL(file));
     }
   };
 
@@ -885,7 +981,8 @@ export default function Messages() {
                 onClose={() => setIsSettingsOpen(false)} 
                 communityId={selectedChat.id} 
                 currentName={selectedChat.name} 
-                currentDesc={selectedChat.description || ''} 
+                currentDesc={selectedChat.description || ''}
+                currentCover={selectedChat.cover_url}
               />
             )}
           </>
@@ -916,7 +1013,6 @@ export default function Messages() {
                     onReply={(msg) => setReplyingTo(msg)}
                   />
                 ))}
-                {false && <TypingIndicator name={selectedChat.name} avatar={selectedChat.avatar} />}
               </>
             )}
           </div>
@@ -1002,7 +1098,7 @@ export default function Messages() {
       </div>
     );
   }
-
+  
   // List View
   return (
     <div className="min-h-screen flex flex-col pb-20 bg-gradient-to-b from-background to-muted/10">
@@ -1116,7 +1212,7 @@ export default function Messages() {
       {/* New Chat Dialog with Online Friends */}
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
         <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col p-0">
-          <DialogHeader className="px-6 pt-6 pb-4">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b">
             <DialogTitle className="text-xl">New Message</DialogTitle>
             <DialogDescription>
               {friends.length > 0 
@@ -1127,7 +1223,7 @@ export default function Messages() {
           </DialogHeader>
           
           {friends.length > 0 && (
-            <div className="px-6 pb-4">
+            <div className="px-6 py-4 bg-muted/10">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input 
@@ -1140,10 +1236,10 @@ export default function Messages() {
             </div>
           )}
 
-          <ScrollArea className="flex-1 px-6">
-            <div className="space-y-6 pb-6">
+          <ScrollArea className="flex-1 px-6 h-[400px]"> 
+          {/* Added h-[400px] to enforce scrollability in dialog */}
+            <div className="space-y-6 pb-6 pt-2">
               {friends.length === 0 ? (
-                /* No Friends State */
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
                     <Users className="w-8 h-8 text-muted-foreground" />
@@ -1154,7 +1250,6 @@ export default function Messages() {
                   </p>
                 </div>
               ) : filteredFriends.length === 0 ? (
-                /* No Search Results */
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <Search className="w-12 h-12 text-muted-foreground mb-4" />
                   <h3 className="font-semibold text-lg mb-2">No results found</h3>
@@ -1164,7 +1259,6 @@ export default function Messages() {
                 </div>
               ) : (
                 <>
-                  {/* Online Friends */}
                   {onlineFriends.length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-3 px-1">
@@ -1208,7 +1302,6 @@ export default function Messages() {
                     </div>
                   )}
 
-                  {/* Offline Friends */}
                   {offlineFriends.length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-3 px-1">
@@ -1258,8 +1351,8 @@ export default function Messages() {
           </ScrollArea>
         </DialogContent>
       </Dialog>
-
-      {/* Create Community Dialog */}
+      
+       {/* Create Community Dialog */}
       <Dialog open={isCreateCommunityOpen} onOpenChange={setIsCreateCommunityOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -1267,6 +1360,27 @@ export default function Messages() {
             <DialogDescription>Create a space for your community to connect</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* Cover Photo Input */}
+            <div 
+              className="relative w-full h-32 bg-muted rounded-xl overflow-hidden cursor-pointer group border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 transition-all"
+              onClick={() => coverInputRef.current?.click()}
+            >
+              {newCommCoverPreview ? (
+                <>
+                  <img src={newCommCoverPreview} className="w-full h-full object-cover" alt="cover" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera className="w-8 h-8 text-white" />
+                  </div>
+                </>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <ImageIcon className="w-8 h-8 opacity-50" />
+                  <span className="text-xs">Add Cover Photo</span>
+                </div>
+              )}
+              <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={handleCommunityCoverSelect} />
+            </div>
+
             <div className="space-y-2">
               <Label>Community Name *</Label>
               <Input placeholder="Enter community name" value={newCommName} onChange={(e) => setNewCommName(e.target.value)} maxLength={50} />
@@ -1342,7 +1456,7 @@ const CommunityInfoDialog = ({
       if (!community || community.type !== 'community') return;
       await supabase
         .from('community_members')
-        .update({ role: 'banned' } as any)
+        .update({ role: 'member', is_banned: true } as any) // Updated to set is_banned flag
         .eq('community_id', community.id)
         .eq('user_id', userId);
     },
@@ -1378,7 +1492,7 @@ const CommunityInfoDialog = ({
       if (!community || community.type !== 'community') return;
       await supabase
         .from('community_members')
-        .update({ role: 'member' } as any)
+        .update({ is_banned: false } as any)
         .eq('community_id', community.id)
         .eq('user_id', userId);
     },
@@ -1410,26 +1524,30 @@ const CommunityInfoDialog = ({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[550px] max-h-[90vh] flex flex-col p-0">
-          <div className="relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-purple-500/20 backdrop-blur-3xl" />
-            <div className="relative p-6 pb-4">
-              <div className="flex items-start gap-4">
-                <Avatar className="h-16 w-16 rounded-2xl ring-4 ring-background shadow-lg">
+        <DialogContent className="sm:max-w-[550px] max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          <div className="relative">
+            {/* Header / Cover Photo */}
+            <div className="h-32 w-full bg-muted relative overflow-hidden">
+                {community.cover_url ? (
+                  <img src={community.cover_url} alt="Cover" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-purple-500/20" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
+            </div>
+
+            <div className="relative px-6 -mt-12 pb-4">
+              <div className="flex items-end gap-4">
+                <Avatar className="h-24 w-24 rounded-2xl ring-4 ring-background shadow-xl">
                   <AvatarImage src={community.avatar} />
-                  <AvatarFallback className="text-2xl rounded-2xl">{community.name[0]}</AvatarFallback>
+                  <AvatarFallback className="text-3xl rounded-2xl bg-muted">{community.name[0]}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1">
-                  <h2 className="text-2xl font-bold mb-1">{community.name}</h2>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
+                <div className="flex-1 pb-1">
+                  <h2 className="text-2xl font-bold mb-1 leading-none">{community.name}</h2>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground mt-2">
+                    <span className="flex items-center gap-1.5">
                       <Users className="w-4 h-4" />
                       {activeMemberCount} members
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Crown className="w-4 h-4" />
-                      {adminCount} admin{adminCount !== 1 ? 's' : ''}
                     </span>
                   </div>
                 </div>
@@ -1437,24 +1555,31 @@ const CommunityInfoDialog = ({
             </div>
           </div>
 
-          {community.description && (
-            <div className="px-6 py-4 border-b bg-muted/30">
-              <p className="text-sm text-muted-foreground leading-relaxed">{community.description}</p>
-            </div>
-          )}
+          <div className="flex-1 overflow-hidden px-6 pb-6">
+             {community.description && (
+                <div className="py-4 border-b mb-4">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">About</h4>
+                  <p className="text-sm leading-relaxed">{community.description}</p>
+                </div>
+              )}
 
-          <div className="flex-1 overflow-hidden px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-lg flex items-center gap-2">
-                <Users className="w-5 h-5 text-primary" />
                 Members
               </h3>
-              <Badge variant="secondary" className="text-xs">
-                {activeMemberCount} active
-              </Badge>
+              <div className="flex gap-2">
+                 <Badge variant="secondary" className="text-xs">
+                    {activeMemberCount} active
+                 </Badge>
+                 {canModerate && (
+                    <Badge variant="outline" className="text-xs border-dashed">
+                        Moderation View
+                    </Badge>
+                 )}
+              </div>
             </div>
             
-            <ScrollArea className="h-[400px] pr-4">
+            <ScrollArea className="h-[300px] pr-4">
               <div className="space-y-2">
                 {members.map((m) => {
                   const isMe = m.user_id === user?.id;
@@ -1468,22 +1593,21 @@ const CommunityInfoDialog = ({
                       }`}
                     >
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <Avatar className="h-11 w-11 ring-2 ring-background">
+                        <Avatar className="h-10 w-10 ring-2 ring-background">
                           <AvatarImage src={m.profile?.avatar_url} />
                           <AvatarFallback>{m.profile?.display_name?.[0] || '?'}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium truncate">
+                            <span className="font-medium truncate text-sm">
                               {m.profile?.display_name || 'Unknown User'}
                             </span>
-                            {isMe && <Badge variant="outline" className="text-[10px] px-1.5 py-0">You</Badge>}
-                            {m.is_banned && <Badge variant="destructive" className="text-[10px]">Banned</Badge>}
+                            {isMe && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">You</Badge>}
+                            {m.is_banned && <Badge variant="destructive" className="text-[10px] h-4">Banned</Badge>}
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            {m.role === 'admin' && <Badge className="text-[10px] bg-amber-500">Admin</Badge>}
-                            {m.role === 'moderator' && <Badge className="text-[10px] bg-blue-500">Moderator</Badge>}
-                            {m.role === 'member' && <Badge variant="outline" className="text-[10px]">Member</Badge>}
+                            {m.role === 'admin' && <Badge className="text-[10px] bg-amber-500 h-4 px-1.5">Admin</Badge>}
+                            {m.role === 'moderator' && <Badge className="text-[10px] bg-blue-500 h-4 px-1.5">Moderator</Badge>}
                           </div>
                         </div>
                       </div>
@@ -1516,7 +1640,7 @@ const CommunityInfoDialog = ({
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
-                                  className="text-orange-600"
+                                  className="text-orange-600 focus:text-orange-700"
                                   onClick={() => {
                                     setSelectedMember(m);
                                     setModerationAction('kick');
@@ -1526,7 +1650,7 @@ const CommunityInfoDialog = ({
                                   <AlertCircle className="w-4 h-4 mr-2" /> Kick from Community
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
-                                  className="text-red-600" 
+                                  className="text-red-600 focus:text-red-700" 
                                   onClick={() => {
                                     setSelectedMember(m);
                                     setModerationAction('ban');
@@ -1546,7 +1670,7 @@ const CommunityInfoDialog = ({
               </div>
             </ScrollArea>
           </div>
-          <div className="p-6 pt-4 border-t">
+          <div className="p-4 border-t bg-muted/20">
             <Button variant="outline" className="w-full" onClick={onClose}>Close</Button>
           </div>
         </DialogContent>
