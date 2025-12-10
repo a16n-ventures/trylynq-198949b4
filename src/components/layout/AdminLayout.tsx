@@ -89,7 +89,7 @@ export default function AdminLayout() {
         `}
       >
         <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800">
-          <h1 className="font-bold text-xl tracking-wider">LYNQ<span className="text-primary">ADMIN</span></h1>
+          <h1 className="font-bold text-xl tracking-wider">AHMIA<span className="text-primary">ADMIN</span></h1>
           <Button 
             variant="ghost" 
             size="icon" 
