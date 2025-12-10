@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo } from "react";
+import React, { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -41,7 +41,9 @@ import { formatDistanceToNow } from "date-fns";
 import { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useFriends } from "@/hooks/useFriends";
 
-// --- TYPES ---
+/* ============================
+   Types
+   ============================ */
 type ChatMode = 'dm' | 'community';
 
 interface Message {
@@ -73,14 +75,17 @@ type SelectedChat =
       id: string; 
       name: string; 
       avatar?: string; 
-      cover_url?: string; // Added for production feature
+      cover_url?: string;
       description?: string; 
       my_role: 'admin' | 'moderator' | 'member' | 'none'; 
       member_count: number;
       is_banned?: boolean;
     };
 
-// --- HELPER: Safe Date Formatting ---
+/* ============================
+   Helpers: date formatting
+   Safe — won't throw
+   ============================ */
 const formatTime = (dateString?: string) => {
   if (!dateString) return '';
   try {
@@ -88,13 +93,12 @@ const formatTime = (dateString?: string) => {
     if (isNaN(date.getTime())) return '';
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
-    
     if (isToday) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else {
       return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -105,36 +109,37 @@ const formatMessageTime = (dateString?: string) => {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return '';
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch (e) {
+  } catch {
     return '';
   }
 };
 
-// --- HOOKS ---
-
-// Hook to handle auto-scrolling
+/* ============================
+   Hook: auto-scroll (to bottom)
+   ============================ */
 const useScrollToBottom = (messages: Message[]) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  
   useEffect(() => {
     const scrollContainer = scrollRef.current;
     if (!scrollContainer) return;
-
-    const isCloseToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 100;
     const lastMessage = messages[messages.length - 1];
+    const isCloseToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 120;
     const isMe = lastMessage?.is_me;
-
     if (isCloseToBottom || isMe) {
-        setTimeout(() => {
-            scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
-        }, 100);
+      // slight delay to let DOM paint
+      const id = window.setTimeout(() => {
+        scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+      }, 100);
+      return () => window.clearTimeout(id);
     }
   }, [messages.length, messages[messages.length - 1]?.id]);
-
   return scrollRef;
 };
 
-// Hook for Real-time subscriptions
+/* ============================
+   Hook: realtime subscriptions
+   Keeps queries fresh when new messages arrive
+   ============================ */
 const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | undefined) => {
   const queryClient = useQueryClient();
 
@@ -142,50 +147,59 @@ const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | und
     if (!selectedChat || !userId) return;
 
     const table = selectedChat.type === 'dm' ? 'messages' : 'community_messages';
-    const filter = selectedChat.type === 'dm' 
-      ? `or(and(sender_id.eq.${userId},receiver_id.eq.${selectedChat.partner_id}),and(sender_id.eq.${selectedChat.partner_id},receiver_id.eq.${userId}))`
-      : `community_id=eq.${selectedChat.id}`;
+    // For community, filter by community_id; for dm we subscribe to messages table (no filter) and filter in callback.
+    const filter = selectedChat.type === 'community' ? `community_id=eq.${selectedChat.id}` : undefined;
 
     const channel = supabase
       .channel(`chat_${selectedChat.id}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: table, filter: selectedChat.type === 'community' ? filter : undefined },
+        { event: 'INSERT', schema: 'public', table, filter },
         (payload: RealtimePostgresChangesPayload<any>) => {
-          if (selectedChat.type === 'dm') {
+          try {
             const newItem = payload.new;
-            const isRelevant = (newItem.sender_id === userId && newItem.receiver_id === selectedChat.partner_id) ||
-                               (newItem.sender_id === selectedChat.partner_id && newItem.receiver_id === userId);
-            if (!isRelevant) return;
+            if (selectedChat.type === 'dm') {
+              // ensure it's relevant to this DM
+              const isRelevant = (newItem.sender_id === userId && newItem.receiver_id === selectedChat.partner_id)
+                || (newItem.sender_id === selectedChat.partner_id && newItem.receiver_id === userId);
+              if (!isRelevant) return;
+            }
+            queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
+            queryClient.invalidateQueries({ queryKey: ['dm_list'] });
+          } catch (e) {
+            console.warn("Realtime INSERT handling error", e);
           }
-
-          queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
-          queryClient.invalidateQueries({ queryKey: ['dm_list'] });
         }
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: table, filter: selectedChat.type === 'community' ? filter : undefined },
+        { event: 'UPDATE', schema: 'public', table, filter },
         () => {
-           queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
+          queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      // unsubscribe safely
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // fallback: attempt to unsubscribe if removeChannel not available for SDK version
+        try { channel.unsubscribe(); } catch {}
+      }
     };
   }, [selectedChat, userId, queryClient]);
 };
 
-// --- COMPONENTS ---
-
-// Typing Indicator Component
+/* ============================
+   UI: Typing indicator
+   ============================ */
 const TypingIndicator = ({ name, avatar }: { name: string; avatar?: string }) => (
   <div className="flex items-center gap-2 mb-3 animate-in fade-in-50">
     <Avatar className="h-7 w-7 ring-2 ring-background">
       <AvatarImage src={avatar} />
-      <AvatarFallback className="text-xs">{name[0]}</AvatarFallback>
+      <AvatarFallback className="text-xs">{name?.[0] ?? '?'}</AvatarFallback>
     </Avatar>
     <div className="bg-muted/80 rounded-2xl rounded-tl-md px-4 py-3 flex items-center gap-1.5">
       <div className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -195,27 +209,31 @@ const TypingIndicator = ({ name, avatar }: { name: string; avatar?: string }) =>
   </div>
 );
 
-// Memoized Message Bubble
-const MessageBubble = React.memo(({ 
-  msg, 
-  prevMsg, 
+/* ============================
+   Message bubble (memoized)
+   Handles images, deleted, moderation, reply
+   ============================ */
+const MessageBubble = React.memo(function MessageBubbleInner({
+  msg,
+  prevMsg,
   isComm,
   canModerate,
   onDelete,
   onReply
-}: { 
+}: {
   msg: Message;
   prevMsg: Message | null;
   isComm: boolean;
   canModerate: boolean;
   onDelete: (msgId: string) => void;
   onReply: (msg: Message) => void;
-}) => {
+}) {
   const [showFullImage, setShowFullImage] = useState(false);
-  const isSequence = prevMsg && prevMsg.sender_id === msg.sender_id;
+  const isSequence = !!prevMsg && prevMsg.sender_id === msg.sender_id;
   const timeDiff = prevMsg ? new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() : 0;
   const showTimestamp = !prevMsg || timeDiff > 300000;
-  
+
+  // Deleted placeholder
   if (msg.is_deleted) {
     return (
       <div className="flex w-full mb-2 justify-center">
@@ -237,14 +255,14 @@ const MessageBubble = React.memo(({
             </span>
           </div>
         )}
-        
+
         <div className={`flex w-full mb-1.5 group ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
           {!msg.is_me && isComm && (
             <div className="w-8 mr-2 flex-shrink-0 flex flex-col justify-end">
               {!isSequence ? (
                 <Avatar className="w-8 h-8 ring-2 ring-background">
                   <AvatarImage src={msg.sender_avatar} />
-                  <AvatarFallback className="text-xs">{msg.sender_name?.[0] || '?'}</AvatarFallback>
+                  <AvatarFallback className="text-xs">{msg.sender_name?.[0] ?? '?'}</AvatarFallback>
                 </Avatar>
               ) : <div className="w-8" />}
             </div>
@@ -253,7 +271,7 @@ const MessageBubble = React.memo(({
           <div className={`flex flex-col max-w-[75%] ${msg.is_me ? 'items-end' : 'items-start'}`}>
             {!msg.is_me && isComm && !isSequence && (
               <span className="text-[11px] ml-2 mb-1 text-muted-foreground font-semibold">
-                {msg.sender_name || 'Unknown'}
+                {msg.sender_name ?? 'Unknown'}
               </span>
             )}
 
@@ -291,7 +309,7 @@ const MessageBubble = React.memo(({
                   <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
                 )}
               </div>
-              
+
               {!msg.pending && (
                 <div className={`absolute top-1/2 -translate-y-1/2 ${msg.is_me ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/message:opacity-100 transition-opacity`}>
                   <DropdownMenu>
@@ -300,6 +318,7 @@ const MessageBubble = React.memo(({
                         variant="ghost" 
                         size="icon" 
                         className="h-7 w-7 rounded-full bg-background/95 backdrop-blur-sm border shadow-sm hover:bg-accent"
+                        aria-label="Message menu"
                       >
                         <MoreVertical className="w-3.5 h-3.5" />
                       </Button>
@@ -326,7 +345,7 @@ const MessageBubble = React.memo(({
                 </div>
               )}
             </div>
-            
+
             <div className="flex items-center gap-1 mt-1 px-2">
               <span className="text-[10px] text-muted-foreground opacity-60">
                 {msg.pending ? 'Sending...' : formatMessageTime(msg.created_at)}
@@ -350,7 +369,9 @@ const MessageBubble = React.memo(({
   );
 });
 
-// Enhanced Community Settings Dialog
+/* ============================
+   Community Settings dialog (small enhancements)
+   ============================ */
 const CommunitySettingsDialog = ({ 
   isOpen, 
   onClose, 
@@ -382,11 +403,12 @@ const CommunitySettingsDialog = ({
   }, [currentName, currentDesc, currentCover, isOpen]);
 
   const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const file = e.target.files[0];
-      setCoverFile(file);
-      setCoverPreview(URL.createObjectURL(file));
-    }
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
+    if (!f.type.startsWith('image/')) return toast.error("Please select an image file");
+    setCoverFile(f);
+    setCoverPreview(URL.createObjectURL(f));
   };
 
   const updateMutation = useMutation({
@@ -394,26 +416,22 @@ const CommunitySettingsDialog = ({
       if (!name.trim()) throw new Error('Community name is required');
       if (!user) throw new Error('Not authenticated');
 
-      let newCoverUrl = currentCover;
+      let newCoverUrl = currentCover ?? null;
 
       if (coverFile) {
         const fileExt = coverFile.name.split('.').pop();
         const filePath = `${communityId}/${Date.now()}_cover.${fileExt}`;
         const { error: uploadError } = await supabase.storage.from('community-covers').upload(filePath, coverFile);
-        
         if (uploadError) throw uploadError;
-        
-        const { data: { publicUrl } } = supabase.storage.from('community-covers').getPublicUrl(filePath);
-        newCoverUrl = publicUrl;
+        const { data } = await supabase.storage.from('community-covers').getPublicUrl(filePath);
+        // supabase v1/v2 shape may vary; try both
+        // prefer data.publicUrl if present
+        newCoverUrl = (data && (data.publicUrl || (data.public_url ?? null))) || newCoverUrl;
       }
 
       await supabase
         .from('communities')
-        .update({ 
-            name: name.trim(), 
-            description: desc.trim(),
-            cover_url: newCoverUrl 
-        })
+        .update({ name: name.trim(), description: desc.trim(), cover_url: newCoverUrl })
         .eq('id', communityId);
     },
     onSuccess: () => {
@@ -421,7 +439,7 @@ const CommunitySettingsDialog = ({
       toast.success("Community updated");
       onClose();
     },
-    onError: (error: any) => toast.error(error.message)
+    onError: (error: any) => toast.error(error?.message || "Failed to update community")
   });
 
   const deleteMutation = useMutation({
@@ -437,6 +455,15 @@ const CommunitySettingsDialog = ({
     onError: () => toast.error("Failed to delete community")
   });
 
+  useEffect(() => {
+    // revoke locally created preview object URLs on cleanup (if any)
+    return () => {
+      if (coverPreview && coverPreview.startsWith('blob:')) {
+        try { URL.revokeObjectURL(coverPreview); } catch {}
+      }
+    };
+  }, [coverPreview]);
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -447,8 +474,7 @@ const CommunitySettingsDialog = ({
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-             {/* Cover Photo Upload */}
-             <div 
+            <div 
               className="relative w-full h-32 bg-muted rounded-xl overflow-hidden cursor-pointer group border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 transition-all"
               onClick={() => fileRef.current?.click()}
             >
@@ -484,8 +510,8 @@ const CommunitySettingsDialog = ({
             </Button>
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">Cancel</Button>
-              <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || !name.trim()} className="flex-1 sm:flex-none">
-                {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />} Save
+              <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isLoading || !name.trim()} className="flex-1 sm:flex-none">
+                {updateMutation.isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />} Save
               </Button>
             </div>
           </DialogFooter>
@@ -510,23 +536,24 @@ const CommunitySettingsDialog = ({
   );
 };
 
-// --- MAIN COMPONENT ---
+/* ============================
+   Main component
+   ============================ */
 export default function Messages() {
   const { user } = useAuth() || {};
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Community Creation Refs
+  const typingTimeoutRef = useRef<number | null>(null); // browser timer id
   const coverInputRef = useRef<HTMLInputElement>(null);
-  
+
+  // UI state
   const [activeTab, setActiveTab] = useState<ChatMode>('dm');
   const [selectedChat, setSelectedChat] = useState<SelectedChat | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  
+
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isCreateCommunityOpen, setIsCreateCommunityOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -534,48 +561,54 @@ export default function Messages() {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isTyping, setIsTyping] = useState(false);
 
-  // Create Community State
+  // Create community
   const [newCommName, setNewCommName] = useState('');
   const [newCommDesc, setNewCommDesc] = useState('');
   const [newCommCover, setNewCommCover] = useState<File | null>(null);
   const [newCommCoverPreview, setNewCommCoverPreview] = useState<string | null>(null);
 
   const [friendSearch, setFriendSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
 
   useChatRealtime(selectedChat, user?.id);
 
-  // Queries
+  // Debounce search query for list filtering
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedSearch(searchQuery), 250);
+    return () => window.clearTimeout(id);
+  }, [searchQuery]);
+
+  /* ============================
+     Queries: DM list
+     Returns: array of simplified conversation objects
+     ============================ */
   const { data: dmList = [], isLoading: loadingDMs } = useQuery({
     queryKey: ['dm_list', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      
-      // 1. Fetch messages first (no Joins) to avoid Foreign Key errors
       const { data: rawMessages, error } = await supabase
         .from('messages')
         .select('*')
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
 
-      if (error || !rawMessages) {
+      if (error) {
         console.error("Error fetching DMs:", error);
         return [];
       }
 
-      // 2. Identify unique partners and their latest message
-      const partnerMap = new Map();
+      // Build latest-per-partner
+      const partnerMap = new Map<string, { last_msg: string; time: string }>();
       const partnerIds = new Set<string>();
-
       rawMessages.forEach((msg: any) => {
         const isMeSender = msg.sender_id === user.id;
         const partnerId = isMeSender ? msg.receiver_id : msg.sender_id;
-        
-        if (!partnerIds.has(partnerId)) {
-          partnerIds.add(partnerId);
+        if (!partnerMap.has(partnerId)) {
           partnerMap.set(partnerId, {
-            last_msg: msg.content || (msg.image_url ? '📷 Photo' : 'Message'),
-            time: msg.created_at,
+            last_msg: msg.content ?? (msg.image_url ? '📷 Photo' : 'Message'),
+            time: msg.created_at
           });
+          partnerIds.add(partnerId);
         }
       });
 
@@ -583,27 +616,23 @@ export default function Messages() {
 
       const idsList = Array.from(partnerIds);
 
-      // 3. Batch fetch profile details using user_id (the correct field)
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, display_name, avatar_url')
         .in('user_id', idsList);
 
-      // 4. Create a lookup map by user_id
-      const profileLookup = new Map();
+      const profileLookup = new Map<string, any>();
       profiles?.forEach((p: any) => {
         if (p.user_id) profileLookup.set(p.user_id, p);
       });
 
-      // 5. Combine data with profiles
-      return idsList.map(partnerId => {
-        const details = partnerMap.get(partnerId);
-        const profile = profileLookup.get(partnerId);
-
+      return idsList.map(pid => {
+        const details = partnerMap.get(pid)!;
+        const profile = profileLookup.get(pid);
         return {
           type: 'dm',
-          id: partnerId,
-          partner_id: partnerId,
+          id: pid,
+          partner_id: pid,
           name: profile?.display_name || 'Unknown User',
           avatar: profile?.avatar_url,
           last_msg: details.last_msg,
@@ -614,15 +643,19 @@ export default function Messages() {
       });
     },
     enabled: !!user?.id,
+    staleTime: 30_000
   });
 
+  /* ============================
+     Queries: communities list
+     ============================ */
   const { data: commList = [], isLoading: loadingComms } = useQuery({
     queryKey: ['comm_list', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
       const { data } = await supabase
         .from('communities')
-        .select(`*, members:community_members(user_id, role, is_banned)`);
+        .select(`*, members:community_members(user_id, role, is_banned, profile:profiles(display_name, avatar_url))`);
 
       return data?.map((c: any) => {
         const myMembership = c.members?.find((m: any) => m.user_id === user?.id);
@@ -633,16 +666,20 @@ export default function Messages() {
           description: c.description,
           avatar: c.avatar_url,
           cover_url: c.cover_url,
-          member_count: c.member_count || 0,
+          member_count: c.member_count || (Array.isArray(c.members) ? c.members.length : 0),
           my_role: myMembership ? myMembership.role : 'none',
           is_joined: !!myMembership,
           is_banned: myMembership?.is_banned
         };
-      }) || [];
+      }) ?? [];
     },
     enabled: !!user?.id,
+    staleTime: 30_000
   });
 
+  /* ============================
+     Friends hook (provided)
+     ============================ */
   const { friends: rawFriends = [] } = useFriends(user?.id);
 
   const friends = useMemo(() => {
@@ -651,9 +688,9 @@ export default function Messages() {
       const rawProfile = f.requester_id === user.id ? f.addressee : f.requester;
       const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
       if (!profile) return null;
-      return { 
-        id: profile.user_id || profile.id, // Fallback to id if user_id is missing
-        name: profile.display_name, 
+      return {
+        id: profile.user_id ?? profile.id,
+        name: profile.display_name ?? 'Unknown',
         avatar: profile.avatar_url,
         is_online: false,
         last_seen: null
@@ -661,45 +698,52 @@ export default function Messages() {
     }).filter(Boolean);
   }, [rawFriends, user?.id]);
 
-  const { data: messages = [] } = useQuery({
+  /* ============================
+     Messages in selected chat
+     ============================ */
+  const { data: messages = [], refetch: refetchMessages } = useQuery({
     queryKey: ['messages', selectedChat?.type, selectedChat?.id, user?.id],
     queryFn: async () => {
       if (!user?.id || !selectedChat) return [];
-      
-      const isDM = selectedChat.type === 'dm';
-      let query;
-      
-      if (isDM) {
-        query = supabase
+      if (selectedChat.type === 'dm') {
+        const { data, error } = await supabase
           .from('messages')
           .select('*')
           .or(`and(sender_id.eq.${user.id},receiver_id.eq.${selectedChat.partner_id}),and(sender_id.eq.${selectedChat.partner_id},receiver_id.eq.${user.id})`)
           .order('created_at', { ascending: true });
+        if (error) throw error;
+        return (data || []).map((m: any) => ({
+          ...m,
+          is_me: m.sender_id === user.id,
+          sender_name: selectedChat.name,
+          sender_avatar: selectedChat.avatar,
+          is_deleted: m.is_deleted || false
+        })) as Message[];
       } else {
-        query = supabase
+        const { data, error } = await supabase
           .from('community_messages')
           .select('*, sender:profiles!sender_id(display_name, avatar_url)')
           .eq('community_id', selectedChat.id)
           .order('created_at', { ascending: true });
+        if (error) throw error;
+        return (data || []).map((m: any) => ({
+          ...m,
+          is_me: m.sender_id === user.id,
+          sender_name: m.sender?.display_name,
+          sender_avatar: m.sender?.avatar_url,
+          is_deleted: m.is_deleted || false
+        })) as Message[];
       }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return data.map((m: any) => ({ 
-        ...m, 
-        is_me: m.sender_id === user.id,
-        sender_name: isDM ? selectedChat.name : m.sender?.display_name,
-        sender_avatar: isDM ? selectedChat.avatar : m.sender?.avatar_url,
-        is_deleted: m.is_deleted || false
-      })) as Message[];
     },
     enabled: !!selectedChat && !!user?.id,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: false
   });
 
   const scrollRef = useScrollToBottom(messages);
 
+  /* ============================
+     Derived lists (friends)
+     ============================ */
   const filteredFriends = useMemo(() => {
     if (!friendSearch.trim()) return friends;
     return friends.filter((f: any) => f.name.toLowerCase().includes(friendSearch.toLowerCase()));
@@ -711,7 +755,9 @@ export default function Messages() {
     return { onlineFriends: online, offlineFriends: offline };
   }, [filteredFriends]);
 
-  // Mutations
+  /* ============================
+     Mutations
+     ============================ */
   const joinCommunity = useMutation({
     mutationFn: async (communityId: string) => {
       if (!user) throw new Error("Not authenticated");
@@ -722,44 +768,35 @@ export default function Messages() {
       toast.success("Joined community!");
       queryClient.invalidateQueries({ queryKey: ['comm_list'] });
     },
-    onError: (e: any) => toast.error(e.message)
+    onError: (e: any) => toast.error(e?.message ?? "Failed to join community")
   });
 
   const createCommunity = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Not authenticated");
       if (!newCommName.trim()) throw new Error("Community name is required");
-      
-      // 1. Insert Community Record First
+
       const { data: comm, error } = await supabase
         .from('communities')
-        .insert({ 
-          name: newCommName.trim(), 
-          description: newCommDesc.trim(), 
-          creator_id: user.id, 
-          member_count: 1 
-        })
+        .insert({ name: newCommName.trim(), description: newCommDesc.trim(), creator_id: user.id, member_count: 1 })
         .select()
         .single();
-      
       if (error) throw error;
 
-      // 2. Upload Cover if exists
       let coverUrl = null;
       if (newCommCover) {
         const fileExt = newCommCover.name.split('.').pop();
         const filePath = `${comm.id}/cover.${fileExt}`;
         const { error: uploadError } = await supabase.storage.from('community-covers').upload(filePath, newCommCover);
-        
         if (!uploadError) {
-          const { data: { publicUrl } } = supabase.storage.from('community-covers').getPublicUrl(filePath);
-          coverUrl = publicUrl;
-          // Update the community record with the cover URL
-          await supabase.from('communities').update({ cover_url: coverUrl }).eq('id', comm.id);
+          const { data } = await supabase.storage.from('community-covers').getPublicUrl(filePath);
+          coverUrl = (data && (data.publicUrl || (data.public_url ?? null))) || null;
+          if (coverUrl) {
+            await supabase.from('communities').update({ cover_url: coverUrl }).eq('id', comm.id);
+          }
         }
       }
 
-      // 3. Add Creator as Admin
       await supabase.from('community_members').insert({ community_id: comm.id, user_id: user.id, role: 'admin' });
       return comm;
     },
@@ -772,46 +809,46 @@ export default function Messages() {
       queryClient.invalidateQueries({ queryKey: ['comm_list'] });
       toast.success("Community created!");
     },
-    onError: (e: any) => toast.error(e.message)
+    onError: (e: any) => toast.error(e?.message ?? "Failed to create community")
   });
 
+  // Helper to upload file and return public url
+  const uploadFileAndGetUrl = async (bucket: string, path: string, file: File) => {
+    const { error } = await supabase.storage.from(bucket).upload(path, file);
+    if (error) throw error;
+    const { data } = await supabase.storage.from(bucket).getPublicUrl(path);
+    return (data && (data.publicUrl || (data.public_url ?? null))) || null;
+  };
+
   const sendMessage = useMutation({
-    mutationFn: async (vars: { content: string; file: File | null }) => {
+    mutationFn: async (vars: { content: string | null; file: File | null }) => {
       if ((!vars.content && !vars.file) || !selectedChat || !user) return;
-      
-      let imageUrl = null;
+
+      let imageUrl: string | null = null;
       if (vars.file) {
         const fileExt = vars.file.name.split('.').pop();
         const filePath = `${user.id}/${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('chat-attachments').upload(filePath, vars.file);
-        if (uploadError) throw uploadError;
-        const { data: { publicUrl } } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
-        imageUrl = publicUrl;
+        imageUrl = await uploadFileAndGetUrl('chat-attachments', filePath, vars.file);
       }
 
-      const payload = { 
-        sender_id: user.id, 
-        content: vars.content || null, 
-        image_url: imageUrl 
-      };
-      
+      const payload = { sender_id: user.id, content: vars.content || null, image_url: imageUrl };
+
       if (selectedChat.type === 'dm') {
         const { error } = await supabase.from('messages').insert({ ...payload, receiver_id: selectedChat.partner_id });
-        if(error) throw error;
+        if (error) throw error;
       } else {
         const { error } = await supabase.from('community_messages').insert({ ...payload, community_id: selectedChat.id });
-        if(error) throw error;
+        if (error) throw error;
       }
     },
     onMutate: async (vars) => {
       if (!selectedChat || !user) return;
-      
       await queryClient.cancelQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
-      const previousMessages = queryClient.getQueryData(['messages', selectedChat.type, selectedChat.id]);
+      const previousMessages = queryClient.getQueryData<Message[]>(['messages', selectedChat.type, selectedChat.id]);
 
       const optimisticMessage: Message = {
         id: `temp-${Date.now()}`,
-        content: vars.content,
+        content: vars.content ?? null,
         image_url: vars.file ? URL.createObjectURL(vars.file) : undefined,
         created_at: new Date().toISOString(),
         sender_id: user.id,
@@ -824,19 +861,24 @@ export default function Messages() {
       });
 
       setMessageInput('');
+      // revoke previous preview if any
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        try { URL.revokeObjectURL(imagePreview); } catch {}
+      }
       setImageFile(null);
       setImagePreview(null);
-      
+
       return { previousMessages };
     },
-    onError: (err, newTodo, context: any) => {
+    onError: (err: any, _vars, context: any) => {
       if (context?.previousMessages) {
         queryClient.setQueryData(['messages', selectedChat?.type, selectedChat?.id], context.previousMessages);
       }
       toast.error("Failed to send message");
     },
     onSettled: () => {
-       queryClient.invalidateQueries({ queryKey: ['messages', selectedChat?.type, selectedChat?.id] });
+      queryClient.invalidateQueries({ queryKey: ['messages', selectedChat?.type, selectedChat?.id] });
+      queryClient.invalidateQueries({ queryKey: ['dm_list'] });
     }
   });
 
@@ -844,72 +886,78 @@ export default function Messages() {
     mutationFn: async (messageId: string) => {
       if (!selectedChat) return;
       const table = selectedChat.type === 'dm' ? 'messages' : 'community_messages';
-      await supabase
+      const { error } = await supabase
         .from(table)
         .update({ is_deleted: true, content: null, image_url: null })
         .eq('id', messageId);
+      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Message deleted");
       queryClient.invalidateQueries({ queryKey: ['messages'] });
+      queryClient.invalidateQueries({ queryKey: ['dm_list'] });
     },
     onError: () => toast.error("Failed to delete message")
   });
 
-  // Handlers
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const file = e.target.files[0];
-      if (file.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
-      if (!file.type.startsWith('image/')) return toast.error("Please select an image file");
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
-    }
-  };
+  /* ============================
+     Handlers
+     ============================ */
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
+    if (!file.type.startsWith('image/')) return toast.error("Please select an image file");
+    setImageFile(file);
+    const obj = URL.createObjectURL(file);
+    setImagePreview(obj);
+  }, []);
 
-  const handleCommunityCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const file = e.target.files[0];
-      if (file.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
-      if (!file.type.startsWith('image/')) return toast.error("Please select an image file");
-      setNewCommCover(file);
-      setNewCommCoverPreview(URL.createObjectURL(file));
-    }
-  };
+  const handleCommunityCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
+    if (!file.type.startsWith('image/')) return toast.error("Please select an image file");
+    setNewCommCover(file);
+    setNewCommCoverPreview(URL.createObjectURL(file));
+  }, []);
 
-  const handleInputChange = (value: string) => {
+  const handleInputChange = useCallback((value: string) => {
     setMessageInput(value);
-    
-    if (!isTyping && value.trim()) {
-      setIsTyping(true);
-    }
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    typingTimeoutRef.current = setTimeout(() => {
+    if (!isTyping && value.trim()) setIsTyping(true);
+    if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = window.setTimeout(() => {
       setIsTyping(false);
+      typingTimeoutRef.current = null;
     }, 2000);
-  };
+  }, [isTyping]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if ((messageInput.trim() || imageFile) && !sendMessage.isPending) {
-        sendMessage.mutate({ content: messageInput.trim(), file: imageFile });
+      if ((messageInput.trim() || imageFile) && !sendMessage.isLoading) {
+        sendMessage.mutate({ content: messageInput.trim() || null, file: imageFile });
         setReplyingTo(null);
         setIsTyping(false);
       }
     }
-  };
+  }, [messageInput, imageFile, sendMessage]);
 
   useEffect(() => {
+    // cleanup preview object URLs on unmount
     return () => {
-      if (imagePreview) URL.revokeObjectURL(imagePreview);
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        try { URL.revokeObjectURL(imagePreview); } catch {}
+      }
+      if (newCommCoverPreview && newCommCoverPreview.startsWith('blob:')) {
+        try { URL.revokeObjectURL(newCommCoverPreview); } catch {}
+      }
     };
-  }, [imagePreview]);
+  }, [imagePreview, newCommCoverPreview]);
 
+  /* ============================
+     If not authed
+     ============================ */
   if (!user) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-background">
@@ -921,7 +969,9 @@ export default function Messages() {
     );
   }
 
-  // Chat View
+  /* ============================
+     Chat view (selectedChat)
+     ============================ */
   if (selectedChat) {
     const isComm = selectedChat.type === 'community';
     const canType = !isComm || (isComm && selectedChat.my_role !== 'none' && !selectedChat.is_banned);
@@ -930,13 +980,13 @@ export default function Messages() {
     return (
       <div className="fixed inset-0 z-[100] bg-background flex flex-col h-[100dvh]">
         <div className="px-4 py-3 border-b flex items-center gap-3 bg-gradient-to-r from-background to-muted/20 backdrop-blur-xl shadow-sm shrink-0 z-10">
-          <Button variant="ghost" size="icon" className="-ml-2 rounded-full hover:bg-muted" onClick={() => setSelectedChat(null)}>
+          <Button variant="ghost" size="icon" className="-ml-2 rounded-full hover:bg-muted" onClick={() => setSelectedChat(null)} aria-label="Back to list">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           
           <Avatar className="h-11 w-11 border-2 border-background ring-2 ring-primary/10 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
             <AvatarImage src={selectedChat.avatar} />
-            <AvatarFallback>{selectedChat.name?.[0] || 'C'}</AvatarFallback>
+            <AvatarFallback>{selectedChat.name?.[0] ?? 'C'}</AvatarFallback>
           </Avatar>
           
           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
@@ -960,7 +1010,7 @@ export default function Messages() {
           </div>
           
           <div className="flex items-center gap-0.5">
-             <DropdownMenu>
+            <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full h-9 w-9"><MoreVertical className="h-4 h-4" /></Button>
               </DropdownMenuTrigger>
@@ -1038,12 +1088,7 @@ export default function Messages() {
                       {replyingTo.content || '📷 Photo'}
                     </p>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7 rounded-full shrink-0"
-                    onClick={() => setReplyingTo(null)}
-                  >
+                  <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full shrink-0" onClick={() => setReplyingTo(null)} aria-label="Cancel reply">
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
@@ -1053,8 +1098,15 @@ export default function Messages() {
                 <div className="relative w-32 h-32 bg-muted rounded-2xl overflow-hidden border-2 border-primary/30 shadow-md group">
                   <img src={imagePreview} className="w-full h-full object-cover" alt="preview" />
                   <button 
-                    onClick={() => { setImageFile(null); setImagePreview(null); }} 
+                    onClick={() => { 
+                      setImageFile(null); 
+                      if (imagePreview && imagePreview.startsWith('blob:')) {
+                        try { URL.revokeObjectURL(imagePreview); } catch {}
+                      }
+                      setImagePreview(null); 
+                    }} 
                     className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Remove attachment"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1062,8 +1114,8 @@ export default function Messages() {
               )}
 
               <div className="flex items-end gap-2">
-                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
-                <Button variant="ghost" size="icon" className="rounded-full shrink-0 h-11 w-11" onClick={() => fileInputRef.current?.click()}>
+                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileSelect} aria-hidden />
+                <Button variant="ghost" size="icon" className="rounded-full shrink-0 h-11 w-11" onClick={() => fileInputRef.current?.click()} aria-label="Attach image">
                   <ImageIcon className="w-5 h-5" />
                 </Button>
                 
@@ -1075,29 +1127,29 @@ export default function Messages() {
                     className="min-h-[48px] max-h-32 py-3.5 pr-12 resize-none rounded-3xl bg-muted/60 border-border/50 focus:border-primary focus:bg-background transition-all"
                     onKeyDown={handleKeyPress}
                     rows={1}
+                    aria-label="Message input"
                   />
                 </div>
 
                 <Button 
                   size="icon" 
                   onClick={() => {
-                    sendMessage.mutate({ content: messageInput.trim(), file: imageFile });
-                    setReplyingTo(null);
+                    if (!sendMessage.isLoading && (messageInput.trim() || imageFile)) {
+                      sendMessage.mutate({ content: messageInput.trim() || null, file: imageFile });
+                      setReplyingTo(null);
+                    }
                   }} 
-                  disabled={sendMessage.isPending || (!messageInput.trim() && !imageFile)}
+                  disabled={sendMessage.isLoading || (!messageInput.trim() && !imageFile)}
                   className="rounded-full h-12 w-12 shadow-lg shrink-0"
+                  aria-label="Send message"
                 >
-                  <Send className="w-5 h-5 ml-0.5" />
+                  {sendMessage.isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
                 </Button>
               </div>
             </div>
           ) : (
-            <Button 
-              className="w-full rounded-2xl shadow-md h-12" 
-              onClick={() => joinCommunity.mutate(selectedChat.id)}
-              disabled={joinCommunity.isPending}
-            >
-              {joinCommunity.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <UserPlus className="w-5 h-5 mr-2" />}
+            <Button className="w-full rounded-2xl shadow-md h-12" onClick={() => joinCommunity.mutate(selectedChat.id)} disabled={joinCommunity.isLoading}>
+              {joinCommunity.isLoading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <UserPlus className="w-5 h-5 mr-2" />}
               Join Community to Chat
             </Button>
           )}
@@ -1106,13 +1158,15 @@ export default function Messages() {
     );
   }
 
-// List View
+  /* ============================
+     List view (conversations + communities)
+     ============================ */
   return (
     <div className="min-h-screen flex flex-col pb-20 bg-gradient-to-b from-background to-muted/10">
       <div className="container-mobile py-4 space-y-6 pb-24">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Messages</h1>
-          <Button size="icon" className="rounded-full shadow-lg h-12 w-12" onClick={() => activeTab === 'dm' ? setIsNewChatOpen(true) : setIsCreateCommunityOpen(true)}>
+          <Button size="icon" className="rounded-full shadow-lg h-12 w-12" onClick={() => activeTab === 'dm' ? setIsNewChatOpen(true) : setIsCreateCommunityOpen(true)} aria-label="New">
             <Plus className="h-5 w-5" />
           </Button>
         </div>
@@ -1124,6 +1178,7 @@ export default function Messages() {
             className="pl-11 bg-muted/30 border-transparent rounded-2xl h-10 focus:bg-background transition-all" 
             value={searchQuery} 
             onChange={(e) => setSearchQuery(e.target.value)} 
+            aria-label="Search conversations"
           />
         </div>
 
@@ -1147,8 +1202,8 @@ export default function Messages() {
                 <Button onClick={() => setIsNewChatOpen(true)} className="rounded-full mt-4">New Message</Button>
               </div>
             ) : (
-              dmList.filter((c: any) => c.name.toLowerCase().includes(searchQuery.toLowerCase())).map((chat: any) => (
-                <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl cursor-pointer transition-all bg-gradient-to-r from-background to-muted/5">
+              dmList.filter((c: any) => c.name.toLowerCase().includes(debouncedSearch.toLowerCase())).map((chat: any) => (
+                <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl cursor-pointer transition-all bg-gradient-to-r from-background to-muted/5" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setSelectedChat(chat); }}>
                   <div className="relative">
                     <Avatar className="h-14 w-14 border-2 border-background shadow-md">
                       <AvatarImage src={chat.avatar} />
@@ -1185,7 +1240,7 @@ export default function Messages() {
                  <Button onClick={() => setIsCreateCommunityOpen(true)} className="rounded-full mt-4">Create Community</Button>
               </div>
             ) : (
-              commList.filter((c: any) => c.name.toLowerCase().includes(searchQuery.toLowerCase())).map((comm: any) => (
+              commList.filter((c: any) => c.name.toLowerCase().includes(debouncedSearch.toLowerCase())).map((comm: any) => (
                 <div key={comm.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl transition-all bg-gradient-to-r from-background to-muted/5">
                   <Avatar className="h-14 w-14 rounded-2xl border-2 border-background shadow-md cursor-pointer" onClick={() => setSelectedChat(comm)}>
                     <AvatarImage src={comm.avatar} />
@@ -1205,7 +1260,7 @@ export default function Messages() {
                     size="sm" 
                     variant={comm.my_role !== 'none' ? "outline" : "default"} 
                     className="rounded-full px-5"
-                    onClick={comm.my_role !== 'none' ? () => setSelectedChat(comm) : () => joinCommunity.mutate(comm.id)}
+                    onClick={() => comm.my_role !== 'none' ? setSelectedChat(comm) : joinCommunity.mutate(comm.id)}
                   >
                     {comm.my_role !== 'none' ? "Open" : "Join"}
                   </Button>
@@ -1216,7 +1271,7 @@ export default function Messages() {
         </Tabs>
       </div>
 
-      {/* New Chat Dialog with Online Friends */}
+      {/* New Chat Dialog */}
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
         <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col p-0">
           <DialogHeader className="px-6 pt-6 pb-4 border-b">
@@ -1278,14 +1333,7 @@ export default function Messages() {
                           <div 
                             key={f.id} 
                             onClick={() => { 
-                              setSelectedChat({ 
-                                type: 'dm', 
-                                id: f.id, 
-                                partner_id: f.id, 
-                                name: f.name, 
-                                avatar: f.avatar,
-                                is_online: f.is_online 
-                              }); 
+                              setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar, is_online: f.is_online }); 
                               setIsNewChatOpen(false); 
                             }} 
                             className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
@@ -1321,14 +1369,7 @@ export default function Messages() {
                           <div 
                             key={f.id} 
                             onClick={() => { 
-                              setSelectedChat({ 
-                                type: 'dm', 
-                                id: f.id, 
-                                partner_id: f.id, 
-                                name: f.name, 
-                                avatar: f.avatar,
-                                is_online: f.is_online 
-                              }); 
+                              setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar, is_online: f.is_online }); 
                               setIsNewChatOpen(false); 
                             }} 
                             className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
@@ -1366,7 +1407,6 @@ export default function Messages() {
             <DialogDescription>Create a space for your community to connect</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* Cover Photo Input */}
             <div 
               className="relative w-full h-32 bg-muted rounded-xl overflow-hidden cursor-pointer group border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 transition-all"
               onClick={() => coverInputRef.current?.click()}
@@ -1398,8 +1438,8 @@ export default function Messages() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateCommunityOpen(false)}>Cancel</Button>
-            <Button onClick={() => createCommunity.mutate()} disabled={!newCommName.trim() || createCommunity.isPending}>
-              {createCommunity.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+            <Button onClick={() => createCommunity.mutate()} disabled={!newCommName.trim() || createCommunity.isLoading}>
+              {createCommunity.isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
               Create
             </Button>
           </DialogFooter>
@@ -1408,9 +1448,12 @@ export default function Messages() {
     </div>
   );
 }
+
 MessageBubble.displayName = 'MessageBubble';
 
-// Community Info & Moderation Dialog with Tabs
+/* ============================
+   Community info & moderation (tabs)
+   ============================ */
 const CommunityInfoDialog = ({ 
   isOpen, 
   onClose, 
@@ -1425,7 +1468,6 @@ const CommunityInfoDialog = ({
   const [activeTab, setActiveTab] = useState('info');
   const [memberSearch, setMemberSearch] = useState('');
   
-  // Moderation States
   const [showModAction, setShowModAction] = useState(false);
   const [selectedMember, setSelectedMember] = useState<CommunityMember | null>(null);
   const [modReason, setModReason] = useState('');
@@ -1449,11 +1491,9 @@ const CommunityInfoDialog = ({
   const canModerate = community?.type === 'community' && (community.my_role === 'admin' || community.my_role === 'moderator');
   const isAdmin = community?.type === 'community' && community.my_role === 'admin';
 
-  // Filters
   const activeMembers = members.filter(m => !m.is_banned && m.profile?.display_name.toLowerCase().includes(memberSearch.toLowerCase()));
   const bannedMembers = members.filter(m => m.is_banned && m.profile?.display_name.toLowerCase().includes(memberSearch.toLowerCase()));
 
-  // Mutations
   const executeModAction = useMutation({
     mutationFn: async () => {
       if (!community || !selectedMember) return;
@@ -1469,7 +1509,7 @@ const CommunityInfoDialog = ({
       setShowModAction(false);
       setModReason('');
     },
-    onError: (e) => toast.error(e.message)
+    onError: (e: any) => toast.error(e?.message ?? "Moderation action failed")
   });
 
   const updateRole = useMutation({
@@ -1480,7 +1520,8 @@ const CommunityInfoDialog = ({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comm_members'] });
       toast.success("Role updated");
-    }
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Failed to update role")
   });
 
   const unbanMember = useMutation({
@@ -1491,7 +1532,8 @@ const CommunityInfoDialog = ({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comm_members'] });
       toast.success("Member unbanned");
-    }
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Failed to unban member")
   });
 
   const leaveCommunity = useMutation({
@@ -1501,8 +1543,9 @@ const CommunityInfoDialog = ({
     },
     onSuccess: () => {
         onClose();
-        window.location.reload(); // Simple way to reset state
-    }
+        queryClient.invalidateQueries({ queryKey: ['comm_list'] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Failed to leave community")
   });
 
   if (!community || community.type !== 'community') return null;
@@ -1511,8 +1554,6 @@ const CommunityInfoDialog = ({
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="sm:max-w-[600px] h-[80vh] flex flex-col p-0 gap-0 overflow-hidden bg-background">
-          
-          {/* Parallax-style Header */}
           <div className="relative h-32 w-full flex-shrink-0 bg-muted">
             {community.cover_url ? (
               <img src={community.cover_url} alt="Cover" className="w-full h-full object-cover" />
@@ -1520,7 +1561,6 @@ const CommunityInfoDialog = ({
               <div className="w-full h-full bg-gradient-to-r from-primary/10 to-primary/5" />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-            
             <div className="absolute -bottom-6 left-6 flex items-end gap-4">
               <Avatar className="h-20 w-20 ring-4 ring-background shadow-xl rounded-2xl">
                 <AvatarImage src={community.avatar} />
@@ -1532,7 +1572,7 @@ const CommunityInfoDialog = ({
           <div className="px-6 pt-8 pb-2 flex-shrink-0">
             <h2 className="text-2xl font-bold">{community.name}</h2>
             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-              <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {members.filter(m=>!m.is_banned).length} Members</span>
+              <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {members.filter((m:any)=>!m.is_banned).length} Members</span>
               {community.my_role !== 'member' && <Badge variant="secondary" className="capitalize">{community.my_role}</Badge>}
             </div>
           </div>
@@ -1606,7 +1646,7 @@ const CommunityInfoDialog = ({
                             <DropdownMenuItem className="text-orange-600" onClick={()=>{setSelectedMember(m); setModAction('kick'); setShowModAction(true);}}>
                               <AlertCircle className="w-4 h-4 mr-2"/> Kick
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" onClick={()=>{setSelectedMember(m); setModAction('ban'); setShowModAction(true);}}>
+                            <DropdownMenuItem className="text-destructive/80" onClick={()=>{setSelectedMember(m); setModAction('ban'); setShowModAction(true);}}>
                               <Ban className="w-4 h-4 mr-2"/> Ban
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -1618,64 +1658,54 @@ const CommunityInfoDialog = ({
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="banned" className="flex-1 flex flex-col overflow-hidden m-0">
-               {bannedMembers.length === 0 ? (
-                 <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-6 text-center">
-                    <Shield className="w-12 h-12 mb-2 opacity-20" />
-                    <p>No banned users.</p>
-                 </div>
-               ) : (
-                 <ScrollArea className="flex-1">
-                   <div className="divide-y">
-                     {bannedMembers.map(m => (
-                       <div key={m.user_id} className="flex items-center justify-between p-4 bg-destructive/5">
-                         <div className="flex items-center gap-3 opacity-60">
-                           <Avatar className="h-10 w-10">
-                             <AvatarImage src={m.profile?.avatar_url} />
-                             <AvatarFallback>{m.profile?.display_name?.[0]}</AvatarFallback>
-                           </Avatar>
-                           <div>
-                             <p className="font-medium text-sm strike-through decoration-destructive">{m.profile?.display_name}</p>
-                             <p className="text-xs text-destructive font-medium">Banned</p>
-                           </div>
-                         </div>
-                         <Button size="sm" variant="outline" onClick={() => unbanMember.mutate(m.user_id)}>
-                           <Check className="w-4 h-4 mr-2" /> Revoke Ban
-                         </Button>
-                       </div>
-                     ))}
-                   </div>
-                 </ScrollArea>
-               )}
-            </TabsContent>
+            {canModerate && (
+              <TabsContent value="banned" className="flex-1 overflow-y-auto p-6 m-0">
+                <div className="space-y-4">
+                  {bannedMembers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No banned members</p>
+                  ) : (
+                    bannedMembers.map(b => (
+                      <div key={b.user_id} className="flex items-center justify-between p-3 bg-muted/10 rounded">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={b.profile?.avatar_url} />
+                            <AvatarFallback>{b.profile?.display_name?.[0]}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{b.profile?.display_name}</p>
+                            <p className="text-xs text-muted-foreground">Banned</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => unbanMember.mutate(b.user_id)}>Unban</Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
-
-          <div className="p-4 border-t bg-muted/20 flex justify-end">
-            <Button variant="outline" onClick={onClose}>Close</Button>
-          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Confirmation Dialog for Kick/Ban */}
+      {/* moderation dialog */}
       <Dialog open={showModAction} onOpenChange={setShowModAction}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <DialogTitle>{modAction === 'ban' ? 'Ban User' : 'Kick User'}</DialogTitle>
+            <DialogTitle>{modAction === 'kick' ? 'Kick Member' : 'Ban Member'}</DialogTitle>
             <DialogDescription>
-              {modAction === 'ban' 
-                ? `Are you sure you want to ban ${selectedMember?.profile.display_name}? They will not be able to rejoin.` 
-                : `Are you sure you want to kick ${selectedMember?.profile.display_name}? They can rejoin if they have the link.`}
+              {modAction === 'kick' ? 'Remove this member from the community.' : 'Ban this member from the community.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 py-2">
-             <Label>Reason (Optional)</Label>
-             <Textarea placeholder="Violation of rules..." value={modReason} onChange={e => setModReason(e.target.value)} />
+          <div className="space-y-4">
+            <Label>Reason (optional)</Label>
+            <Textarea value={modReason} onChange={(e) => setModReason(e.target.value)} rows={4} />
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowModAction(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => executeModAction.mutate()} disabled={executeModAction.isPending}>
-               {executeModAction.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-               Confirm {modAction === 'ban' ? 'Ban' : 'Kick'}
+            <Button variant="outline" onClick={() => setShowModAction(false)}>Cancel</Button>
+            <Button onClick={() => executeModAction.mutate()} className={modAction === 'ban' ? 'bg-destructive text-white' : ''}>
+              Confirm
             </Button>
           </DialogFooter>
         </DialogContent>
