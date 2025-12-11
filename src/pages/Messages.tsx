@@ -11,7 +11,8 @@ import {
   MessageSquare, X, Loader2, 
   MoreVertical, Info, UserPlus,
   Shield, Trash2, Ban, Crown, Image as ImageIcon,
-  Check, AlertCircle, Camera, UploadCloud, LogOut, UserX
+  Check, AlertCircle, Camera, UploadCloud, LogOut, UserX,
+  Edit2, CheckCheck
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,6 +59,7 @@ interface Message {
   is_deleted?: boolean;
   pending?: boolean;
   read?: boolean;
+  updated_at?: string; // For edit status
 }
 
 interface CommunityMember {
@@ -65,7 +67,7 @@ interface CommunityMember {
   role: 'admin' | 'moderator' | 'member';
   profile: { display_name: string; avatar_url: string; };
   joined_at: string;
-  is_banned?: boolean;
+  // removed is_banned
 }
 
 type SelectedChat = 
@@ -75,17 +77,23 @@ type SelectedChat =
       id: string; 
       name: string; 
       avatar?: string; 
-      cover_url?: string;
+      // removed cover_url
       description?: string; 
       my_role: 'admin' | 'moderator' | 'member' | 'none'; 
       member_count: number;
-      is_banned?: boolean;
+      // removed is_banned
     };
 
 /* ============================
-   Helpers: date formatting
-   Safe — won't throw
+   Helpers: Validation & Formatting
    ============================ */
+const validateImage = (file: File): string | null => {
+  const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  if (!validTypes.includes(file.type)) return "Only JPEG, PNG, WEBP, and GIF are allowed.";
+  if (file.size > 5 * 1024 * 1024) return "File size must be less than 5MB.";
+  return null;
+};
+
 const formatTime = (dateString?: string) => {
   if (!dateString) return '';
   try {
@@ -93,11 +101,9 @@ const formatTime = (dateString?: string) => {
     if (isNaN(date.getTime())) return '';
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
-    if (isToday) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    }
+    return isToday 
+      ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+      : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   } catch {
     return '';
   }
@@ -106,112 +112,142 @@ const formatTime = (dateString?: string) => {
 const formatMessageTime = (dateString?: string) => {
   if (!dateString) return '';
   try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch {
     return '';
   }
 };
 
 /* ============================
-   Hook: auto-scroll (to bottom)
+   Hook: Optimized Scroll
    ============================ */
 const useScrollToBottom = (messages: Message[]) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  
   useEffect(() => {
     const scrollContainer = scrollRef.current;
     if (!scrollContainer) return;
-    const lastMessage = messages[messages.length - 1];
-    const isCloseToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 120;
-    const isMe = lastMessage?.is_me;
-    if (isCloseToBottom || isMe) {
-      // slight delay to let DOM paint
-      const id = window.setTimeout(() => {
-        scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
-      }, 100);
-      return () => window.clearTimeout(id);
-    }
+    
+    // Use requestAnimationFrame for smoother UI performance during renders
+    requestAnimationFrame(() => {
+        const lastMessage = messages[messages.length - 1];
+        const isCloseToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 150;
+        const isMe = lastMessage?.is_me;
+        
+        if (isCloseToBottom || isMe) {
+          scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+        }
+    });
   }, [messages.length, messages[messages.length - 1]?.id]);
+  
   return scrollRef;
 };
 
 /* ============================
-   Hook: realtime subscriptions
-   Keeps queries fresh when new messages arrive
+   Hook: Realtime & Typing
    ============================ */
-const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | undefined) => {
+const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | undefined, onTyping: (user: string, isTyping: boolean) => void) => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!selectedChat || !userId) return;
 
     const table = selectedChat.type === 'dm' ? 'messages' : 'community_messages';
-    // For community, filter by community_id; for dm we subscribe to messages table (no filter) and filter in callback.
     const filter = selectedChat.type === 'community' ? `community_id=eq.${selectedChat.id}` : undefined;
 
-    const channel = supabase
-      .channel(`chat_${selectedChat.id}`)
+    const channel = supabase.channel(`chat_${selectedChat.id}`);
+
+    channel
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table, filter },
         (payload: RealtimePostgresChangesPayload<any>) => {
-          try {
-            const newItem = payload.new;
-            if (selectedChat.type === 'dm') {
-              // ensure it's relevant to this DM
-              const isRelevant = (newItem.sender_id === userId && newItem.receiver_id === selectedChat.partner_id)
-                || (newItem.sender_id === selectedChat.partner_id && newItem.receiver_id === userId);
-              if (!isRelevant) return;
-            }
-            queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
-            queryClient.invalidateQueries({ queryKey: ['dm_list'] });
-          } catch (e) {
-            console.warn("Realtime INSERT handling error", e);
+          const newItem = payload.new;
+          // DM Security check
+          if (selectedChat.type === 'dm') {
+            const isRelevant = (newItem.sender_id === userId && newItem.receiver_id === selectedChat.partner_id)
+              || (newItem.sender_id === selectedChat.partner_id && newItem.receiver_id === userId);
+            if (!isRelevant) return;
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table, filter },
-        () => {
           queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
+          queryClient.invalidateQueries({ queryKey: ['dm_list'] });
         }
       )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter }, () => {
+        queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
+      })
+      .on('broadcast', { event: 'typing' }, (payload) => {
+         if (payload.payload.userId !== userId) {
+            onTyping(payload.payload.name || 'Someone', true);
+         }
+      })
       .subscribe();
 
     return () => {
-      // unsubscribe safely
-      try {
-        supabase.removeChannel(channel);
-      } catch {
-        // fallback: attempt to unsubscribe if removeChannel not available for SDK version
-        try { channel.unsubscribe(); } catch {}
-      }
+      supabase.removeChannel(channel);
     };
-  }, [selectedChat, userId, queryClient]);
+  }, [selectedChat, userId, queryClient, onTyping]);
+
+  // Function to broadcast typing status
+  const broadcastTyping = useCallback(async () => {
+    if (!selectedChat) return;
+    try {
+      await supabase.channel(`chat_${selectedChat.id}`).send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { userId, name: 'User' } // Ideally pass actual name
+      });
+    } catch (e) { /* silent fail */ }
+  }, [selectedChat, userId]);
+
+  return { broadcastTyping };
 };
 
 /* ============================
    UI: Typing indicator
    ============================ */
-const TypingIndicator = ({ name, avatar }: { name: string; avatar?: string }) => (
-  <div className="flex items-center gap-2 mb-3 animate-in fade-in-50">
-    <Avatar className="h-7 w-7 ring-2 ring-background">
-      <AvatarImage src={avatar} />
-      <AvatarFallback className="text-xs">{name?.[0] ?? '?'}</AvatarFallback>
-    </Avatar>
-    <div className="bg-muted/80 rounded-2xl rounded-tl-md px-4 py-3 flex items-center gap-1.5">
-      <div className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-      <div className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-      <div className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+const TypingIndicator = ({ names }: { names: string[] }) => {
+  if (names.length === 0) return null;
+  return (
+    <div className="flex items-center gap-2 mb-3 animate-in fade-in-50 slide-in-from-bottom-2">
+      <div className="bg-muted/80 rounded-2xl rounded-tl-md px-4 py-3 flex items-center gap-1.5">
+        <div className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+        <div className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+        <div className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+      </div>
+      <span className="text-xs text-muted-foreground">
+        {names.join(', ')} {names.length > 1 ? 'are' : 'is'} typing...
+      </span>
     </div>
-  </div>
-);
+  );
+};
+
+/* ============================
+   Component: Lazy Image
+   ============================ */
+const LazyImage = ({ src, alt, className, onClick }: { src: string, alt: string, className?: string, onClick?: () => void }) => {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  if (error) return <div className="w-full h-32 flex items-center justify-center bg-muted text-muted-foreground text-xs rounded-xl">Failed to load image</div>;
+
+  return (
+    <div className={`relative overflow-hidden ${!loaded ? 'bg-muted animate-pulse' : ''} ${className}`}>
+      <img 
+        src={src} 
+        alt={alt} 
+        className={`transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'} ${className}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+        loading="lazy"
+        onClick={onClick}
+      />
+    </div>
+  );
+};
 
 /* ============================
    Message bubble (memoized)
-   Handles images, deleted, moderation, reply
    ============================ */
 const MessageBubble = React.memo(function MessageBubbleInner({
   msg,
@@ -219,7 +255,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({
   isComm,
   canModerate,
   onDelete,
-  onReply
+  onReply,
+  onEdit
 }: {
   msg: Message;
   prevMsg: Message | null;
@@ -227,17 +264,34 @@ const MessageBubble = React.memo(function MessageBubbleInner({
   canModerate: boolean;
   onDelete: (msgId: string) => void;
   onReply: (msg: Message) => void;
+  onEdit: (msg: Message, newContent: string) => Promise<void>;
 }) {
   const [showFullImage, setShowFullImage] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(msg.content || "");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   const isSequence = !!prevMsg && prevMsg.sender_id === msg.sender_id;
   const timeDiff = prevMsg ? new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() : 0;
   const showTimestamp = !prevMsg || timeDiff > 300000;
 
-  // Deleted placeholder
+  const handleSaveEdit = async () => {
+    if (!editContent.trim()) return;
+    setIsSavingEdit(true);
+    try {
+      await onEdit(msg, editContent);
+      setIsEditing(false);
+    } catch (e) {
+      toast.error("Failed to edit message");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   if (msg.is_deleted) {
     return (
       <div className="flex w-full mb-2 justify-center">
-        <div className="flex items-center gap-2 text-muted-foreground text-xs italic py-2 px-4 bg-muted/30 rounded-full">
+        <div className="flex items-center gap-2 text-muted-foreground text-xs italic py-2 px-4 bg-muted/30 rounded-full border border-border/50">
           <Trash2 className="w-3 h-3" />
           <span>Message deleted</span>
         </div>
@@ -249,18 +303,18 @@ const MessageBubble = React.memo(function MessageBubbleInner({
     <>
       <div className={`animate-in fade-in-50 slide-in-from-bottom-2 duration-200 ${msg.pending ? 'opacity-70' : ''}`}>
         {showTimestamp && (
-          <div className="flex justify-center my-4">
-            <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
+          <div className="flex justify-center my-6">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 bg-muted/30 px-3 py-1 rounded-full border border-border/40">
               {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}
             </span>
           </div>
         )}
 
-        <div className={`flex w-full mb-1.5 group ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
+        <div className={`flex w-full mb-2 group ${msg.is_me ? 'justify-end' : 'justify-start'}`}>
           {!msg.is_me && isComm && (
             <div className="w-8 mr-2 flex-shrink-0 flex flex-col justify-end">
               {!isSequence ? (
-                <Avatar className="w-8 h-8 ring-2 ring-background">
+                <Avatar className="w-8 h-8 ring-2 ring-background shadow-sm">
                   <AvatarImage src={msg.sender_avatar} />
                   <AvatarFallback className="text-xs">{msg.sender_name?.[0] ?? '?'}</AvatarFallback>
                 </Avatar>
@@ -268,7 +322,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({
             </div>
           )}
 
-          <div className={`flex flex-col max-w-[75%] ${msg.is_me ? 'items-end' : 'items-start'}`}>
+          <div className={`flex flex-col max-w-[80%] md:max-w-[70%] ${msg.is_me ? 'items-end' : 'items-start'}`}>
             {!msg.is_me && isComm && !isSequence && (
               <span className="text-[11px] ml-2 mb-1 text-muted-foreground font-semibold">
                 {msg.sender_name ?? 'Unknown'}
@@ -278,26 +332,24 @@ const MessageBubble = React.memo(function MessageBubbleInner({
             <div className="relative group/message">
               <div 
                 className={`
-                  relative overflow-hidden transition-all
+                  relative overflow-hidden transition-all shadow-sm
                   ${msg.is_me 
-                    ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-md' 
-                    : 'bg-white dark:bg-muted/80 border border-border/60 text-foreground shadow-sm'
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-card border border-border/60 text-card-foreground'
                   }
                   ${msg.image_url ? 'p-1' : 'px-4 py-2.5'}
-                  ${msg.is_me ? 'rounded-2xl rounded-tr-md' : 'rounded-2xl rounded-tl-md'}
+                  ${msg.is_me ? 'rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm'}
                 `}
               >
                 {msg.image_url && (
                   <div className="relative group/image">
-                    <img 
-                      src={msg.image_url} 
-                      alt="Attachment" 
-                      className="max-w-full rounded-xl object-cover cursor-pointer hover:opacity-95 transition-opacity" 
-                      style={{ maxHeight: '300px', minWidth: '200px' }} 
-                      loading="lazy"
+                    <LazyImage
+                      src={msg.image_url}
+                      alt="Attachment"
+                      className="rounded-xl object-cover cursor-pointer hover:opacity-95 max-h-[300px] min-w-[200px]"
                       onClick={() => setShowFullImage(true)}
                     />
-                    {msg.content && (
+                    {msg.content && !isEditing && (
                       <div className={`p-3 mt-1 ${msg.is_me ? 'text-primary-foreground' : ''}`}>
                         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
                       </div>
@@ -305,20 +357,36 @@ const MessageBubble = React.memo(function MessageBubbleInner({
                   </div>
                 )}
 
-                {!msg.image_url && msg.content && (
-                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                {/* Edit Mode */}
+                {isEditing ? (
+                  <div className="min-w-[200px] p-1">
+                    <Textarea 
+                      value={editContent} 
+                      onChange={(e) => setEditContent(e.target.value)} 
+                      className="text-foreground bg-background/50 min-h-[60px] text-sm mb-2"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="h-6 text-xs px-2 hover:bg-black/10">Cancel</Button>
+                      <Button size="sm" onClick={handleSaveEdit} disabled={isSavingEdit} className="h-6 text-xs px-2 bg-background/20 hover:bg-background/30">
+                        {isSavingEdit ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  !msg.image_url && msg.content && (
+                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                  )
                 )}
               </div>
 
-              {!msg.pending && (
-                <div className={`absolute top-1/2 -translate-y-1/2 ${msg.is_me ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/message:opacity-100 transition-opacity`}>
+              {!msg.pending && !isEditing && (
+                <div className={`absolute top-1/2 -translate-y-1/2 ${msg.is_me ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/message:opacity-100 transition-opacity z-10`}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-7 w-7 rounded-full bg-background/95 backdrop-blur-sm border shadow-sm hover:bg-accent"
-                        aria-label="Message menu"
+                        className="h-7 w-7 rounded-full bg-background/80 backdrop-blur-md border shadow-sm hover:bg-accent"
                       >
                         <MoreVertical className="w-3.5 h-3.5" />
                       </Button>
@@ -328,16 +396,15 @@ const MessageBubble = React.memo(function MessageBubbleInner({
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Reply
                       </DropdownMenuItem>
-                      {msg.is_me && (
-                        <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-red-600 focus:text-red-600">
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete Message
+                      {msg.is_me && !msg.image_url && (
+                        <DropdownMenuItem onClick={() => { setIsEditing(true); setEditContent(msg.content || ""); }}>
+                           <Edit2 className="w-4 h-4 mr-2" /> Edit Message
                         </DropdownMenuItem>
                       )}
-                      {!msg.is_me && canModerate && (
-                        <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-red-600 focus:text-red-600">
-                          <Shield className="w-4 h-4 mr-2" />
-                          Remove Message
+                      {(msg.is_me || canModerate) && (
+                        <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-destructive focus:text-destructive">
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          {msg.is_me ? 'Delete' : 'Remove'}
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
@@ -346,12 +413,15 @@ const MessageBubble = React.memo(function MessageBubbleInner({
               )}
             </div>
 
-            <div className="flex items-center gap-1 mt-1 px-2">
-              <span className="text-[10px] text-muted-foreground opacity-60">
+            <div className="flex items-center gap-1.5 mt-1 px-1">
+              <span className="text-[10px] text-muted-foreground/60 font-medium">
                 {msg.pending ? 'Sending...' : formatMessageTime(msg.created_at)}
               </span>
+              {msg.updated_at && !msg.pending && (
+                 <span className="text-[9px] text-muted-foreground/50 italic">Edited</span>
+              )}
               {msg.is_me && !msg.pending && (
-                <Check className="w-3 h-3 text-primary opacity-60" />
+                msg.read ? <CheckCheck className="w-3.5 h-3.5 text-blue-500" /> : <Check className="w-3.5 h-3.5 text-muted-foreground/50" />
               )}
             </div>
           </div>
@@ -360,8 +430,16 @@ const MessageBubble = React.memo(function MessageBubbleInner({
 
       {showFullImage && msg.image_url && (
         <Dialog open={showFullImage} onOpenChange={setShowFullImage}>
-          <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95">
-            <img src={msg.image_url} alt="Full size" className="w-full h-auto" />
+          <DialogContent className="max-w-screen-lg p-0 overflow-hidden bg-black/95 border-none">
+             <div className="relative w-full h-full flex items-center justify-center p-4">
+                <img src={msg.image_url} alt="Full size" className="max-h-[90vh] w-auto max-w-full rounded-md shadow-2xl" />
+                <button 
+                  onClick={() => setShowFullImage(false)}
+                  className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white hover:bg-black/70"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+             </div>
           </DialogContent>
         </Dialog>
       )}
@@ -370,7 +448,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({
 });
 
 /* ============================
-   Community Settings dialog (small enhancements)
+   Community Settings dialog 
    ============================ */
 const CommunitySettingsDialog = ({ 
   isOpen, 
@@ -378,60 +456,30 @@ const CommunitySettingsDialog = ({
   communityId, 
   currentName, 
   currentDesc,
-  currentCover 
 }: { 
   isOpen: boolean;
   onClose: () => void;
   communityId: string;
   currentName: string;
   currentDesc: string;
-  currentCover?: string;
+  currentCover?: string; // Kept in prop signature but ignored in logic
 }) => {
   const queryClient = useQueryClient();
   const [name, setName] = useState(currentName);
   const [desc, setDesc] = useState(currentDesc);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [coverFile, setCoverFile] = useState<File | null>(null);
-  const [coverPreview, setCoverPreview] = useState<string | null>(currentCover || null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const { user } = useAuth();
 
   useEffect(() => {
     setName(currentName);
     setDesc(currentDesc);
-    setCoverPreview(currentCover || null);
-  }, [currentName, currentDesc, currentCover, isOpen]);
-
-  const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
-    if (!f.type.startsWith('image/')) return toast.error("Please select an image file");
-    setCoverFile(f);
-    setCoverPreview(URL.createObjectURL(f));
-  };
+  }, [currentName, currentDesc, isOpen]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error('Community name is required');
-      if (!user) throw new Error('Not authenticated');
-
-      let newCoverUrl = currentCover ?? null;
-
-      if (coverFile) {
-        const fileExt = coverFile.name.split('.').pop();
-        const filePath = `${communityId}/${Date.now()}_cover.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('community-covers').upload(filePath, coverFile);
-        if (uploadError) throw uploadError;
-        const { data } = await supabase.storage.from('community-covers').getPublicUrl(filePath);
-        // supabase v1/v2 shape may vary; try both
-        // prefer data.publicUrl if present
-        newCoverUrl = (data && (data.publicUrl || (data.public_url ?? null))) || newCoverUrl;
-      }
-
       await supabase
         .from('communities')
-        .update({ name: name.trim(), description: desc.trim(), cover_url: newCoverUrl })
+        .update({ name: name.trim(), description: desc.trim() })
         .eq('id', communityId);
     },
     onSuccess: () => {
@@ -455,15 +503,6 @@ const CommunitySettingsDialog = ({
     onError: () => toast.error("Failed to delete community")
   });
 
-  useEffect(() => {
-    // revoke locally created preview object URLs on cleanup (if any)
-    return () => {
-      if (coverPreview && coverPreview.startsWith('blob:')) {
-        try { URL.revokeObjectURL(coverPreview); } catch {}
-      }
-    };
-  }, [coverPreview]);
-
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -474,25 +513,10 @@ const CommunitySettingsDialog = ({
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <div 
-              className="relative w-full h-32 bg-muted rounded-xl overflow-hidden cursor-pointer group border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 transition-all"
-              onClick={() => fileRef.current?.click()}
-            >
-              {coverPreview ? (
-                <>
-                  <img src={coverPreview} className="w-full h-full object-cover" alt="cover" />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Camera className="w-8 h-8 text-white" />
-                  </div>
-                </>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-                  <ImageIcon className="w-8 h-8 opacity-50" />
-                  <span className="text-xs">Change Cover Photo</span>
-                </div>
-              )}
-              <input type="file" ref={fileRef} className="hidden" accept="image/*" onChange={handleCoverSelect} />
-            </div>
+             {/* Cover Photo Removed as per instructions */}
+             <div className="p-4 bg-muted/20 rounded-lg text-sm text-muted-foreground border border-dashed">
+                Cover photo management is currently disabled.
+             </div>
 
             <div className="space-y-2">
               <Label>Community Name *</Label>
@@ -510,8 +534,8 @@ const CommunitySettingsDialog = ({
             </Button>
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">Cancel</Button>
-              <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isLoading || !name.trim()} className="flex-1 sm:flex-none">
-                {updateMutation.isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />} Save
+              <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || !name.trim()} className="flex-1 sm:flex-none">
+                {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />} Save
               </Button>
             </div>
           </DialogFooter>
@@ -543,7 +567,7 @@ export default function Messages() {
   const { user } = useAuth() || {};
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const typingTimeoutRef = useRef<number | null>(null); // browser timer id
+  const typingTimeoutRef = useRef<number | null>(null); 
   const coverInputRef = useRef<HTMLInputElement>(null);
 
   // UI state
@@ -559,7 +583,9 @@ export default function Messages() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
+  
+  // Realtime Typing State
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
 
   // Create community
   const [newCommName, setNewCommName] = useState('');
@@ -570,9 +596,30 @@ export default function Messages() {
   const [friendSearch, setFriendSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
 
-  useChatRealtime(selectedChat, user?.id);
+  // Handle Typing indicator updates
+  const handleTypingUpdate = useCallback((userName: string, isTyping: boolean) => {
+      setTypingUsers(prev => {
+          const next = new Set(prev);
+          if (isTyping) {
+             next.add(userName);
+             // Auto remove after 3s
+             setTimeout(() => {
+                setTypingUsers(current => {
+                    const updated = new Set(current);
+                    updated.delete(userName);
+                    return updated;
+                });
+             }, 3000);
+          } else {
+             next.delete(userName);
+          }
+          return next;
+      });
+  }, []);
 
-  // Debounce search query for list filtering
+  const { broadcastTyping } = useChatRealtime(selectedChat, user?.id, handleTypingUpdate);
+
+  // Debounce search query
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedSearch(searchQuery), 250);
     return () => window.clearTimeout(id);
@@ -580,7 +627,6 @@ export default function Messages() {
 
   /* ============================
      Queries: DM list
-     Returns: array of simplified conversation objects
      ============================ */
   const { data: dmList = [], isLoading: loadingDMs } = useQuery({
     queryKey: ['dm_list', user?.id],
@@ -597,7 +643,6 @@ export default function Messages() {
         return [];
       }
 
-      // Build latest-per-partner
       const partnerMap = new Map<string, { last_msg: string; time: string }>();
       const partnerIds = new Set<string>();
       rawMessages.forEach((msg: any) => {
@@ -615,7 +660,6 @@ export default function Messages() {
       if (partnerIds.size === 0) return [];
 
       const idsList = Array.from(partnerIds);
-
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, display_name, avatar_url')
@@ -653,9 +697,13 @@ export default function Messages() {
     queryKey: ['comm_list', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
+      // Removed cover_url from selection
       const { data } = await supabase
         .from('communities')
-        .select(`*, members:community_members(user_id, role, is_banned, profile:profiles(display_name, avatar_url))`);
+        .select(`
+            id, name, description, avatar_url, member_count, creator_id, created_at,
+            members:community_members(user_id, role, profile:profiles(display_name, avatar_url))
+        `);
 
       return data?.map((c: any) => {
         const myMembership = c.members?.find((m: any) => m.user_id === user?.id);
@@ -665,11 +713,10 @@ export default function Messages() {
           name: c.name || 'Unnamed Community',
           description: c.description,
           avatar: c.avatar_url,
-          cover_url: c.cover_url,
           member_count: c.member_count || (Array.isArray(c.members) ? c.members.length : 0),
           my_role: myMembership ? myMembership.role : 'none',
           is_joined: !!myMembership,
-          is_banned: myMembership?.is_banned
+          // Removed is_banned check
         };
       }) ?? [];
     },
@@ -678,7 +725,7 @@ export default function Messages() {
   });
 
   /* ============================
-     Friends hook (provided)
+     Friends hook
      ============================ */
   const { friends: rawFriends = [] } = useFriends(user?.id);
 
@@ -776,26 +823,13 @@ export default function Messages() {
       if (!user) throw new Error("Not authenticated");
       if (!newCommName.trim()) throw new Error("Community name is required");
 
+      // NOTE: Removed cover_url handling for creation
       const { data: comm, error } = await supabase
         .from('communities')
         .insert({ name: newCommName.trim(), description: newCommDesc.trim(), creator_id: user.id, member_count: 1 })
         .select()
         .single();
       if (error) throw error;
-
-      let coverUrl = null;
-      if (newCommCover) {
-        const fileExt = newCommCover.name.split('.').pop();
-        const filePath = `${comm.id}/cover.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('community-covers').upload(filePath, newCommCover);
-        if (!uploadError) {
-          const { data } = await supabase.storage.from('community-covers').getPublicUrl(filePath);
-          coverUrl = (data && (data.publicUrl || (data.public_url ?? null))) || null;
-          if (coverUrl) {
-            await supabase.from('communities').update({ cover_url: coverUrl }).eq('id', comm.id);
-          }
-        }
-      }
 
       await supabase.from('community_members').insert({ community_id: comm.id, user_id: user.id, role: 'admin' });
       return comm;
@@ -816,8 +850,8 @@ export default function Messages() {
   const uploadFileAndGetUrl = async (bucket: string, path: string, file: File) => {
     const { error } = await supabase.storage.from(bucket).upload(path, file);
     if (error) throw error;
-    const { data } = await supabase.storage.from(bucket).getPublicUrl(path);
-    return (data && (data.publicUrl || (data.public_url ?? null))) || null;
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return data.publicUrl; // Fixed .public_url to .publicUrl
   };
 
   const sendMessage = useMutation({
@@ -861,7 +895,6 @@ export default function Messages() {
       });
 
       setMessageInput('');
-      // revoke previous preview if any
       if (imagePreview && imagePreview.startsWith('blob:')) {
         try { URL.revokeObjectURL(imagePreview); } catch {}
       }
@@ -880,6 +913,23 @@ export default function Messages() {
       queryClient.invalidateQueries({ queryKey: ['messages', selectedChat?.type, selectedChat?.id] });
       queryClient.invalidateQueries({ queryKey: ['dm_list'] });
     }
+  });
+
+  const editMessage = useMutation({
+      mutationFn: async ({ msg, newContent }: { msg: Message, newContent: string }) => {
+          if (!selectedChat) return;
+          const table = selectedChat.type === 'dm' ? 'messages' : 'community_messages';
+          const { error } = await supabase
+            .from(table)
+            .update({ content: newContent }) // Assuming updated_at is handled by DB trigger or we could send it
+            .eq('id', msg.id);
+          if (error) throw error;
+      },
+      onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['messages', selectedChat?.type, selectedChat?.id] });
+          toast.success("Message updated");
+      },
+      onError: () => toast.error("Failed to update message")
   });
 
   const deleteMessage = useMutation({
@@ -906,54 +956,48 @@ export default function Messages() {
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
-    if (!file.type.startsWith('image/')) return toast.error("Please select an image file");
+    const error = validateImage(file);
+    if (error) return toast.error(error);
+    
     setImageFile(file);
     const obj = URL.createObjectURL(file);
     setImagePreview(obj);
   }, []);
 
-  const handleCommunityCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) return toast.error("File too large (max 5MB)");
-    if (!file.type.startsWith('image/')) return toast.error("Please select an image file");
-    setNewCommCover(file);
-    setNewCommCoverPreview(URL.createObjectURL(file));
-  }, []);
+  // Removed Community Cover Select Logic
 
   const handleInputChange = useCallback((value: string) => {
     setMessageInput(value);
-    if (!isTyping && value.trim()) setIsTyping(true);
-    if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = window.setTimeout(() => {
-      setIsTyping(false);
-      typingTimeoutRef.current = null;
-    }, 2000);
-  }, [isTyping]);
+    
+    // Typing indicator logic
+    if (value.trim().length > 0) {
+        if (!typingTimeoutRef.current) {
+            broadcastTyping();
+        }
+        if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = window.setTimeout(() => {
+            typingTimeoutRef.current = null;
+        }, 3000);
+    }
+  }, [broadcastTyping]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if ((messageInput.trim() || imageFile) && !sendMessage.isLoading) {
+      if ((messageInput.trim() || imageFile) && !sendMessage.isPending) {
         sendMessage.mutate({ content: messageInput.trim() || null, file: imageFile });
         setReplyingTo(null);
-        setIsTyping(false);
       }
     }
   }, [messageInput, imageFile, sendMessage]);
 
   useEffect(() => {
-    // cleanup preview object URLs on unmount
     return () => {
       if (imagePreview && imagePreview.startsWith('blob:')) {
         try { URL.revokeObjectURL(imagePreview); } catch {}
       }
-      if (newCommCoverPreview && newCommCoverPreview.startsWith('blob:')) {
-        try { URL.revokeObjectURL(newCommCoverPreview); } catch {}
-      }
     };
-  }, [imagePreview, newCommCoverPreview]);
+  }, [imagePreview]);
 
   /* ============================
      If not authed
@@ -974,8 +1018,10 @@ export default function Messages() {
      ============================ */
   if (selectedChat) {
     const isComm = selectedChat.type === 'community';
-    const canType = !isComm || (isComm && selectedChat.my_role !== 'none' && !selectedChat.is_banned);
+    // Removed is_banned check
+    const canType = !isComm || (isComm && selectedChat.my_role !== 'none');
     const canModerate = isComm && (selectedChat.my_role === 'admin' || selectedChat.my_role === 'moderator');
+    const activeTypingUsers = Array.from(typingUsers);
 
     return (
       <div className="fixed inset-0 z-[100] bg-background flex flex-col h-[100dvh]">
@@ -1038,7 +1084,6 @@ export default function Messages() {
                 communityId={selectedChat.id} 
                 currentName={selectedChat.name} 
                 currentDesc={selectedChat.description || ''} 
-                currentCover={selectedChat.cover_url}
               />
             )}
           </>
@@ -1067,9 +1112,10 @@ export default function Messages() {
                     canModerate={canModerate}
                     onDelete={(msgId) => deleteMessage.mutate(msgId)}
                     onReply={(msg) => setReplyingTo(msg)}
+                    onEdit={(msg, content) => editMessage.mutateAsync({ msg, newContent: content })}
                   />
                 ))}
-                {false && <TypingIndicator name={selectedChat.name} avatar={selectedChat.avatar} />}
+                {activeTypingUsers.length > 0 && <TypingIndicator names={activeTypingUsers} />}
               </>
             )}
           </div>
@@ -1114,7 +1160,7 @@ export default function Messages() {
               )}
 
               <div className="flex items-end gap-2">
-                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileSelect} aria-hidden />
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" ref={fileInputRef} onChange={handleFileSelect} aria-hidden />
                 <Button variant="ghost" size="icon" className="rounded-full shrink-0 h-11 w-11" onClick={() => fileInputRef.current?.click()} aria-label="Attach image">
                   <ImageIcon className="w-5 h-5" />
                 </Button>
@@ -1129,27 +1175,30 @@ export default function Messages() {
                     rows={1}
                     aria-label="Message input"
                   />
+                  <div className="absolute right-4 bottom-3 text-[10px] text-muted-foreground/60 pointer-events-none">
+                     {messageInput.length > 0 && messageInput.length}
+                  </div>
                 </div>
 
                 <Button 
                   size="icon" 
                   onClick={() => {
-                    if (!sendMessage.isLoading && (messageInput.trim() || imageFile)) {
+                    if (!sendMessage.isPending && (messageInput.trim() || imageFile)) {
                       sendMessage.mutate({ content: messageInput.trim() || null, file: imageFile });
                       setReplyingTo(null);
                     }
                   }} 
-                  disabled={sendMessage.isLoading || (!messageInput.trim() && !imageFile)}
-                  className="rounded-full h-12 w-12 shadow-lg shrink-0"
+                  disabled={sendMessage.isPending || (!messageInput.trim() && !imageFile)}
+                  className="rounded-full h-12 w-12 shadow-lg shrink-0 transition-transform active:scale-95"
                   aria-label="Send message"
                 >
-                  {sendMessage.isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
+                  {sendMessage.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
                 </Button>
               </div>
             </div>
           ) : (
-            <Button className="w-full rounded-2xl shadow-md h-12" onClick={() => joinCommunity.mutate(selectedChat.id)} disabled={joinCommunity.isLoading}>
-              {joinCommunity.isLoading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <UserPlus className="w-5 h-5 mr-2" />}
+            <Button className="w-full rounded-2xl shadow-md h-12" onClick={() => joinCommunity.mutate(selectedChat.id)} disabled={joinCommunity.isPending}>
+              {joinCommunity.isPending ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <UserPlus className="w-5 h-5 mr-2" />}
               Join Community to Chat
             </Button>
           )}
@@ -1166,16 +1215,16 @@ export default function Messages() {
       <div className="container-mobile py-4 space-y-6 pb-24">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Messages</h1>
-          <Button size="icon" className="rounded-full shadow-lg h-12 w-12" onClick={() => activeTab === 'dm' ? setIsNewChatOpen(true) : setIsCreateCommunityOpen(true)} aria-label="New">
+          <Button size="icon" className="rounded-full shadow-lg h-12 w-12 transition-transform active:scale-95" onClick={() => activeTab === 'dm' ? setIsNewChatOpen(true) : setIsCreateCommunityOpen(true)} aria-label="New">
             <Plus className="h-5 w-5" />
           </Button>
         </div>
 
-        <div className="relative mt-4">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="relative mt-4 group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
           <Input 
             placeholder="Search conversations..." 
-            className="pl-11 bg-muted/30 border-transparent rounded-2xl h-10 focus:bg-background transition-all" 
+            className="pl-11 bg-muted/30 border-transparent rounded-2xl h-10 focus:bg-background focus:border-primary/20 transition-all shadow-sm" 
             value={searchQuery} 
             onChange={(e) => setSearchQuery(e.target.value)} 
             aria-label="Search conversations"
@@ -1184,10 +1233,10 @@ export default function Messages() {
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChatMode)} className="w-full">
           <TabsList className="grid w-full grid-cols-2 bg-muted/40 p-1.5 rounded-2xl mb-5">
-            <TabsTrigger value="dm" className="rounded-xl py-2.5 transition-all font-semibold">
+            <TabsTrigger value="dm" className="rounded-xl py-2.5 transition-all font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
               <MessageSquare className="w-4 h-4 mr-2" /> Direct Messages
             </TabsTrigger>
-            <TabsTrigger value="community" className="rounded-xl py-2.5 transition-all font-semibold">
+            <TabsTrigger value="community" className="rounded-xl py-2.5 transition-all font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
               <Users className="w-4 h-4 mr-2" /> Communities
             </TabsTrigger>
           </TabsList>
@@ -1203,9 +1252,9 @@ export default function Messages() {
               </div>
             ) : (
               dmList.filter((c: any) => c.name.toLowerCase().includes(debouncedSearch.toLowerCase())).map((chat: any) => (
-                <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl cursor-pointer transition-all bg-gradient-to-r from-background to-muted/5" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setSelectedChat(chat); }}>
+                <div key={chat.id} onClick={() => setSelectedChat(chat)} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl cursor-pointer transition-all bg-gradient-to-r from-background to-muted/5 group" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setSelectedChat(chat); }}>
                   <div className="relative">
-                    <Avatar className="h-14 w-14 border-2 border-background shadow-md">
+                    <Avatar className="h-14 w-14 border-2 border-background shadow-md group-hover:shadow-lg transition-shadow">
                       <AvatarImage src={chat.avatar} />
                       <AvatarFallback>{chat.name?.[0] || '?'}</AvatarFallback>
                     </Avatar>
@@ -1215,7 +1264,7 @@ export default function Messages() {
                   </div>
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex justify-between items-center">
-                      <h3 className="font-bold text-[15px] truncate">{chat.name}</h3>
+                      <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{chat.name}</h3>
                       <span className="text-[11px] text-muted-foreground font-medium">{formatTime(chat.time)}</span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -1241,16 +1290,16 @@ export default function Messages() {
               </div>
             ) : (
               commList.filter((c: any) => c.name.toLowerCase().includes(debouncedSearch.toLowerCase())).map((comm: any) => (
-                <div key={comm.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl transition-all bg-gradient-to-r from-background to-muted/5">
-                  <Avatar className="h-14 w-14 rounded-2xl border-2 border-background shadow-md cursor-pointer" onClick={() => setSelectedChat(comm)}>
+                <div key={comm.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl transition-all bg-gradient-to-r from-background to-muted/5 group">
+                  <Avatar className="h-14 w-14 rounded-2xl border-2 border-background shadow-md cursor-pointer group-hover:shadow-lg transition-all" onClick={() => setSelectedChat(comm)}>
                     <AvatarImage src={comm.avatar} />
                     <AvatarFallback>{comm.name?.[0] || 'C'}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedChat(comm)}>
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold text-[15px] truncate">{comm.name}</h3>
-                      {comm.my_role === 'admin' && <Badge className="text-[10px] bg-amber-100 text-amber-700">Admin</Badge>}
-                      {comm.my_role === 'moderator' && <Badge className="text-[10px] bg-blue-100 text-blue-700">Mod</Badge>}
+                      <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{comm.name}</h3>
+                      {comm.my_role === 'admin' && <Badge className="text-[10px] bg-amber-100 text-amber-700 hover:bg-amber-200">Admin</Badge>}
+                      {comm.my_role === 'moderator' && <Badge className="text-[10px] bg-blue-100 text-blue-700 hover:bg-blue-200">Mod</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                       <Users className="w-3 h-3"/> {comm.member_count} member{comm.member_count !== 1 ? 's' : ''}
@@ -1259,7 +1308,7 @@ export default function Messages() {
                   <Button 
                     size="sm" 
                     variant={comm.my_role !== 'none' ? "outline" : "default"} 
-                    className="rounded-full px-5"
+                    className="rounded-full px-5 transition-transform active:scale-95"
                     onClick={() => comm.my_role !== 'none' ? setSelectedChat(comm) : joinCommunity.mutate(comm.id)}
                   >
                     {comm.my_role !== 'none' ? "Open" : "Join"}
@@ -1407,25 +1456,8 @@ export default function Messages() {
             <DialogDescription>Create a space for your community to connect</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div 
-              className="relative w-full h-32 bg-muted rounded-xl overflow-hidden cursor-pointer group border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 transition-all"
-              onClick={() => coverInputRef.current?.click()}
-            >
-              {newCommCoverPreview ? (
-                <>
-                  <img src={newCommCoverPreview} className="w-full h-full object-cover" alt="cover" />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Camera className="w-8 h-8 text-white" />
-                  </div>
-                </>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-                  <ImageIcon className="w-8 h-8 opacity-50" />
-                  <span className="text-xs">Add Cover Photo</span>
-                </div>
-              )}
-              <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={handleCommunityCoverSelect} />
-            </div>
+            
+            {/* Removed Cover Photo Input */}
 
             <div className="space-y-2">
               <Label>Community Name *</Label>
@@ -1438,8 +1470,8 @@ export default function Messages() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateCommunityOpen(false)}>Cancel</Button>
-            <Button onClick={() => createCommunity.mutate()} disabled={!newCommName.trim() || createCommunity.isLoading}>
-              {createCommunity.isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+            <Button onClick={() => createCommunity.mutate()} disabled={!newCommName.trim() || createCommunity.isPending}>
+              {createCommunity.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
               Create
             </Button>
           </DialogFooter>
@@ -1471,15 +1503,16 @@ const CommunityInfoDialog = ({
   const [showModAction, setShowModAction] = useState(false);
   const [selectedMember, setSelectedMember] = useState<CommunityMember | null>(null);
   const [modReason, setModReason] = useState('');
-  const [modAction, setModAction] = useState<'kick' | 'ban'>('kick');
+  const [modAction, setModAction] = useState<'kick'>('kick');
 
   const { data: members = [] } = useQuery({
     queryKey: ['comm_members', community?.id],
     queryFn: async () => {
       if (!community || community.type !== 'community') return [];
+      // Removed is_banned from select
       const { data, error } = await supabase
         .from('community_members')
-        .select('user_id, role, joined_at, is_banned, profile:profiles(display_name, avatar_url)')
+        .select('user_id, role, joined_at, profile:profiles(display_name, avatar_url)')
         .eq('community_id', community.id)
         .order('role', { ascending: true }); // Admins first
       if (error) throw error;
@@ -1491,21 +1524,21 @@ const CommunityInfoDialog = ({
   const canModerate = community?.type === 'community' && (community.my_role === 'admin' || community.my_role === 'moderator');
   const isAdmin = community?.type === 'community' && community.my_role === 'admin';
 
-  const activeMembers = members.filter(m => !m.is_banned && m.profile?.display_name.toLowerCase().includes(memberSearch.toLowerCase()));
-  const bannedMembers = members.filter(m => m.is_banned && m.profile?.display_name.toLowerCase().includes(memberSearch.toLowerCase()));
+  // Filter out where profile might be null to avoid crashes
+  const validMembers = members.filter(m => m.profile);
+  const activeMembers = validMembers.filter(m => m.profile.display_name.toLowerCase().includes(memberSearch.toLowerCase()));
 
   const executeModAction = useMutation({
     mutationFn: async () => {
       if (!community || !selectedMember) return;
       if (modAction === 'kick') {
         await supabase.from('community_members').delete().eq('community_id', community.id).eq('user_id', selectedMember.user_id);
-      } else {
-        await supabase.from('community_members').update({ is_banned: true, role: 'member' } as any).eq('community_id', community.id).eq('user_id', selectedMember.user_id);
-      }
+      } 
+      // Removed Ban logic
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comm_members'] });
-      toast.success(modAction === 'kick' ? "Member kicked" : "Member banned");
+      toast.success("Member kicked");
       setShowModAction(false);
       setModReason('');
     },
@@ -1522,18 +1555,6 @@ const CommunityInfoDialog = ({
       toast.success("Role updated");
     },
     onError: (e: any) => toast.error(e?.message ?? "Failed to update role")
-  });
-
-  const unbanMember = useMutation({
-    mutationFn: async (uid: string) => {
-      if (!community) return;
-      await supabase.from('community_members').update({ is_banned: false }).eq('community_id', community.id).eq('user_id', uid);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['comm_members'] });
-      toast.success("Member unbanned");
-    },
-    onError: (e: any) => toast.error(e?.message ?? "Failed to unban member")
   });
 
   const leaveCommunity = useMutation({
@@ -1555,11 +1576,7 @@ const CommunityInfoDialog = ({
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="sm:max-w-[600px] h-[80vh] flex flex-col p-0 gap-0 overflow-hidden bg-background">
           <div className="relative h-32 w-full flex-shrink-0 bg-muted">
-            {community.cover_url ? (
-              <img src={community.cover_url} alt="Cover" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-r from-primary/10 to-primary/5" />
-            )}
+            <div className="w-full h-full bg-gradient-to-r from-primary/10 to-primary/5" />
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
             <div className="absolute -bottom-6 left-6 flex items-end gap-4">
               <Avatar className="h-20 w-20 ring-4 ring-background shadow-xl rounded-2xl">
@@ -1572,7 +1589,7 @@ const CommunityInfoDialog = ({
           <div className="px-6 pt-8 pb-2 flex-shrink-0">
             <h2 className="text-2xl font-bold">{community.name}</h2>
             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-              <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {members.filter((m:any)=>!m.is_banned).length} Members</span>
+              <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {validMembers.length} Members</span>
               {community.my_role !== 'member' && <Badge variant="secondary" className="capitalize">{community.my_role}</Badge>}
             </div>
           </div>
@@ -1582,11 +1599,6 @@ const CommunityInfoDialog = ({
               <TabsList className="bg-transparent h-10 p-0 gap-6">
                 <TabsTrigger value="info" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 pb-2">Overview</TabsTrigger>
                 <TabsTrigger value="members" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 pb-2">Members</TabsTrigger>
-                {canModerate && (
-                  <TabsTrigger value="banned" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-destructive rounded-none px-0 pb-2 text-destructive/80 data-[state=active]:text-destructive">
-                    Banned ({bannedMembers.length})
-                  </TabsTrigger>
-                )}
               </TabsList>
             </div>
 
@@ -1646,9 +1658,6 @@ const CommunityInfoDialog = ({
                             <DropdownMenuItem className="text-orange-600" onClick={()=>{setSelectedMember(m); setModAction('kick'); setShowModAction(true);}}>
                               <AlertCircle className="w-4 h-4 mr-2"/> Kick
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive/80" onClick={()=>{setSelectedMember(m); setModAction('ban'); setShowModAction(true);}}>
-                              <Ban className="w-4 h-4 mr-2"/> Ban
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       )}
@@ -1657,34 +1666,6 @@ const CommunityInfoDialog = ({
                 </div>
               </ScrollArea>
             </TabsContent>
-
-            {canModerate && (
-              <TabsContent value="banned" className="flex-1 overflow-y-auto p-6 m-0">
-                <div className="space-y-4">
-                  {bannedMembers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No banned members</p>
-                  ) : (
-                    bannedMembers.map(b => (
-                      <div key={b.user_id} className="flex items-center justify-between p-3 bg-muted/10 rounded">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10">
-                            <AvatarImage src={b.profile?.avatar_url} />
-                            <AvatarFallback>{b.profile?.display_name?.[0]}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{b.profile?.display_name}</p>
-                            <p className="text-xs text-muted-foreground">Banned</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => unbanMember.mutate(b.user_id)}>Unban</Button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </TabsContent>
-            )}
           </Tabs>
         </DialogContent>
       </Dialog>
@@ -1693,9 +1674,9 @@ const CommunityInfoDialog = ({
       <Dialog open={showModAction} onOpenChange={setShowModAction}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <DialogTitle>{modAction === 'kick' ? 'Kick Member' : 'Ban Member'}</DialogTitle>
+            <DialogTitle>Kick Member</DialogTitle>
             <DialogDescription>
-              {modAction === 'kick' ? 'Remove this member from the community.' : 'Ban this member from the community.'}
+              Remove this member from the community.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1704,7 +1685,7 @@ const CommunityInfoDialog = ({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowModAction(false)}>Cancel</Button>
-            <Button onClick={() => executeModAction.mutate()} className={modAction === 'ban' ? 'bg-destructive text-white' : ''}>
+            <Button onClick={() => executeModAction.mutate()} className="bg-destructive text-white">
               Confirm
             </Button>
           </DialogFooter>
