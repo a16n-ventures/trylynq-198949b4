@@ -12,7 +12,7 @@ import {
   MoreVertical, Info, UserPlus,
   Shield, Trash2, Ban, Crown, Image as ImageIcon,
   Check, AlertCircle, Camera, UploadCloud, LogOut, UserX,
-  Edit2, CheckCheck
+  Edit2, CheckCheck, Grid, ChevronUp
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -59,7 +59,7 @@ interface Message {
   is_deleted?: boolean;
   pending?: boolean;
   read?: boolean;
-  updated_at?: string; // For edit status
+  updated_at?: string;
 }
 
 interface CommunityMember {
@@ -67,7 +67,6 @@ interface CommunityMember {
   role: 'admin' | 'moderator' | 'member';
   profile: { display_name: string; avatar_url: string; };
   joined_at: string;
-  // removed is_banned
 }
 
 type SelectedChat = 
@@ -77,15 +76,13 @@ type SelectedChat =
       id: string; 
       name: string; 
       avatar?: string; 
-      // removed cover_url
       description?: string; 
       my_role: 'admin' | 'moderator' | 'member' | 'none'; 
       member_count: number;
-      // removed is_banned
     };
 
 /* ============================
-   Helpers: Validation & Formatting
+   Helpers
    ============================ */
 const validateImage = (file: File): string | null => {
   const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -124,33 +121,49 @@ const formatMessageTime = (dateString?: string) => {
 const useScrollToBottom = (messages: Message[]) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   
+  const scrollToBottom = useCallback((smooth = true) => {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer) return;
+    requestAnimationFrame(() => {
+       scrollContainer.scrollTo({ 
+         top: scrollContainer.scrollHeight, 
+         behavior: smooth ? 'smooth' : 'auto' 
+       });
+    });
+  }, []);
+
   useEffect(() => {
     const scrollContainer = scrollRef.current;
     if (!scrollContainer) return;
     
-    // Use requestAnimationFrame for smoother UI performance during renders
     requestAnimationFrame(() => {
         const lastMessage = messages[messages.length - 1];
-        const isCloseToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 150;
+        const isCloseToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 200;
         const isMe = lastMessage?.is_me;
         
         if (isCloseToBottom || isMe) {
-          scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+          scrollToBottom();
         }
     });
-  }, [messages.length, messages[messages.length - 1]?.id]);
+  }, [messages.length, messages[messages.length - 1]?.id, scrollToBottom]);
   
-  return scrollRef;
+  return { scrollRef, scrollToBottom };
 };
 
 /* ============================
-   Hook: Realtime & Typing
+   Hook: Realtime & Typing (Phase 1)
    ============================ */
-const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | undefined, onTyping: (user: string, isTyping: boolean) => void) => {
+const useChatRealtime = (
+    selectedChat: SelectedChat | null, 
+    user: any, 
+    onTyping: (user: string, isTyping: boolean) => void,
+    onMessageReceived: () => void
+) => {
   const queryClient = useQueryClient();
+  const userName = user?.user_metadata?.full_name || user?.email || 'Someone';
 
   useEffect(() => {
-    if (!selectedChat || !userId) return;
+    if (!selectedChat || !user?.id) return;
 
     const table = selectedChat.type === 'dm' ? 'messages' : 'community_messages';
     const filter = selectedChat.type === 'community' ? `community_id=eq.${selectedChat.id}` : undefined;
@@ -165,19 +178,20 @@ const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | und
           const newItem = payload.new;
           // DM Security check
           if (selectedChat.type === 'dm') {
-            const isRelevant = (newItem.sender_id === userId && newItem.receiver_id === selectedChat.partner_id)
-              || (newItem.sender_id === selectedChat.partner_id && newItem.receiver_id === userId);
+            const isRelevant = (newItem.sender_id === user.id && newItem.receiver_id === selectedChat.partner_id)
+              || (newItem.sender_id === selectedChat.partner_id && newItem.receiver_id === user.id);
             if (!isRelevant) return;
           }
           queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
           queryClient.invalidateQueries({ queryKey: ['dm_list'] });
+          onMessageReceived();
         }
       )
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter }, () => {
         queryClient.invalidateQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
       })
       .on('broadcast', { event: 'typing' }, (payload) => {
-         if (payload.payload.userId !== userId) {
+         if (payload.payload.userId !== user.id) {
             onTyping(payload.payload.name || 'Someone', true);
          }
       })
@@ -186,19 +200,18 @@ const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | und
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedChat, userId, queryClient, onTyping]);
+  }, [selectedChat, user?.id, queryClient, onTyping, onMessageReceived]);
 
-  // Function to broadcast typing status
   const broadcastTyping = useCallback(async () => {
     if (!selectedChat) return;
     try {
       await supabase.channel(`chat_${selectedChat.id}`).send({
         type: 'broadcast',
         event: 'typing',
-        payload: { userId, name: 'User' } // Ideally pass actual name
+        payload: { userId: user.id, name: userName }
       });
     } catch (e) { /* silent fail */ }
-  }, [selectedChat, userId]);
+  }, [selectedChat, user?.id, userName]);
 
   return { broadcastTyping };
 };
@@ -209,13 +222,13 @@ const useChatRealtime = (selectedChat: SelectedChat | null, userId: string | und
 const TypingIndicator = ({ names }: { names: string[] }) => {
   if (names.length === 0) return null;
   return (
-    <div className="flex items-center gap-2 mb-3 animate-in fade-in-50 slide-in-from-bottom-2">
-      <div className="bg-muted/80 rounded-2xl rounded-tl-md px-4 py-3 flex items-center gap-1.5">
-        <div className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-        <div className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-        <div className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+    <div className="flex items-center gap-2 mb-3 animate-in fade-in-50 slide-in-from-bottom-2 pl-4">
+      <div className="bg-muted/80 rounded-2xl rounded-tl-sm px-4 py-2.5 flex items-center gap-1.5 shadow-sm">
+        <div className="w-1.5 h-1.5 bg-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+        <div className="w-1.5 h-1.5 bg-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+        <div className="w-1.5 h-1.5 bg-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
       </div>
-      <span className="text-xs text-muted-foreground">
+      <span className="text-xs text-muted-foreground animate-pulse">
         {names.join(', ')} {names.length > 1 ? 'are' : 'is'} typing...
       </span>
     </div>
@@ -223,26 +236,72 @@ const TypingIndicator = ({ names }: { names: string[] }) => {
 };
 
 /* ============================
-   Component: Lazy Image
+   Component: Lazy Image (Phase 2)
    ============================ */
-const LazyImage = ({ src, alt, className, onClick }: { src: string, alt: string, className?: string, onClick?: () => void }) => {
+const LazyImage = ({ src, alt, className, onClick, onLoad }: { src: string, alt: string, className?: string, onClick?: () => void, onLoad?: () => void }) => {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
-  if (error) return <div className="w-full h-32 flex items-center justify-center bg-muted text-muted-foreground text-xs rounded-xl">Failed to load image</div>;
+  const handleLoad = () => {
+    setLoaded(true);
+    if (onLoad) onLoad();
+  };
+
+  if (error) return <div className="w-full h-32 flex items-center justify-center bg-muted text-muted-foreground text-xs rounded-xl border border-border/50">Failed to load image</div>;
 
   return (
-    <div className={`relative overflow-hidden ${!loaded ? 'bg-muted animate-pulse' : ''} ${className}`}>
+    <div className={`relative overflow-hidden ${!loaded ? 'bg-muted animate-pulse min-h-[150px]' : ''} ${className}`}>
       <img 
         src={src} 
         alt={alt} 
         className={`transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'} ${className}`}
-        onLoad={() => setLoaded(true)}
+        onLoad={handleLoad}
         onError={() => setError(true)}
         loading="lazy"
         onClick={onClick}
       />
     </div>
+  );
+};
+
+/* ============================
+   Component: Media Gallery (Phase 3)
+   ============================ */
+const MediaGallery = ({ 
+  isOpen, 
+  onClose, 
+  images 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  images: { url: string, id: string }[] 
+}) => {
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl h-[80vh] flex flex-col p-0 bg-background/95 backdrop-blur-xl">
+        <DialogHeader className="p-4 border-b">
+          <DialogTitle>Media Gallery</DialogTitle>
+          <DialogDescription>{images.length} photo{images.length !== 1 ? 's' : ''}</DialogDescription>
+        </DialogHeader>
+        <ScrollArea className="flex-1 p-4">
+          {images.length === 0 ? (
+             <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+                <ImageIcon className="w-12 h-12 opacity-20 mb-4" />
+                <p>No media shared yet</p>
+             </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {images.map((img) => (
+                <div key={img.id} className="aspect-square relative overflow-hidden rounded-lg border bg-muted group">
+                   <img src={img.url} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="Gallery" loading="lazy" />
+                   <a href={img.url} target="_blank" rel="noreferrer" className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -256,7 +315,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({
   canModerate,
   onDelete,
   onReply,
-  onEdit
+  onEdit,
+  onImageLoad,
+  scrollToId
 }: {
   msg: Message;
   prevMsg: Message | null;
@@ -265,6 +326,8 @@ const MessageBubble = React.memo(function MessageBubbleInner({
   onDelete: (msgId: string) => void;
   onReply: (msg: Message) => void;
   onEdit: (msg: Message, newContent: string) => Promise<void>;
+  onImageLoad?: () => void;
+  scrollToId: (id: string) => void;
 }) {
   const [showFullImage, setShowFullImage] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -300,7 +363,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({
   }
 
   return (
-    <>
+    <div id={`msg-${msg.id}`}>
       <div className={`animate-in fade-in-50 slide-in-from-bottom-2 duration-200 ${msg.pending ? 'opacity-70' : ''}`}>
         {showTimestamp && (
           <div className="flex justify-center my-6">
@@ -341,6 +404,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({
                   ${msg.is_me ? 'rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm'}
                 `}
               >
+                {/* Reply Context Banner - Phase 2 */}
+                {/* Note: Storing reply context in DB isn't in schema, so this is visual only for now unless schema allows */}
+                
                 {msg.image_url && (
                   <div className="relative group/image">
                     <LazyImage
@@ -348,6 +414,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({
                       alt="Attachment"
                       className="rounded-xl object-cover cursor-pointer hover:opacity-95 max-h-[300px] min-w-[200px]"
                       onClick={() => setShowFullImage(true)}
+                      onLoad={onImageLoad}
                     />
                     {msg.content && !isEditing && (
                       <div className={`p-3 mt-1 ${msg.is_me ? 'text-primary-foreground' : ''}`}>
@@ -420,8 +487,9 @@ const MessageBubble = React.memo(function MessageBubbleInner({
               {msg.updated_at && !msg.pending && (
                  <span className="text-[9px] text-muted-foreground/50 italic">Edited</span>
               )}
+              {/* Phase 1: Read Receipt Logic */}
               {msg.is_me && !msg.pending && (
-                msg.read ? <CheckCheck className="w-3.5 h-3.5 text-blue-500" /> : <Check className="w-3.5 h-3.5 text-muted-foreground/50" />
+                msg.read ? <CheckCheck className="w-3.5 h-3.5 text-blue-500 animate-in zoom-in duration-300" /> : <Check className="w-3.5 h-3.5 text-muted-foreground/50" />
               )}
             </div>
           </div>
@@ -443,7 +511,7 @@ const MessageBubble = React.memo(function MessageBubbleInner({
           </DialogContent>
         </Dialog>
       )}
-    </>
+    </div>
   );
 });
 
@@ -462,7 +530,6 @@ const CommunitySettingsDialog = ({
   communityId: string;
   currentName: string;
   currentDesc: string;
-  currentCover?: string; // Kept in prop signature but ignored in logic
 }) => {
   const queryClient = useQueryClient();
   const [name, setName] = useState(currentName);
@@ -511,13 +578,10 @@ const CommunitySettingsDialog = ({
             <DialogTitle>Community Settings</DialogTitle>
             <DialogDescription>Manage your community's information</DialogDescription>
           </DialogHeader>
-          
           <div className="space-y-4 py-4">
-             {/* Cover Photo Removed as per instructions */}
              <div className="p-4 bg-muted/20 rounded-lg text-sm text-muted-foreground border border-dashed">
                 Cover photo management is currently disabled.
              </div>
-
             <div className="space-y-2">
               <Label>Community Name *</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} />
@@ -527,7 +591,6 @@ const CommunitySettingsDialog = ({
               <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={4} maxLength={200} />
             </div>
           </div>
-
           <DialogFooter className="flex-col gap-2 sm:flex-row">
             <Button variant="destructive" className="w-full sm:w-auto" onClick={() => setShowDeleteDialog(true)}>
               <Trash2 className="w-4 h-4 mr-2" /> Delete
@@ -541,7 +604,6 @@ const CommunitySettingsDialog = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -582,6 +644,7 @@ export default function Messages() {
   const [isCreateCommunityOpen, setIsCreateCommunityOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false); // Phase 3
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   
   // Realtime Typing State
@@ -595,6 +658,23 @@ export default function Messages() {
 
   const [friendSearch, setFriendSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+
+  // Phase 1: Fetch Profile for Typing Identity
+  const { data: userProfile } = useQuery({
+    queryKey: ['my_profile', user?.id],
+    queryFn: async () => {
+        if (!user?.id) return null;
+        const { data } = await supabase.from('profiles').select('display_name, avatar_url').eq('user_id', user.id).single();
+        return data;
+    },
+    enabled: !!user?.id
+  });
+
+  const currentUser = useMemo(() => ({
+     id: user?.id,
+     email: user?.email,
+     user_metadata: { full_name: userProfile?.display_name }
+  }), [user, userProfile]);
 
   // Handle Typing indicator updates
   const handleTypingUpdate = useCallback((userName: string, isTyping: boolean) => {
@@ -617,7 +697,15 @@ export default function Messages() {
       });
   }, []);
 
-  const { broadcastTyping } = useChatRealtime(selectedChat, user?.id, handleTypingUpdate);
+  const { broadcastTyping } = useChatRealtime(
+      selectedChat, 
+      currentUser, 
+      handleTypingUpdate,
+      // On new message received (Phase 1)
+      () => {
+         // Optionally play sound here
+      }
+  );
 
   // Debounce search query
   useEffect(() => {
@@ -626,7 +714,7 @@ export default function Messages() {
   }, [searchQuery]);
 
   /* ============================
-     Queries: DM list
+     Queries: DM list (Phase 1 - Unread Counts)
      ============================ */
   const { data: dmList = [], isLoading: loadingDMs } = useQuery({
     queryKey: ['dm_list', user?.id],
@@ -642,6 +730,18 @@ export default function Messages() {
         console.error("Error fetching DMs:", error);
         return [];
       }
+
+      // Fetch unread messages separately to count them
+      const { data: unreadData } = await supabase
+          .from('messages')
+          .select('sender_id')
+          .eq('receiver_id', user.id)
+          .eq('read', false);
+
+      const unreadCounts = new Map<string, number>();
+      unreadData?.forEach((m: any) => {
+          unreadCounts.set(m.sender_id, (unreadCounts.get(m.sender_id) || 0) + 1);
+      });
 
       const partnerMap = new Map<string, { last_msg: string; time: string }>();
       const partnerIds = new Set<string>();
@@ -682,7 +782,7 @@ export default function Messages() {
           last_msg: details.last_msg,
           time: details.time,
           is_online: false,
-          unread_count: 0
+          unread_count: unreadCounts.get(pid) || 0
         };
       });
     },
@@ -691,34 +791,52 @@ export default function Messages() {
   });
 
   /* ============================
-     Queries: communities list
+     Queries: communities list (BUG FIX: Split Query Strategy)
      ============================ */
   const { data: commList = [], isLoading: loadingComms } = useQuery({
     queryKey: ['comm_list', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      // Removed cover_url from selection
-      const { data } = await supabase
-        .from('communities')
-        .select(`
-            id, name, description, avatar_url, member_count, creator_id, created_at,
-            members:community_members(user_id, role, profile:profiles(display_name, avatar_url))
-        `);
+      
+      try {
+        // 1. Fetch all communities (simplified query to avoid join errors)
+        const { data: communities, error: commError } = await supabase
+          .from('communities')
+          .select('id, name, description, avatar_url, member_count, creator_id'); // ensure created_at is only used if exists
 
-      return data?.map((c: any) => {
-        const myMembership = c.members?.find((m: any) => m.user_id === user?.id);
-        return {
-          type: 'community',
-          id: c.id,
-          name: c.name || 'Unnamed Community',
-          description: c.description,
-          avatar: c.avatar_url,
-          member_count: c.member_count || (Array.isArray(c.members) ? c.members.length : 0),
-          my_role: myMembership ? myMembership.role : 'none',
-          is_joined: !!myMembership,
-          // Removed is_banned check
-        };
-      }) ?? [];
+        if (commError) throw commError;
+
+        if (!communities || communities.length === 0) return [];
+
+        // 2. Fetch my memberships separately
+        const { data: memberships, error: memError } = await supabase
+          .from('community_members')
+          .select('community_id, role')
+          .eq('user_id', user.id);
+
+        if (memError) throw memError;
+
+        const membershipMap = new Map();
+        memberships?.forEach((m: any) => membershipMap.set(m.community_id, m.role));
+
+        // 3. Merge data
+        return communities.map((c: any) => {
+          const myRole = membershipMap.get(c.id);
+          return {
+            type: 'community',
+            id: c.id,
+            name: c.name || 'Unnamed Community',
+            description: c.description,
+            avatar: c.avatar_url,
+            member_count: c.member_count || 0,
+            my_role: myRole || 'none',
+            is_joined: !!myRole,
+          };
+        });
+      } catch (e) {
+        console.error("Community fetch error:", e);
+        return [];
+      }
     },
     enabled: !!user?.id,
     staleTime: 30_000
@@ -786,7 +904,41 @@ export default function Messages() {
     refetchOnWindowFocus: false
   });
 
-  const scrollRef = useScrollToBottom(messages);
+  // Phase 2: Enhanced Scroll
+  const { scrollRef, scrollToBottom } = useScrollToBottom(messages);
+
+  // Phase 1: Mark as Read Logic
+  useEffect(() => {
+     if (selectedChat?.type === 'dm' && messages.length > 0 && user?.id) {
+         const lastMsg = messages[messages.length - 1];
+         if (!lastMsg.is_me && !lastMsg.read) {
+             // Mark all unread messages in this chat as read
+             supabase.from('messages')
+               .update({ read: true })
+               .eq('sender_id', selectedChat.partner_id)
+               .eq('receiver_id', user.id)
+               .eq('read', false)
+               .then(({ error }) => {
+                   if (!error) {
+                       queryClient.invalidateQueries({ queryKey: ['dm_list'] });
+                       queryClient.invalidateQueries({ queryKey: ['messages'] });
+                   }
+               });
+         }
+     }
+  }, [messages, selectedChat, user?.id, queryClient]);
+
+  // Phase 2: Scroll to Reply
+  const scrollToId = useCallback((id: string) => {
+     const element = document.getElementById(`msg-${id}`);
+     if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.classList.add('bg-primary/10', 'transition-colors', 'duration-500');
+        setTimeout(() => element.classList.remove('bg-primary/10'), 1000);
+     } else {
+        toast.info("Message not loaded in current view");
+     }
+  }, []);
 
   /* ============================
      Derived lists (friends)
@@ -823,7 +975,6 @@ export default function Messages() {
       if (!user) throw new Error("Not authenticated");
       if (!newCommName.trim()) throw new Error("Community name is required");
 
-      // NOTE: Removed cover_url handling for creation
       const { data: comm, error } = await supabase
         .from('communities')
         .insert({ name: newCommName.trim(), description: newCommDesc.trim(), creator_id: user.id, member_count: 1 })
@@ -851,7 +1002,7 @@ export default function Messages() {
     const { error } = await supabase.storage.from(bucket).upload(path, file);
     if (error) throw error;
     const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    return data.publicUrl; // Fixed .public_url to .publicUrl
+    return data.publicUrl;
   };
 
   const sendMessage = useMutation({
@@ -900,6 +1051,8 @@ export default function Messages() {
       }
       setImageFile(null);
       setImagePreview(null);
+      // Phase 2: Instant Scroll
+      scrollToBottom();
 
       return { previousMessages };
     },
@@ -921,7 +1074,7 @@ export default function Messages() {
           const table = selectedChat.type === 'dm' ? 'messages' : 'community_messages';
           const { error } = await supabase
             .from(table)
-            .update({ content: newContent }) // Assuming updated_at is handled by DB trigger or we could send it
+            .update({ content: newContent })
             .eq('id', msg.id);
           if (error) throw error;
       },
@@ -963,8 +1116,6 @@ export default function Messages() {
     const obj = URL.createObjectURL(file);
     setImagePreview(obj);
   }, []);
-
-  // Removed Community Cover Select Logic
 
   const handleInputChange = useCallback((value: string) => {
     setMessageInput(value);
@@ -1018,10 +1169,12 @@ export default function Messages() {
      ============================ */
   if (selectedChat) {
     const isComm = selectedChat.type === 'community';
-    // Removed is_banned check
     const canType = !isComm || (isComm && selectedChat.my_role !== 'none');
     const canModerate = isComm && (selectedChat.my_role === 'admin' || selectedChat.my_role === 'moderator');
     const activeTypingUsers = Array.from(typingUsers);
+
+    // Phase 3: Extract images for gallery
+    const chatImages = messages.filter(m => m.image_url && !m.is_deleted).map(m => ({ url: m.image_url!, id: m.id }));
 
     return (
       <div className="fixed inset-0 z-[100] bg-background flex flex-col h-[100dvh]">
@@ -1056,6 +1209,11 @@ export default function Messages() {
           </div>
           
           <div className="flex items-center gap-0.5">
+            {chatImages.length > 0 && (
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setIsGalleryOpen(true)}>
+                    <Grid className="w-5 h-5" />
+                </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full h-9 w-9"><MoreVertical className="h-4 h-4" /></Button>
@@ -1074,6 +1232,8 @@ export default function Messages() {
           </div>
         </div>
 
+        {/* Dialogs */}
+        <MediaGallery isOpen={isGalleryOpen} onClose={() => setIsGalleryOpen(false)} images={chatImages} />
         {isComm && (
           <>
             <CommunityInfoDialog isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} community={selectedChat} />
@@ -1113,6 +1273,8 @@ export default function Messages() {
                     onDelete={(msgId) => deleteMessage.mutate(msgId)}
                     onReply={(msg) => setReplyingTo(msg)}
                     onEdit={(msg, content) => editMessage.mutateAsync({ msg, newContent: content })}
+                    onImageLoad={() => scrollToBottom(true)}
+                    scrollToId={scrollToId}
                   />
                 ))}
                 {activeTypingUsers.length > 0 && <TypingIndicator names={activeTypingUsers} />}
@@ -1126,8 +1288,8 @@ export default function Messages() {
             <div className="flex flex-col gap-3">
               {replyingTo && (
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-xl border-l-4 border-primary">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-primary mb-1">
+                  <div className="flex-1 min-w-0" onClick={() => scrollToId(replyingTo.id)}>
+                    <p className="text-xs font-semibold text-primary mb-1 cursor-pointer hover:underline">
                       Replying to {replyingTo.is_me ? 'yourself' : replyingTo.sender_name}
                     </p>
                     <p className="text-sm text-muted-foreground truncate">
@@ -1270,7 +1432,7 @@ export default function Messages() {
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-muted-foreground truncate font-medium flex-1">{chat.last_msg}</p>
                       {chat.unread_count > 0 && (
-                        <Badge className="ml-2 h-5 min-w-5 rounded-full text-xs px-1.5">{chat.unread_count}</Badge>
+                        <Badge className="ml-2 h-5 min-w-5 rounded-full text-xs px-1.5 flex items-center justify-center bg-primary text-primary-foreground">{chat.unread_count}</Badge>
                       )}
                     </div>
                   </div>
@@ -1457,8 +1619,6 @@ export default function Messages() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             
-            {/* Removed Cover Photo Input */}
-
             <div className="space-y-2">
               <Label>Community Name *</Label>
               <Input placeholder="Enter community name" value={newCommName} onChange={(e) => setNewCommName(e.target.value)} maxLength={50} />
@@ -1534,7 +1694,6 @@ const CommunityInfoDialog = ({
       if (modAction === 'kick') {
         await supabase.from('community_members').delete().eq('community_id', community.id).eq('user_id', selectedMember.user_id);
       } 
-      // Removed Ban logic
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comm_members'] });
@@ -1669,8 +1828,6 @@ const CommunityInfoDialog = ({
           </Tabs>
         </DialogContent>
       </Dialog>
-
-      {/* moderation dialog */}
       <Dialog open={showModAction} onOpenChange={setShowModAction}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
