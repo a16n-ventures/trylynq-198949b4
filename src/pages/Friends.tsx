@@ -27,9 +27,9 @@ import { AddContactForm } from "@/components/friends/AddContactForm";
 
 // Utilities
 const DEBOUNCE_DELAY = 500;
-const NEARBY_RADIUS_KM = 100;
+const NEARBY_RADIUS_KM = 1; // ✅ CHANGED: 1km radius for nearby friends
 const MAX_NEARBY_USERS = 50;
-const LOCATION_CHANGE_THRESHOLD_KM = 1;
+const LOCATION_CHANGE_THRESHOLD_KM = 0.1; // ✅ CHANGED: More sensitive to location changes (100m)
 const REFRESH_INTERVAL_MS = 120000; // 2 minutes
 
 /**
@@ -63,10 +63,12 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 /**
- * ✅ ENHANCEMENT: Safe display name formatter
+ * ✅ ENHANCEMENT: Safe display name formatter - only cleans whitespace, doesn't add fallbacks
  */
 function getDisplayName(name: string | null | undefined): string {
-  return name?.trim() || 'Unknown User';
+  // Just return the name as-is if it exists, or empty string
+  // Fallback logic should happen at data fetch level, not display level
+  return name?.trim() || '';
 }
 
 type SortOption = 'newest' | 'alphabetical';
@@ -252,20 +254,33 @@ export default function Friends() {
       const candidateIds = validCandidates.map((c: any) => c.user_id);
       const { data: profiles, error: profError } = await supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url')
+        .select('user_id, display_name, avatar_url, username, email') // ✅ FIXED: Added username and email as fallbacks
         .in('user_id', candidateIds);
 
       if (profError) throw profError;
 
-      // 5. ✅ ENHANCED: Merge Data with proper null handling
+      // ✅ DEBUG: Log what we got from profiles
+      console.log('📊 Nearby Users Debug:', {
+        totalCandidates: validCandidates.length,
+        profilesFetched: profiles?.length || 0,
+        sampleProfile: profiles?.[0],
+        candidateIds: candidateIds.slice(0, 3) // First 3 IDs
+      });
+
+      // 5. ✅ ENHANCED: Merge Data with proper null handling and multiple fallbacks
       const formatted: NearbyUser[] = validCandidates
         .map((candidate: any) => {
           const profile = profiles?.find(p => p.user_id === candidate.user_id);
           
-          // ✅ FIX: Always include user, even without profile
+          // ✅ FIX: Try multiple fields to get a display name
+          const displayName = profile?.display_name || 
+                             profile?.username || 
+                             profile?.email?.split('@')[0] || 
+                             `User${candidate.user_id.slice(-4)}`; // Last resort: show last 4 chars of ID
+          
           return {
             user_id: candidate.user_id,
-            display_name: getDisplayName(profile?.display_name),
+            display_name: displayName,
             avatar_url: profile?.avatar_url || null,
             distance_km: candidate.distance,
             match_score: Math.max(0, 100 - candidate.distance)
@@ -587,7 +602,7 @@ export default function Friends() {
               ) : nearbyUsers.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No one nearby yet</p>
+                  <p>No one within 1km</p>
                   <p className="text-xs mt-1">Invite friends to join!</p>
                 </div>
               ) : (
