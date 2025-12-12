@@ -530,4 +530,161 @@ export default function Friends() {
                     isCancelling={mutations.cancelRequest.isPending}
                   />
                 ))
-      
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* DISCOVER TAB */}
+        <TabsContent value="discover" className="mt-4">
+          <div className="flex gap-2 mb-4 p-1 bg-muted/20 rounded-lg w-fit mx-auto">
+            <button 
+              onClick={() => setDiscoverView('nearby')} 
+              className={`px-4 py-1.5 text-sm rounded-md transition-all flex items-center gap-1 ${
+                discoverView === 'nearby' 
+                  ? 'bg-background shadow-sm font-medium text-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <MapPin className="w-3 h-3" /> Nearby
+            </button>
+            <button 
+              onClick={() => setDiscoverView('contacts')} 
+              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
+                discoverView === 'contacts' 
+                  ? 'bg-background shadow-sm font-medium text-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              My Contacts {contacts.length > 0 && `(${contacts.length})`}
+            </button>
+          </div>
+
+          {/* NEARBY VIEW */}
+          {discoverView === 'nearby' && (
+            <div className="space-y-2">
+              {!userLocation ? (
+                <Card className="border-dashed">
+                  <CardContent className="py-8 text-center">
+                    <MapPin className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
+                    <p className="text-muted-foreground text-sm">Enable location to see nearby people</p>
+                    <Button variant="outline" className="mt-3" onClick={requestLocation}>
+                      <MapPin className="w-4 h-4 mr-2" /> Enable Location
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : loadingNearby ? (
+                <FriendSkeleton />
+              ) : nearbyError ? (
+                <Card className="border-destructive/50">
+                  <CardContent className="py-8 text-center">
+                    <p className="text-destructive text-sm mb-2">Failed to load nearby users</p>
+                    <Button variant="outline" size="sm" onClick={fetchNearbyUsers}>
+                      Try Again
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : nearbyUsers.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No one nearby yet</p>
+                  <p className="text-xs mt-1">Invite friends to join!</p>
+                </div>
+              ) : (
+                nearbyUsers.map(p => (
+                  <NearbyUserCard
+                    key={p.user_id}
+                    profile={p}
+                    onAddFriend={(profile) => mutations.sendRequest.mutate(profile)}
+                    isAdding={mutations.sendRequest.isPending && mutations.sendRequest.variables?.user_id === p.user_id}
+                  />
+                ))
+              )}
+            </div>
+          )}
+
+          {/* CONTACTS VIEW */}
+          {discoverView === 'contacts' && (
+            <div className="space-y-3">
+              {showAddContact ? (
+                <AddContactForm
+                  onSubmit={(data) => {
+                    addContact.mutate(data);
+                    setShowAddContact(false);
+                  }}
+                  onCancel={() => setShowAddContact(false)}
+                  isPending={addContact.isPending}
+                />
+              ) : (
+                <Button className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white" onClick={() => setShowAddContact(true)}>
+                  <User className="w-4 h-4 mr-2" /> Add New Contact
+                </Button>
+              )}
+
+              {loadingContacts ? (
+                <FriendSkeleton />
+              ) : filteredContacts.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  {search ? 'No contacts match your search' : !showAddContact && 'No contacts yet. Add someone to invite them!'}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredContacts.map(contact => (
+                    <ContactCard
+                      key={contact.id}
+                      contact={contact}
+                      onInvite={(c) => inviteContact.mutate(c)}
+                      onDelete={(id) => deleteContact.mutate(id)}
+                      isInviting={inviteContact.isPending && inviteContact.variables?.id === contact.id}
+                      isDeleting={deleteContact.isPending}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {!showAddContact && contacts.length > 0 && (
+                <Card className="border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
+                  <CardContent className="p-4">
+                    <div className="flex gap-3">
+                      <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm space-y-1">
+                        <p className="font-medium text-blue-900 dark:text-blue-100">Invite friends to join</p>
+                        <p className="text-blue-700 dark:text-blue-300 text-xs">Click "Invite" to send them a link via SMS or Email.</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Modals */}
+      <FriendProfilePreview
+        profile={previewProfile}
+        open={!!previewProfile}
+        onClose={() => setPreviewProfile(null)}
+        friendshipId={previewFriendshipId}
+        onRemoveFriend={(id) => mutations.removeFriend.mutate(id)}
+        onBlockUser={(id) => {
+          setPreviewProfile(null);
+          handleOpenBlockDialog(id, getDisplayName(previewProfile?.display_name));
+        }}
+        onReportUser={(id) => {
+          setPreviewProfile(null);
+          handleOpenReportDialog(id, getDisplayName(previewProfile?.display_name));
+        }}
+      />
+
+      <BlockReportDialog
+        open={blockReportDialog.open}
+        onClose={() => setBlockReportDialog({ open: false, type: 'block', userId: '' })}
+        type={blockReportDialog.type}
+        userName={blockReportDialog.userName}
+        onConfirm={handleBlockReport}
+        isPending={mutations.blockUser.isPending || mutations.reportUser.isPending}
+      />
+    </div>
+  );
+}
