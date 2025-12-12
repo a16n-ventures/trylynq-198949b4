@@ -8,7 +8,7 @@ export type NearbyProfile = Profile & {
   distance_km?: number;
 };
 
-const NEARBY_RADIUS_KM = 10;
+const NEARBY_RADIUS_KM = 100;
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
