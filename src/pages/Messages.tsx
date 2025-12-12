@@ -173,7 +173,7 @@ export default function Messages() {
           type: 'dm' as const,
           id: pid,
           partner_id: pid,
-          name: profile?.display_name || 'Unknown User',
+          name: profile?.display_name || 'User',
           avatar: profile?.avatar_url,
           last_msg: details.last_msg,
           time: details.time,
@@ -243,7 +243,7 @@ export default function Messages() {
       if (!profile) return null;
       return {
         id: profile.user_id ?? profile.id,
-        name: profile.display_name ?? 'Unknown',
+        name: profile.display_name || 'Friend',
         avatar: profile.avatar_url,
         is_online: false,
         last_seen: null
@@ -843,7 +843,7 @@ export default function Messages() {
 
   // Chat list view
   return (
-    <div className="container-mobile min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-24">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-gradient-to-b from-background via-background to-background/80 backdrop-blur-xl pt-4 px-4 pb-2">
         <div className="flex items-center justify-between mb-4">
