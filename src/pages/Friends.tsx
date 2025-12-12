@@ -255,7 +255,7 @@ export default function Friends() {
       const { data: profiles, error: profError } = await supabase
         .from('profiles')
         .select('user_id, display_name, avatar_url, username, email') // ✅ FIXED: Added username and email as fallbacks
-        .in('user_id', candidateIds);
+        .eq('user_id', candidateIds);
 
       if (profError) throw profError;
 
