@@ -25,7 +25,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
       </Avatar>
       
       <div className="flex-1 min-w-0 text-left">
-        <div className="font-semibold truncate">{profile.display_name || 'Unknown User'}</div>
+        <div className="font-semibold truncate">{profile.display_name || 'Nearby User'}</div>
         {profile.distance_km !== undefined && (
           <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
             <MapPin className="w-3 h-3" />
