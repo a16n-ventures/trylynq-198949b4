@@ -161,7 +161,7 @@ export default function Messages() {
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, id, display_name, username, avatar_url')
-        .in('user_id', idsList);
+        .eq('user_id', idsList);
 
       const profileLookup = new Map<string, any>();
       profiles?.forEach((p: any) => {
@@ -176,7 +176,7 @@ export default function Messages() {
           type: 'dm' as const,
           id: pid,
           partner_id: pid,
-          name: profile?.display_name || profile?.username || 'User', 
+          name: profile?.display_name || profile?.email || 'User', 
           avatar: profile?.avatar_url,
           last_msg: details.last_msg,
           time: details.time,
@@ -199,8 +199,8 @@ export default function Messages() {
         // FIXED: Added order('created_at') to ensure new communities show at the top
         const { data: communities, error: commError } = await supabase
           .from('communities')
-          .select('id, name, description, avatar_url, member_count, creator_id, created_at')
-          .order('created_at', { ascending: true });
+          .select('*')
+          .order('created_at', { ascending: false });
 
         if (commError) throw commError;
         if (!communities || communities.length === 0) return [];
