@@ -56,7 +56,8 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
           updated_at: new Date().toISOString(),
         }, { 
           onConflict: 'user_id' // Ensure we don't create duplicates
-        });
+        })
+       .select();
 
       if (error) {
         console.error("Supabase Update Error:", error.message, error.details);
