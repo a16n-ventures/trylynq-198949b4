@@ -35,33 +35,56 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
   };
 
   const saveInterests = async () => {
-    if (!user) return;
+    if (!user) {
+      toast.error("No user found. Please try logging in again.");
+      return;
+    }
     if (selected.length < 3) {
-      toast.error("Please select at least 3 interests to help our AI.");
+      toast.error("Please select at least 3 interests.");
       return;
     }
 
     setLoading(true);
     try {
-      // 1. Save raw tags to profile
-      const { error } = await supabase
+      console.log("Attempting to save for user:", user.id);
+      
+      // 1. Explicitly select data back to confirm the save worked
+      const { data, error } = await supabase
         .from('profiles')
         .update({ interests: selected })
-        .eq('id', user.id);
+        .eq('id', user.id)
+        .select(); // This is crucial for verifying the update returned a row
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Update Error:", error.message, error.details);
+        throw new Error(error.message);
+      }
 
-      // 2. Trigger AI to generate/update the embedding vector instantly
-      // (This ensures the Smart Feed works immediately after onboarding)
-      await supabase.functions.invoke('generate-user-embedding', {
-        body: { user_id: user.id, interests: selected }
-      });
+      // If no data returned, RLS likely silently blocked the update
+      if (!data || data.length === 0) {
+        console.error("Update failed: No rows returned. Check RLS policies.");
+        throw new Error("Update blocked by security policy.");
+      }
 
-      toast.success("Profile updated! Personalizing your feed...");
-      onComplete();
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to save interests");
+      console.log("Save successful:", data);
+
+      // 2. Optional: Trigger AI (wrapped in try/catch so it doesn't block the main flow)
+      try {
+        await supabase.functions.invoke('generate-user-embedding', {
+          body: { user_id: user.id, interests: selected }
+        });
+      } catch (aiError) {
+        console.warn("AI embedding generation failed, but interests saved:", aiError);
+      }
+
+      toast.success("Profile updated!");
+      
+      // Force a hard navigation to clear any cached states in ProtectedRoute
+      window.location.href = '/app/discover'; 
+      
+    } catch (err: any) {
+      console.error("Full Error Object:", err);
+      toast.error(`Failed to save: ${err.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }
