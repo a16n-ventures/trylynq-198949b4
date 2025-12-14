@@ -88,7 +88,6 @@ export function InterestSelector({ initialSelected = [] }: InterestSelectorProps
     } catch (err: any) {
       console.error("Full Error Object:", err);
       toast.error(`Failed to save: ${err.message || "Unknown error"}`);
-    } finally {
       setLoading(false);
     }
   };
