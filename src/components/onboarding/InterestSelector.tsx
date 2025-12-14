@@ -51,7 +51,8 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
       const { data, error } = await supabase
         .from('profiles')
         .upsert({ 
-          id: user.id, // ID is required for upsert to know which row to target
+          id: user.id, 
+          user_id: user.id,
           interests: selected,
           updated_at: new Date().toISOString(),
         }, { 
