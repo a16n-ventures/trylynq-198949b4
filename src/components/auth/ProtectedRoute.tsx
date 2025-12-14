@@ -13,51 +13,43 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => { 
     // 1. Wait for Auth Context to initialize
     if (authLoading) return;
-
     // 2. If not logged in, redirect to home immediately
     if (!user) {
       navigate('/', { replace: true });
       return;
     }
-
     const checkOnboardingStatus = async () => {
       try {
+        // FIXED: Changed .eq('user_id', ...) to .eq('id', ...)
+        // This must match the column used in InterestSelector.tsx
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('interests')
-          .eq('id', user.id) // Ensure this matches your DB column (user_id vs id)
+          .eq('id', user.id) 
           .maybeSingle();
-
         if (error) {
           console.error("Profile check error:", error);
+          // If error, assume valid to prevent loop, let the app handle data missing later
           setIsChecking(false);
           return;
         }
-
-        // Normalize path
         const currentPath = location.pathname.toLowerCase().replace(/\/$/, "");
         const isOnboardingPage = currentPath.includes('onboarding');
-
-        // 3. Logic: If no interests, FORCE onboarding
+        // Check if interests exist
         if (!profile?.interests || profile.interests.length === 0) {
           if (!isOnboardingPage) {
             console.log("Redirecting to onboarding...");
             navigate("/app/onboarding", { replace: true });
-            // Don't set checking to false here, keep loading until redirect happens
             return; 
           }
         } 
-        // 4. Logic: If interests EXIST but user is on onboarding page manually
-        // You might want to let them stay there to edit, so we do nothing.
-        
       } catch (err) {
         console.error("Unexpected route guard error:", err);
       } finally {
-        // Only stop loading if we didn't trigger a redirect
         setIsChecking(false);
       }
     };
-
+    
     checkOnboardingStatus();
   }, [user, authLoading, navigate, location.pathname]);
 
