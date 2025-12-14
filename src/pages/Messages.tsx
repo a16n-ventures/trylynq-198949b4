@@ -77,7 +77,7 @@ export default function Messages() {
     queryKey: ['my_profile', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase.from('profiles').select('display_name, avatar_url').eq('user_id', user.id).single();
+      const { data } = await supabase.from('profiles').select('display_name, avatar_url').eq('id', user.id).single();
       return data;
     },
     enabled: !!user?.id
@@ -111,7 +111,7 @@ export default function Messages() {
     return () => window.clearTimeout(id);
   }, [searchQuery]);
 
-  // 1. DM LIST QUERY (FIXED)
+  // 1. FIXED DM LIST QUERY - Proper profile fetching with user_id
   const { data: dmList = [], isLoading: loadingDMs } = useQuery({
     queryKey: ['dm_list', user?.id],
     queryFn: async (): Promise<DMListItem[]> => {
@@ -149,22 +149,23 @@ export default function Messages() {
       const idsList = Array.from(partnerIds);
       if (idsList.length === 0) return [];
 
-      // C. ROBUST PROFILE FETCH
-      // Selecting 'id' instead of 'user_id' as it is the standard PK
-      // Also selecting 'username' and 'email' for fallbacks
+      // C. FIXED: Fetch profiles using 'id' column (which is user_id in profiles table)
       const { data: profiles, error: profileError } = await supabase
         .from('profiles')
-        .select('id, display_name, username, avatar_url') 
+        .select('id, user_id, display_name, username, avatar_url, email')
         .in('id', idsList);
 
       if (profileError) {
         console.error("Error fetching profiles:", profileError);
       }
 
-      // D. Create Lookup Map
+      // D. Create Lookup Map using both id and user_id for compatibility
       const profileLookup = new Map<string, any>();
       profiles?.forEach((p: any) => {
+        // Store by id (primary key)
         if (p.id) profileLookup.set(p.id, p);
+        // Also store by user_id if different
+        if (p.user_id && p.user_id !== p.id) profileLookup.set(p.user_id, p);
       });
 
       // E. Fetch Unread Counts
@@ -179,65 +180,76 @@ export default function Messages() {
         unreadCounts.set(m.sender_id, (unreadCounts.get(m.sender_id) || 0) + 1);
       });
 
-      // F. Map and Return
+      // F. Map and Return with proper name hierarchy
       return idsList.map(pid => {
         const details = partnerMap.get(pid)!;
         const profile = profileLookup.get(pid);
 
-        // Debug log if profile is missing (RLS issue check)
-        if (!profile) console.warn(`RLS Blocking or Missing Profile for: ${pid}`);
+        if (!profile) {
+          console.warn(`Profile not found for user: ${pid}`);
+        }
 
         return {
           type: 'dm' as const,
           id: pid,
           partner_id: pid,
-          // HIERARCHY OF FALLBACKS: Display Name -> Username -> "User"
-          name: profile?.display_name || profile?.username || 'User',
+          // FIXED: Proper name hierarchy - display_name > username > email > fallback
+          name: profile?.display_name || profile?.username || profile?.email?.split('@')[0] || 'User',
           avatar: profile?.avatar_url,
           last_msg: details.last_msg,
           time: details.time,
           is_online: false,
           unread_count: unreadCounts.get(pid) || 0
         };
-      });
+      }).sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
     },
     enabled: !!user?.id,
     staleTime: 30000
   });
 
-  // 2. COMMUNITIES QUERY (FIXED SORTING)
+  // 2. FIXED COMMUNITIES QUERY - Proper sorting and name display
   const { data: commList = [], isLoading: loadingComms } = useQuery({
     queryKey: ['comm_list', user?.id],
     queryFn: async (): Promise<CommunityListItem[]> => {
       if (!user?.id) return [];
       
       try {
-        // FIXED: Added order('created_at') to ensure new communities show at the top
+        // FIXED: Proper ordering by created_at descending (newest first)
         const { data: communities, error: commError } = await supabase
           .from('communities')
-          .select('id, name, description, avatar_url, member_count, creator_id')
+          .select('id, name, description, avatar_url, member_count, creator_id, created_at')
           .order('created_at', { ascending: false });
 
-        if (commError) throw commError;
+        if (commError) {
+          console.error("Communities fetch error:", commError);
+          throw commError;
+        }
+        
         if (!communities || communities.length === 0) return [];
 
+        // Fetch user's memberships
         const { data: memberships, error: memError } = await supabase
           .from('community_members')
           .select('community_id, role')
           .eq('user_id', user.id);
 
-        if (memError) throw memError;
+        if (memError) {
+          console.error("Memberships fetch error:", memError);
+          throw memError;
+        }
 
         const membershipMap = new Map<string, string>();
         memberships?.forEach((m: any) => membershipMap.set(m.community_id, m.role));
 
+        // Map communities with proper data
         return communities.map((c: any) => {
           const myRole = membershipMap.get(c.id);
           return {
             type: 'community' as const,
             id: c.id,
-            name: c.name || 'Unnamed Community',
-            description: c.description,
+            // FIXED: Ensure name is always displayed properly
+            name: c.name?.trim() || 'Unnamed Community',
+            description: c.description || '',
             avatar: c.avatar_url,
             member_count: c.member_count || 0,
             my_role: (myRole || 'none') as 'admin' | 'moderator' | 'member' | 'none',
@@ -253,61 +265,83 @@ export default function Messages() {
     staleTime: 30000
   });
 
-  // 3. FRIENDS HOOK (FIXED NAME RESOLUTION)
+  // 3. FIXED FRIENDS HOOK - Robust name resolution
   const { friends: rawFriends = [] } = useFriends(user?.id);
 
   const friends = useMemo(() => {
     if (!rawFriends || !user?.id) return [];
     return rawFriends.map((f: any) => {
+      // Get the correct profile based on relationship
       const rawProfile = f.requester_id === user.id ? f.addressee : f.requester;
       const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
-      if (!profile) return null;
+      
+      if (!profile) {
+        console.warn('Missing profile in friend relationship:', f);
+        return null;
+      }
+
+      // FIXED: Robust ID and name extraction
+      const friendId = profile.id || profile.user_id;
+      const friendName = profile.display_name || profile.username || profile.email?.split('@')[0] || 'Friend';
+      
       return {
-        // Robust ID check
-        id: profile.id ?? profile.user_id, 
-        // Improved name check
-        name: profile.display_name || profile.username || 'Friend', 
+        id: friendId,
+        name: friendName,
         avatar: profile.avatar_url,
         is_online: false,
-        last_seen: null
+        last_seen: profile.last_seen || null
       };
     }).filter(Boolean);
   }, [rawFriends, user?.id]);
 
-  // Messages in selected chat
+  // FIXED: Messages query with proper sender name resolution
   const { data: messages = [] } = useQuery({
     queryKey: ['messages', selectedChat?.type, selectedChat?.id, user?.id],
     queryFn: async (): Promise<Message[]> => {
       if (!user?.id || !selectedChat) return [];
+      
       if (selectedChat.type === 'dm') {
         const { data, error } = await supabase
           .from('messages')
           .select('*')
           .or(`and(sender_id.eq.${user.id},receiver_id.eq.${selectedChat.partner_id}),and(sender_id.eq.${selectedChat.partner_id},receiver_id.eq.${user.id})`)
           .order('created_at', { ascending: true });
+        
         if (error) throw error;
+        
         return (data || []).map((m: any) => ({
           ...m,
           is_me: m.sender_id === user.id,
-          sender_name: selectedChat.name,
-          sender_avatar: selectedChat.avatar,
+          sender_name: m.sender_id === user.id ? 'You' : selectedChat.name,
+          sender_avatar: m.sender_id === user.id ? userProfile?.avatar_url : selectedChat.avatar,
           is_deleted: m.is_deleted || false,
           read: m.is_read
         }));
       } else {
+        // FIXED: Proper community message fetching with sender details
         const { data, error } = await supabase
           .from('community_messages')
-          .select('*, sender:profiles!sender_id(display_name, avatar_url)')
+          .select(`
+            *,
+            sender:profiles!sender_id(id, user_id, display_name, username, email, avatar_url)
+          `)
           .eq('community_id', selectedChat.id)
           .order('created_at', { ascending: true });
+        
         if (error) throw error;
-        return (data || []).map((m: any) => ({
-          ...m,
-          is_me: m.sender_id === user.id,
-          sender_name: m.sender?.display_name,
-          sender_avatar: m.sender?.avatar_url,
-          is_deleted: m.is_deleted || false
-        }));
+        
+        return (data || []).map((m: any) => {
+          const sender = Array.isArray(m.sender) ? m.sender[0] : m.sender;
+          const senderName = sender?.display_name || sender?.username || sender?.email?.split('@')[0] || 'Unknown User';
+          
+          return {
+            ...m,
+            is_me: m.sender_id === user.id,
+            sender_name: senderName,
+            sender_avatar: sender?.avatar_url,
+            is_deleted: m.is_deleted || false
+          };
+        });
       }
     },
     enabled: !!selectedChat && !!user?.id,
@@ -620,7 +654,7 @@ export default function Messages() {
           
           <Avatar className="h-11 w-11 border-2 border-background ring-2 ring-primary/10 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
             <AvatarImage src={selectedChat.avatar} />
-            <AvatarFallback>{selectedChat.name?.[0] ?? 'C'}</AvatarFallback>
+            <AvatarFallback>{selectedChat.name?.[0]?.toUpperCase() ?? 'C'}</AvatarFallback>
           </Avatar>
           
           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
@@ -868,6 +902,7 @@ export default function Messages() {
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-gradient-to-b from-background via-background to-background/80 backdrop-blur-xl pt-4 px-4 pb-2">
+        <div className="container-mobile py-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Messages</h1>
           <Button 
@@ -923,7 +958,7 @@ export default function Messages() {
                 <div className="relative">
                   <Avatar className="h-14 w-14 ring-2 ring-background shadow-md group-hover:shadow-lg transition-all">
                     <AvatarImage src={dm.avatar} />
-                    <AvatarFallback>{dm.name?.[0] || '?'}</AvatarFallback>
+                    <AvatarFallback>{dm.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
                   </Avatar>
                   {dm.is_online && (
                     <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
@@ -963,7 +998,7 @@ export default function Messages() {
               <div key={comm.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl transition-all bg-gradient-to-r from-background to-muted/5 group">
                 <Avatar className="h-14 w-14 rounded-2xl border-2 border-background shadow-md cursor-pointer group-hover:shadow-lg transition-all" onClick={() => setSelectedChat({ type: 'community', id: comm.id, name: comm.name, avatar: comm.avatar, description: comm.description, my_role: comm.my_role, member_count: comm.member_count })}>
                   <AvatarImage src={comm.avatar} />
-                  <AvatarFallback>{comm.name?.[0] || 'C'}</AvatarFallback>
+                  <AvatarFallback>{comm.name?.[0]?.toUpperCase() || 'C'}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedChat({ type: 'community', id: comm.id, name: comm.name, avatar: comm.avatar, description: comm.description, my_role: comm.my_role, member_count: comm.member_count })}>
                   <div className="flex items-center gap-2 mb-1">
@@ -1059,7 +1094,7 @@ export default function Messages() {
                             <div className="relative">
                               <Avatar className="h-12 w-12 ring-2 ring-background">
                                 <AvatarImage src={f.avatar} />
-                                <AvatarFallback>{f.name?.[0] || '?'}</AvatarFallback>
+                                <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
                               </Avatar>
                               <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
                             </div>
@@ -1094,7 +1129,7 @@ export default function Messages() {
                           >
                             <Avatar className="h-12 w-12 ring-2 ring-background opacity-90 group-hover:opacity-100 transition-opacity">
                               <AvatarImage src={f.avatar} />
-                              <AvatarFallback>{f.name?.[0] || '?'}</AvatarFallback>
+                              <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
                               <p className="font-semibold text-[15px] truncate">{f.name}</p>
@@ -1202,6 +1237,7 @@ export default function Messages() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
