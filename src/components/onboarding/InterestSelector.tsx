@@ -46,14 +46,17 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
 
     setLoading(true);
     try {
-      console.log("Attempting to save for user:", user.id);
-      
-      // 1. Explicitly select data back to confirm the save worked
+      // CHANGED: Use .upsert() instead of .update()
+      // This creates the row if it's missing (fixing broken signups)
       const { data, error } = await supabase
         .from('profiles')
-        .update({ interests: selected })
-        .eq('id', user.id)
-        .select(); // This is crucial for verifying the update returned a row
+        .upsert({ 
+          id: user.id, // ID is required for upsert to know which row to target
+          interests: selected,
+          updated_at: new Date().toISOString(),
+        }, { 
+          onConflict: 'id' // Ensure we don't create duplicates
+        });
 
       if (error) {
         console.error("Supabase Update Error:", error.message, error.details);
