@@ -51,12 +51,11 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
       const { data, error } = await supabase
         .from('profiles')
         .upsert({ 
-          id: user.id, 
           user_id: user.id,
           interests: selected,
           updated_at: new Date().toISOString(),
         }, { 
-          onConflict: 'id' // Ensure we don't create duplicates
+          onConflict: 'user_id' // Ensure we don't create duplicates
         });
 
       if (error) {
