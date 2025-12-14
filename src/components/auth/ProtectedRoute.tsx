@@ -25,7 +25,7 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('interests')
-          .eq('user_id', user.id) // Ensure this matches your DB column (user_id vs id)
+          .eq('id', user.id) // Ensure this matches your DB column (user_id vs id)
           .maybeSingle();
 
         if (error) {
