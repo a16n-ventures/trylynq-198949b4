@@ -17,10 +17,11 @@ const INTEREST_TAGS = [
 ];
 
 interface InterestSelectorProps {
+  onComplete: () => void;
   initialSelected?: string[];
 }
 
-export function InterestSelector({ initialSelected = [] }: InterestSelectorProps) {
+export function InterestSelector({ onComplete, initialSelected = [] }: InterestSelectorProps) {
   const { user } = useAuth();
   const [selected, setSelected] = useState<string[]>(initialSelected);
   const [loading, setLoading] = useState(false);
@@ -81,13 +82,12 @@ export function InterestSelector({ initialSelected = [] }: InterestSelectorProps
       }
 
       toast.success("Profile updated!");
-      
-      // Force a hard navigation to clear any cached states in ProtectedRoute
-      window.location.href = '/app/discover'; 
+      onComplete();
       
     } catch (err: any) {
       console.error("Full Error Object:", err);
       toast.error(`Failed to save: ${err.message || "Unknown error"}`);
+    } finally {
       setLoading(false);
     }
   };
