@@ -164,11 +164,11 @@ export default function Messages() {
 
       if (idsList.length === 0) return [];
 
-      // C. Fetch profiles - Try BOTH id and user_id to be safe
+      // C. Fetch profiles using user_id column
 const { data: profiles, error: profileError } = await supabase
   .from('profiles')
-  .select('id, user_id, display_name, username, email, full_name, avatar_url, avatar')
-  .or(idsList.map(id => `id.eq.${id},user_id.eq.${id}`).join(','));
+  .select('user_id, display_name, username, email, full_name, avatar_url, avatar')
+  .in('user_id', idsList);
 
 if (profileError) {
   console.error("❌ Profile fetch error:", profileError);
