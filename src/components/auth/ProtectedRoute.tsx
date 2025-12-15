@@ -19,8 +19,10 @@ export const ProtectedRoute = ({
   const navigate = useNavigate();
 
   useEffect(() => { 
+    // Wait for auth to initialize
     if (authLoading) return;
     
+    // Not logged in - redirect to home
     if (!user) {
       navigate('/', { replace: true });
       return;
@@ -31,7 +33,7 @@ export const ProtectedRoute = ({
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('interests')
-          .eq('user_id', user.id)  // ← FIXED
+          .eq('user_id', user.id)
           .maybeSingle();
 
         if (error) {
@@ -41,8 +43,7 @@ export const ProtectedRoute = ({
         }
 
         const currentPath = location.pathname.toLowerCase().replace(/\/$/, "");
-        const isOnboardingPage = currentPath.includes('onboarding'); 
-        const homePage = currentPath.includes('app');
+        const isOnboardingPage = currentPath.includes('onboarding');
 
         // Only check interests if requireInterests is true
         if (requireInterests && (!profile?.interests || profile.interests.length === 0)) {
@@ -62,7 +63,8 @@ export const ProtectedRoute = ({
     checkOnboardingStatus();
   }, [user, authLoading, navigate, location.pathname, requireInterests]);
 
-  if (!homePage || authLoading || isChecking) {
+  // ✅ FIXED: Show loading only while actually checking
+  if (authLoading || isChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -73,7 +75,9 @@ export const ProtectedRoute = ({
     );
   }
 
+  // ✅ Safety check: Don't render if no user
   if (!user) return null;
 
+  // ✅ Render children (the protected content)
   return <>{children}</>;
 };
