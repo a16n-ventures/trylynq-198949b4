@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { 
   Calendar, MapPin, DollarSign, ArrowLeft, Image as ImageIcon, 
-  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check
+  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check, Megaphone
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,6 +50,7 @@ const CreateEvent = () => {
     category: '',
     isPrivate: false,
     requireApproval: false,
+    isSponsored: false, // [MODIFIED: Added isSponsored state]
     eventType: 'physical', // 'physical' or 'virtual'
     meetingLink: '', // For virtual events
   });
@@ -210,6 +211,7 @@ const CreateEvent = () => {
           ticket_price: eventData.price ? parseFloat(eventData.price) : 0,
           is_public: !eventData.isPrivate,
           requires_approval: eventData.requireApproval,
+          is_sponsored: eventData.isSponsored, // [MODIFIED: Insert sponsored status]
           creator_id: user.id,
           image_url: imageUrl,
           event_type: eventData.eventType,
@@ -619,6 +621,29 @@ const CreateEvent = () => {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Sponsorship & Promotion - [MODIFIED: Added Sponsorship Section] */}
+          <Card className="gradient-card shadow-card border-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2">
+                <Megaphone className="w-5 h-5" />
+                Sponsorship & Promotion
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+               <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="sponsor">Sponsor Event</Label>
+                  <p className="text-sm text-muted-foreground">Promote this event to a wider audience</p>
+                </div>
+                <Switch
+                  id="sponsor"
+                  checked={eventData.isSponsored}
+                  onCheckedChange={(checked) => setEventData({...eventData, isSponsored: checked})}
+                />
+              </div>
             </CardContent>
           </Card>
 

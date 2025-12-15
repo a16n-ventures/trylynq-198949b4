@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
   Users, Calendar, MapPin, X, Loader2, Plus, 
   Heart, Share2, Sparkles, Lock, RefreshCw, Check,
-  Clock, Ticket, ExternalLink
+  Clock, Ticket, ExternalLink, Megaphone
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,6 +40,7 @@ interface Event {
   price?: number;
   attendee_count?: number;
   is_attending?: boolean;
+  is_sponsored?: boolean; // [MODIFIED: Added is_sponsored]
 }
 
 type ProfileWithStoryInner = { id: string; display_name: string | null; avatar_url: string | null; stories: { id: string; created_at: string }[]; };
@@ -78,6 +79,13 @@ function EventDetailModal({ event, isOpen, onClose, onRSVP }: {
               <Badge className="absolute top-4 right-4 bg-black/60 backdrop-blur-md">
                 <Sparkles className="w-3 h-3 mr-1 text-yellow-400" />
                 {event.match_score.toFixed(0)}% Match
+              </Badge>
+            )}
+             {/* [MODIFIED: Display Sponsored Badge in Modal] */}
+            {event.is_sponsored && (
+              <Badge className="absolute top-4 left-4 bg-yellow-500/90 hover:bg-yellow-600 text-white backdrop-blur-md border-0">
+                <Megaphone className="w-3 h-3 mr-1" />
+                Sponsored
               </Badge>
             )}
           </div>
@@ -125,15 +133,14 @@ function EventDetailModal({ event, isOpen, onClose, onRSVP }: {
               </div>
             )}
 
-            {event.attendee_count !== undefined && (
-              <div className="flex items-start gap-3">
-                <Users className="w-5 h-5 text-primary mt-0.5" />
-                <div>
-                  <p className="font-medium">Attendees</p>
-                  <p className="text-sm text-muted-foreground">{event.attendee_count} going</p>
-                </div>
+            {/* [MODIFIED: Always show attendees] */}
+            <div className="flex items-start gap-3">
+              <Users className="w-5 h-5 text-primary mt-0.5" />
+              <div>
+                <p className="font-medium">Attendees</p>
+                <p className="text-sm text-muted-foreground">{event.attendee_count || 0} going</p>
               </div>
-            )}
+            </div>
           </div>
 
           <DialogFooter className="gap-2 border-t pt-4">
@@ -326,7 +333,8 @@ export default function Discover() {
           description: e.description,
           price: e.price,
           attendee_count: e.attendee_count,
-          is_attending: rsvpSet.has(e.id)
+          is_attending: rsvpSet.has(e.id),
+          is_sponsored: e.is_sponsored // [MODIFIED: map sponsored status]
         }));
         setEvents(mappedEvents);
       }
@@ -360,7 +368,8 @@ export default function Discover() {
                 start_date: item.start_date || new Date().toISOString(),
                 location: item.location || 'Online',
                 image_url: item.image_url, // Now includes visual data
-                match_score: (item.final_score || item.similarity || 0) * 100 // Convert 0.95 -> 95%
+                match_score: (item.final_score || item.similarity || 0) * 100, // Convert 0.95 -> 95%
+                is_sponsored: item.is_sponsored
               }));
               setSmartFeed(formatted);
             }
@@ -597,17 +606,22 @@ export default function Discover() {
                             Going
                           </Badge>
                         )}
+                         {/* [MODIFIED: Added Sponsored Badge] */}
+                        {e.is_sponsored && (
+                          <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">
+                            Sponsored
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                         <MapPin className="w-3.5 h-3.5" /> 
                         <span className="truncate">{e.location}</span>
                       </div>
-                      {e.attendee_count !== undefined && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                          <Users className="w-3 h-3" />
-                          {e.attendee_count} attending
-                        </div>
-                      )}
+                      {/* [MODIFIED: Ensure attendee count is always visible] */}
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                        <Users className="w-3 h-3" />
+                        {e.attendee_count || 0} attending
+                      </div>
                     </div>
                     <Button 
                       size="sm" 

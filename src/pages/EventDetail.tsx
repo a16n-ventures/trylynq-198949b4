@@ -29,12 +29,17 @@ import {
   ExternalLink,
   Clock,
   Check,
-  Trash2, // Ensure Trash2 is imported
-  AlertCircle // Ensure AlertCircle is imported
+  Trash2, 
+  AlertCircle,
+  Megaphone,
+  Search
 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
 } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -45,8 +50,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"; // Ensure Alert components are imported
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type Event = {
   id: string;
@@ -64,6 +72,7 @@ type Event = {
   image_url?: string | null;
   event_type: 'physical' | 'virtual';
   meeting_link?: string | null;
+  is_sponsored?: boolean; // [MODIFIED: Added is_sponsored]
   creator: {
     user_id: string;
     display_name: string;
@@ -75,6 +84,13 @@ type Attendee = {
   user_id: string;
   display_name: string;
   avatar_url?: string;
+};
+
+// [MODIFIED: Added Friend Type]
+type Friend = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
 };
 
 const EventDetail = () => {
@@ -100,6 +116,11 @@ const EventDetail = () => {
   
   // NEW: Delete Dialog State
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // [MODIFIED: Invite Dialog States]
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -205,6 +226,19 @@ const EventDetail = () => {
     enabled: !!eventId,
   });
 
+  // [MODIFIED: Fetch Friends for Invite]
+  const { data: friends = [] } = useQuery<Friend[]>({
+    queryKey: ['my-friends', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      // Assuming a friends table or fetching all profiles for demo
+      // In a real scenario, this would check a 'friendships' table
+      const { data } = await supabase.from('profiles').select('id, display_name, avatar_url').neq('id', user.id).limit(50);
+      return data || [];
+    },
+    enabled: !!user && showInviteDialog
+  });
+
   // Check if user is attending
   const { data: isAttending } = useQuery({
     queryKey: ['is-attending', eventId, user?.id],
@@ -269,6 +303,31 @@ const EventDetail = () => {
     onError: (error: any) => {
       toast.error('Failed to delete event: ' + error.message);
     }
+  });
+
+   // [MODIFIED: Invite Friends Mutation]
+  const inviteFriendsMutation = useMutation({
+  mutationFn: async (friendIds: string[]) => {
+    if (!eventId || !user) return;
+    
+    const invites = friendIds.map(friendId => ({
+      event_id: eventId,
+      sender_id: user.id,
+      receiver_id: friendId,
+      status: 'pending'
+    }));
+    const { error } = await supabase
+      .from('event_invites')
+      .insert(invites);
+    if (error) throw error;
+    return friendIds.length;
+  },
+    onSuccess: (count) => {
+      toast.success(`Invites sent to ${count} friends!`);
+      setShowInviteDialog(false);
+      setSelectedFriends([]);
+    },
+    onError: () => toast.error("Failed to send invites")
   });
 
   // Video Call Functions
@@ -514,7 +573,15 @@ const EventDetail = () => {
           <CardContent className="p-6 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
-                <Badge className="mb-2">{event.category}</Badge>
+                {/* [MODIFIED: Add Sponsored Badge] */}
+                <div className="flex gap-2 mb-2">
+                  <Badge>{event.category}</Badge>
+                  {event.is_sponsored && (
+                     <Badge variant="outline" className="border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20">
+                       <Megaphone className="w-3 h-3 mr-1" /> Sponsored
+                     </Badge>
+                  )}
+                </div>
                 <h1 className="text-2xl font-bold mb-2">{event.title}</h1>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Avatar className="w-6 h-6">
@@ -637,8 +704,8 @@ const EventDetail = () => {
                   <Button
                     variant="outline"
                     className="w-full"
-                    // FIXED: Removed '/app' prefix for Invite link
-                    onClick={() => navigate(`/app/events/${eventId}/invite`)}
+                    // [MODIFIED: Changed to open local dialog]
+                    onClick={() => setShowInviteDialog(true)}
                   >
                     <UserPlus className="w-4 h-4 mr-2" />
                     Invite Friends
@@ -867,6 +934,65 @@ const EventDetail = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      
+      {/* [MODIFIED: Invite Friends Dialog] */}
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Invite Friends</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+             <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Search friends..." 
+                  className="pl-8" 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+             </div>
+             <ScrollArea className="h-[200px] pr-4">
+                <div className="space-y-2">
+                  {friends
+                    .filter(f => f.display_name?.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .map((friend) => (
+                      <div key={friend.id} className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50">
+                        <Checkbox 
+                          id={`friend-${friend.id}`}
+                          checked={selectedFriends.includes(friend.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) setSelectedFriends([...selectedFriends, friend.id]);
+                            else setSelectedFriends(selectedFriends.filter(id => id !== friend.id));
+                          }}
+                        />
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={friend.avatar_url || ''} />
+                          <AvatarFallback>{friend.display_name?.[0]}</AvatarFallback>
+                        </Avatar>
+                        <label 
+                          htmlFor={`friend-${friend.id}`}
+                          className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {friend.display_name}
+                        </label>
+                      </div>
+                  ))}
+                  {friends.length === 0 && <p className="text-sm text-center text-muted-foreground py-4">No friends found.</p>}
+                </div>
+             </ScrollArea>
+          </div>
+          <DialogFooter>
+             <Button variant="outline" onClick={() => setShowInviteDialog(false)}>Cancel</Button>
+             <Button 
+                onClick={() => inviteFriendsMutation.mutate(selectedFriends)}
+                disabled={selectedFriends.length === 0 || inviteFriendsMutation.isPending}
+                className="gradient-primary text-white"
+             >
+                {inviteFriendsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : `Send Invites (${selectedFriends.length})`}
+             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
