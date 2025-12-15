@@ -39,7 +39,7 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         if (!profile?.interests || profile.interests.length === 0) {
           if (!isOnboardingPage) {
             console.log("Redirecting to onboarding...");
-            navigate("/app/onboarding", { replace: true });
+            navigate("/onboarding", { replace: true });
             return; 
           }
         } 
