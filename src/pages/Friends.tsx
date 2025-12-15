@@ -27,7 +27,7 @@ import { AddContactForm } from "@/components/friends/AddContactForm";
 
 // Utilities
 const DEBOUNCE_DELAY = 500;
-const NEARBY_RADIUS_KM = 1; // ✅ CHANGED: 1km radius for nearby friends
+const NEARBY_RADIUS_KM = 50; 
 const MAX_NEARBY_USERS = 50;
 const LOCATION_CHANGE_THRESHOLD_KM = 0.1; // ✅ CHANGED: More sensitive to location changes (100m)
 const REFRESH_INTERVAL_MS = 120000; // 2 minutes
