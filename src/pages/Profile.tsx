@@ -285,90 +285,106 @@ const Profile = () => {
 
   // Enhanced location toggle with proper async handling
   const toggleLocationMutation = useMutation({
-    mutationFn: async ({ checked, coords }: { checked: boolean; coords?: { lat: number; lng: number } }) => {
-      if (!checked) {
-        const { error } = await supabase
-          .from('user_locations')
-          .update({ is_sharing_location: false })
-          .eq('user_id', user!.id);
-        if (error) throw error;
-        return false;
-      }
+  mutationFn: async ({ checked, coords }: { checked: boolean; coords?: { lat: number; lng: number } }) => {
+    if (!user) throw new Error("User not authenticated");
 
-      if (checked) {
-        if (!coords) {
-          throw new Error("Location coordinates required");
-        }
+    // ✅ FIXED: Always upsert with the toggle state
+    const payload: any = {
+      user_id: user.id,
+      is_sharing_location: checked,
+      updated_at: new Date().toISOString(),
+    };
 
-        const { error } = await supabase
-          .from('user_locations')
-          .upsert({ 
-            user_id: user!.id, 
-            is_sharing_location: true,
-            latitude: coords.lat,
-            longitude: coords.lng,
-            updated_at: new Date().toISOString()
-          });
-        
-        if (error) throw error;
-        return true;
-      }
-      
-      return false;
-    },
-    onSuccess: (newState) => {
-      toast.success(newState ? 'Location sharing enabled' : 'Location sharing disabled');
-      
-      queryClient.setQueryData(['profile', user!.id], (oldData: any) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          location: { 
-            ...oldData.location, 
-            is_sharing_location: newState 
-          }
-        };
-      });
-    },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to update location settings");
-      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
+    // If enabling, include coordinates
+    if (checked && coords) {
+      payload.latitude = coords.lat;
+      payload.longitude = coords.lng;
+      payload.last_seen = new Date().toISOString();
     }
-  });
+
+    console.log('🔄 Updating location sharing:', { checked, hasCoords: !!coords });
+
+    const { error } = await supabase
+      .from('user_locations')
+      .upsert(payload, { 
+        onConflict: 'user_id',
+        ignoreDuplicates: false 
+      });
+    
+    if (error) {
+      console.error('❌ Location toggle error:', error);
+      throw error;
+    }
+
+    console.log('✅ Location sharing updated successfully:', checked);
+    return checked;
+  },
+  onSuccess: (newState) => {
+    toast.success(newState ? 'Location sharing enabled' : 'Location sharing disabled');
+    
+    // Update cache immediately
+    queryClient.setQueryData(['profile', user!.id], (oldData: any) => {
+      if (!oldData) return oldData;
+      return {
+        ...oldData,
+        location: { 
+          ...oldData.location, 
+          is_sharing_location: newState 
+        }
+      };
+    });
+
+    // ✅ Force page reload to restart LocationContext with new setting
+    if (newState) {
+      window.location.reload();
+    }
+  },
+  onError: (error: any) => {
+    console.error('❌ Failed to toggle location:', error);
+    toast.error(error.message || "Failed to update location settings");
+    queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
+  }
+});
   
   // Improved location toggle handler
   const handleLocationToggle = useCallback(async (checked: boolean) => {
-    try {
-      if (checked) {
-        let coords = currentLocation ? {
+  try {
+    if (checked) {
+      // Enabling - need coordinates
+      let coords = currentLocation ? {
+        lat: currentLocation.latitude,
+        lng: currentLocation.longitude
+      } : null;
+
+      if (!coords) {
+        console.log('📍 No current location, requesting...');
+        await requestLocation();
+        
+        // Wait for location to be available
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        if (!currentLocation) {
+          throw new Error("Could not access location services. Please enable location permissions in your browser.");
+        }
+        
+        coords = {
           lat: currentLocation.latitude,
           lng: currentLocation.longitude
-        } : null;
-
-        if (!coords) {
-          await requestLocation();
-          
-          // Wait a bit for context to update
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          if (!currentLocation) {
-            throw new Error("Could not access location services. Please enable location permissions.");
-          }
-          
-          coords = {
-            lat: currentLocation.latitude,
-            lng: currentLocation.longitude
-          };
-        }
-
-        toggleLocationMutation.mutate({ checked, coords });
-      } else {
-        toggleLocationMutation.mutate({ checked });
+        };
       }
-    } catch (error: any) {
-      toast.error(error.message || "Could not access location");
+
+      console.log('📍 Enabling location sharing with coords:', coords);
+      toggleLocationMutation.mutate({ checked: true, coords });
+    } else {
+      // Disabling - no coordinates needed
+      console.log('📍 Disabling location sharing');
+      toggleLocationMutation.mutate({ checked: false });
     }
-  }, [currentLocation, requestLocation, toggleLocationMutation]); 
+  } catch (error: any) {
+    console.error('❌ Location toggle error:', error);
+    toast.error(error.message || "Could not access location");
+  }
+}, [currentLocation, requestLocation, toggleLocationMutation]);
 
   // Delete account mutation with cascade handling
   const deleteAccountMutation = useMutation({
