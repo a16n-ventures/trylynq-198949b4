@@ -57,6 +57,13 @@ const App = () => {
                 {/* Redirect root (/) to landing page */}
                 <Route path="/" element={<Navigate to="/ahmia" replace />} />
 
+                {/* --- Onboarding (Protected but standalone) --- */}
+  <Route path="/onboarding" element={
+    <ProtectedRoute requireInterests={false}>
+      <Onboarding />
+    </ProtectedRoute>
+  } />
+
                 {/* --- Admin Routes --- */}
                 <Route path="/admin" element={<AdminLayout />}>
                   <Route index element={<AdminDashboard />} />
@@ -75,7 +82,6 @@ const App = () => {
                   </ProtectedRoute>
                 }>
                   <Route index element={<Discover />} />
-                  <Route path="onboarding" element={<Onboarding />} />
                   <Route path="discover" element={<Discover />} />
                   <Route path="friends" element={<Friends />} />
                   <Route path="map" element={<Map />} />
