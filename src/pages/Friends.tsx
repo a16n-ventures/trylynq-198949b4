@@ -30,12 +30,11 @@ import { AddContactForm } from "@/components/friends/AddContactForm";
 // Utilities
 const DEBOUNCE_DELAY = 500;
 const MAX_NEARBY_USERS = 50;
-const LOCATION_CHANGE_THRESHOLD_KM = 0.1; // ✅ CHANGED: More sensitive to location changes (100m)
-const REFRESH_INTERVAL_MS = 120000; // 2 minutes 
+const LOCATION_CHANGE_THRESHOLD_KM = 0.1;
+const REFRESH_INTERVAL_MS = 120000;
 
 /**
- * ✅ FIXED: useDebounce hook
- * Previous issue: Used useState instead of useEffect
+ * useDebounce hook
  */
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -52,7 +51,7 @@ function useDebounce<T>(value: T, delay: number): T {
  * Haversine Formula for Client-Side Distance Calculation
  */
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Radius of the earth in km
+  const R = 6371;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a = 
@@ -60,15 +59,13 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
     Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
     Math.sin(dLon / 2) * Math.sin(dLon / 2); 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
-  return R * c; // Distance in km
+  return R * c;
 }
 
 /**
- * ✅ ENHANCEMENT: Safe display name formatter - only cleans whitespace, doesn't add fallbacks
+ * Safe display name formatter
  */
 function getDisplayName(name: string | null | undefined): string {
-  // Just return the name as-is if it exists, or empty string
-  // Fallback logic should happen at data fetch level, not display level
   return name?.trim() || '';
 }
 
@@ -90,34 +87,27 @@ export default function Friends() {
   const userId = user?.id; 
   const navigate = useNavigate(); 
 
+  // Fetch user's discovery radius from profile
   const { data: userProfile } = useQuery({
-  queryKey: ['user-profile-radius', userId],
-  queryFn: async () => {
-    if (!userId) return null;
-    const { data } = await supabase
-      .from('profiles')
-      .select('preferences')
-      .eq('user_id', userId)
-      .single();
-    return data;
-  },
-  enabled: !!userId,
-  staleTime: 60000, // Cache for 1 minute
-});
-
-// ✅ Calculate radius in KM from saved preferences (stored in meters)
-const NEARBY_RADIUS_KM = useMemo(() => {
-  const savedRadius = userProfile?.preferences?.discovery_radius;
-  // Default to 10km if not set, convert meters to km
-  return savedRadius ? savedRadius / 1000 : 10;
-}, [userProfile]); 
-
-if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
-  uniqueCandidatesMap.set(loc.user_id, { 
-    ...loc, 
-    distance: dist 
+    queryKey: ['user-profile-radius', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data } = await supabase
+        .from('profiles')
+        .select('preferences')
+        .eq('user_id', userId)
+        .single();
+      return data;
+    },
+    enabled: !!userId,
+    staleTime: 60000,
   });
-}
+
+  // Calculate radius in KM from saved preferences (stored in meters)
+  const NEARBY_RADIUS_KM = useMemo(() => {
+    const savedRadius = userProfile?.preferences?.discovery_radius;
+    return savedRadius ? savedRadius / 1000 : 10;
+  }, [userProfile]); 
   
   // State
   const [search, setSearch] = useState("");
@@ -140,7 +130,6 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
     userName?: string;
   }>({ open: false, type: 'block', userId: '' });
 
-  // ✅ ENHANCEMENT: Error state for nearby users
   const [nearbyError, setNearbyError] = useState<string | null>(null);
 
   // Hooks
@@ -172,7 +161,7 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
   const hasInitializedRef = useRef(false);
 
   /**
-   * ✅ ENHANCEMENT: Check if location has changed significantly
+   * Check if location has changed significantly
    */
   const hasLocationChangedSignificantly = useCallback((newLat: number, newLon: number): boolean => {
     if (!lastFetchLocationRef.current) return true;
@@ -185,15 +174,13 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
   const loadingNearby = (isLocationLoading || isFetchingFriends) && !hasInitializedRef.current;
 
   /**
-   * ✅ ENHANCED: Main fetch function with better error handling and data validation
+   * Main fetch function with better error handling and data validation
    */
   const fetchNearbyUsers = useCallback(async () => {
     if (!userId || !userLocation) return;
     
-    // Prevent concurrent fetches
     if (isFetchingRef.current) return;
     
-    // Check if location changed significantly
     if (!hasLocationChangedSignificantly(userLocation.latitude, userLocation.longitude)) {
       if (nearbyDataCacheRef.current.length > 0) {
         setNearbyUsers(nearbyDataCacheRef.current);
@@ -215,7 +202,7 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
       if (friendshipError) throw friendshipError;
       
       const excludedIds = new Set<string>();
-      excludedIds.add(userId); // Exclude myself
+      excludedIds.add(userId);
       
       existingFriendships?.forEach(f => {
         excludedIds.add(f.requester_id);
@@ -232,7 +219,6 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
 
       if (locError) throw locError;
 
-      // ✅ ENHANCEMENT: Validate location data
       if (!allLocations || allLocations.length === 0) {
         setNearbyUsers([]);
         nearbyDataCacheRef.current = [];
@@ -244,13 +230,12 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
       const uniqueCandidatesMap = new Map();
       
       allLocations.forEach(loc => {
-        // ✅ ENHANCEMENT: Validate location data
         if (!loc.user_id || 
             typeof loc.latitude !== 'number' || 
             typeof loc.longitude !== 'number' ||
             isNaN(loc.latitude) || 
             isNaN(loc.longitude)) {
-          return; // Skip invalid entries
+          return;
         }
 
         if (!excludedIds.has(loc.user_id) && !uniqueCandidatesMap.has(loc.user_id)) {
@@ -260,6 +245,14 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
             loc.latitude, 
             loc.longitude
           );
+          
+          // ✅ FIXED: Add the radius filter here
+          if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
+            uniqueCandidatesMap.set(loc.user_id, { 
+              ...loc, 
+              distance: dist 
+            });
+          }
         }
       });
 
@@ -278,28 +271,26 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
       const candidateIds = validCandidates.map((c: any) => c.user_id);
       const { data: profiles, error: profError } = await supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url, email') // ✅ FIXED: Added email as fallback
-        .eq('user_id', candidateIds);
+        .select('user_id, display_name, avatar_url, email')
+        .in('user_id', candidateIds);
 
       if (profError) throw profError;
 
-      // ✅ DEBUG: Log what we got from profiles
       console.log('📊 Nearby Users Debug:', {
         totalCandidates: validCandidates.length,
         profilesFetched: profiles?.length || 0,
         sampleProfile: profiles?.[0],
-        candidateIds: candidateIds.slice(0, 3) // First 3 IDs
+        candidateIds: candidateIds.slice(0, 3)
       });
 
-      // 5. ✅ ENHANCED: Merge Data with proper null handling and multiple fallbacks
+      // 5. Merge Data with proper null handling and multiple fallbacks
       const formatted: NearbyUser[] = validCandidates
         .map((candidate: any) => {
           const profile = profiles?.find(p => p.user_id === candidate.user_id);
           
-          // ✅ FIX: Try multiple fields to get a display name
           const displayName = profile?.display_name || 
                              profile?.email?.split('@')[0] || 
-                             `User${candidate.user_id.slice(-4)}`; // Last resort: show last 4 chars of ID
+                             `User${candidate.user_id.slice(-4)}`;
           
           return {
             user_id: candidate.user_id,
@@ -311,7 +302,6 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
         })
         .filter((user): user is NearbyUser => user !== null);
 
-      // Update cache and state
       nearbyDataCacheRef.current = formatted;
       lastFetchLocationRef.current = {
         lat: userLocation.latitude,
@@ -326,7 +316,6 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load nearby users';
       setNearbyError(errorMessage);
       
-      // On error, use cached data if available
       if (nearbyDataCacheRef.current.length > 0) {
         setNearbyUsers(nearbyDataCacheRef.current);
       }
@@ -334,13 +323,12 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
       setIsFetchingFriends(false);
       isFetchingRef.current = false;
     }
-  }, [userId, userLocation, hasLocationChangedSignificantly]);
+  }, [userId, userLocation, hasLocationChangedSignificantly, NEARBY_RADIUS_KM]);
 
   /**
-   * ✅ ENHANCED: Effect with proper cleanup
+   * Effect with proper cleanup
    */
   useEffect(() => {
-    // Only fetch if we are on the 'discover' -> 'nearby' tab
     if (activeTab !== 'discover' || discoverView !== 'nearby') {
       return;
     }
@@ -352,16 +340,13 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
       return;
     }
 
-    // Use cached data immediately if available
     if (nearbyDataCacheRef.current.length > 0 && !hasInitializedRef.current) {
       setNearbyUsers(nearbyDataCacheRef.current);
       hasInitializedRef.current = true;
     }
 
-    // Fetch or use cache based on location change
     fetchNearbyUsers();
 
-    // Set up periodic refresh (every 2 minutes) only if location changed
     const refreshInterval = setInterval(() => {
       if (userLocation && hasLocationChangedSignificantly(userLocation.latitude, userLocation.longitude)) {
         fetchNearbyUsers();
@@ -372,7 +357,7 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
   }, [activeTab, discoverView, userLocation, isLocationLoading, requestLocation, fetchNearbyUsers, hasLocationChangedSignificantly]);
 
   /**
-   * ✅ ENHANCED: Filtered friends with null safety
+   * Filtered friends with null safety
    */
   const filteredFriends = useMemo(() => {
     let res = [...friends];
@@ -600,66 +585,66 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
 
           {/* NEARBY VIEW */} 
           {discoverView === 'nearby' && (
-      <>
-  <div className="mb-3 px-4">
-    <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
-      <div className="flex items-center gap-2">
-        <Radar className="w-3 h-3" />
-        <span>Search radius: <strong>{NEARBY_RADIUS_KM}km</strong></span>
-      </div>
-      <Button 
-        variant="ghost" 
-        size="sm" 
-        className="h-6 text-xs"
-        onClick={() => navigate('/profile')}
-      >
-        Adjust in Profile →
-      </Button>
-    </div>
-  </div> 
-          
-            <div className="space-y-2">
-              {!userLocation ? (
-                <Card className="border-dashed">
-                  <CardContent className="py-8 text-center">
-                    <MapPin className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
-                    <p className="text-muted-foreground text-sm">Enable location to see nearby people</p>
-                    <Button variant="outline" className="mt-3" onClick={requestLocation}>
-                      <MapPin className="w-4 h-4 mr-2" /> Enable Location
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : loadingNearby ? (
-                <FriendSkeleton />
-              ) : nearbyError ? (
-                <Card className="border-destructive/50">
-                  <CardContent className="py-8 text-center">
-                    <p className="text-destructive text-sm mb-2">Failed to load nearby users</p>
-                    <Button variant="outline" size="sm" onClick={fetchNearbyUsers}>
-                      Try Again
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : nearbyUsers.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No one within 1km</p>
-                  <p className="text-xs mt-1">Invite friends to join!</p>
+            <>
+              <div className="mb-3 px-4">
+                <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Radar className="w-3 h-3" />
+                    <span>Search radius: <strong>{NEARBY_RADIUS_KM}km</strong></span>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-6 text-xs"
+                    onClick={() => navigate('/app/profile')}
+                  >
+                    Adjust in Profile →
+                  </Button>
                 </div>
-              ) : (
-                nearbyUsers.map(p => (
-                  <NearbyUserCard
-                    key={p.user_id}
-                    profile={p}
-                    onAddFriend={(profile) => mutations.sendRequest.mutate(profile)}
-                    isAdding={mutations.sendRequest.isPending && mutations.sendRequest.variables?.user_id === p.user_id}
-                  />
-                ))
-              )}
-            </div> 
-           </>
+              </div> 
+              
+              <div className="space-y-2">
+                {!userLocation ? (
+                  <Card className="border-dashed">
+                    <CardContent className="py-8 text-center">
+                      <MapPin className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
+                      <p className="text-muted-foreground text-sm">Enable location to see nearby people</p>
+                      <Button variant="outline" className="mt-3" onClick={requestLocation}>
+                        <MapPin className="w-4 h-4 mr-2" /> Enable Location
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : loadingNearby ? (
+                  <FriendSkeleton />
+                ) : nearbyError ? (
+                  <Card className="border-destructive/50">
+                    <CardContent className="py-8 text-center">
+                      <p className="text-destructive text-sm mb-2">Failed to load nearby users</p>
+                      <Button variant="outline" size="sm" onClick={fetchNearbyUsers}>
+                        Try Again
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : nearbyUsers.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p>No one within {NEARBY_RADIUS_KM}km</p>
+                    <p className="text-xs mt-1">Invite friends to join!</p>
+                  </div>
+                ) : (
+                  nearbyUsers.map(p => (
+                    <NearbyUserCard
+                      key={p.user_id}
+                      profile={p}
+                      onAddFriend={(profile) => mutations.sendRequest.mutate(profile)}
+                      isAdding={mutations.sendRequest.isPending && mutations.sendRequest.variables?.user_id === p.user_id}
+                    />
+                  ))
+                )}
+              </div> 
+            </>
           )}
-
+                    
           {/* CONTACTS VIEW */}
           {discoverView === 'contacts' && (
             <div className="space-y-3">
