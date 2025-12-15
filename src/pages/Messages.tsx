@@ -164,12 +164,11 @@ export default function Messages() {
 
       if (idsList.length === 0) return [];
 
-      // C. CRITICAL FIX: Fetch profiles with ALL possible columns
-      // The 'id' column in profiles table is the primary key that matches auth.users.id
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('*') // Select all columns to debug what's available
-        .in('id', idsList);
+      // C. Fetch profiles using user_id column
+const { data: profiles, error: profileError } = await supabase
+  .from('profiles')
+  .select('id, user_id, display_name, username, email, full_name, avatar_url, avatar')
+  .in('user_id', idsList); 
 
       if (profileError) {
         console.error("❌ Profile fetch error:", profileError);
