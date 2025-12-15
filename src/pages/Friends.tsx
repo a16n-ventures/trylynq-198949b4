@@ -88,6 +88,7 @@ interface NearbyUser {
 export default function Friends() {
   const { user } = useAuth();
   const userId = user?.id; 
+  const navigate = useNavigate(); 
 
   const { data: userProfile } = useQuery({
   queryKey: ['user-profile-radius', userId],
@@ -117,8 +118,6 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
     distance: dist 
   });
 }
-
-  const navigate = useNavigate();
   
   // State
   const [search, setSearch] = useState("");
@@ -261,13 +260,6 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
             loc.latitude, 
             loc.longitude
           );
-          
-          if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
-            uniqueCandidatesMap.set(loc.user_id, { 
-              ...loc, 
-              distance: dist 
-            });
-          }
         }
       });
 
@@ -608,6 +600,7 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
 
           {/* NEARBY VIEW */} 
           {discoverView === 'nearby' && (
+      <>
   <div className="mb-3 px-4">
     <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
       <div className="flex items-center gap-2">
@@ -623,10 +616,8 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
         Adjust in Profile →
       </Button>
     </div>
-  </div>
-)}
+  </div> 
           
-          {/*  {discoverView === 'nearby' && ( */}
             <div className="space-y-2">
               {!userLocation ? (
                 <Card className="border-dashed">
@@ -665,7 +656,8 @@ if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
                   />
                 ))
               )}
-            </div>
+            </div> 
+           </>
           )}
 
           {/* CONTACTS VIEW */}
