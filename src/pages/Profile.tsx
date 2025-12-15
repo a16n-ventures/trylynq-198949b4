@@ -154,14 +154,14 @@ const Profile = () => {
 
   // Sync form state with profile data
   useEffect(() => {
-    if (profile) {
-      setDisplayName(profile.display_name || '');
-      setBio(profile.bio || '');
-      if (profile.preferences?.discovery_radius) {
-        setDiscoveryRadius([profile.preferences.discovery_radius]);
-      }
-    }
-  }, [profile]);
+  if (profile) {
+    setDisplayName(profile.display_name || '');
+    setBio(profile.bio || '');
+    // ✅ FIXED: Check preferences object
+    const radius = profile.preferences?.discovery_radius ?? 5000;
+    setDiscoveryRadius([radius]);
+  }
+}, [profile]);
 
   // Enhanced profile update mutation
   const updateProfileMutation = useMutation({
@@ -495,7 +495,7 @@ const Profile = () => {
         <div className="container-mobile relative z-10">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-white tracking-tight">Profile</h1>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -765,14 +765,22 @@ const Profile = () => {
               </div>
               <div className="px-2">
                 <Slider 
-                  value={discoveryRadius} 
-                  onValueChange={handleRadiusChange} 
-                  onValueCommit={saveRadius}
-                  max={50000} 
-                  step={500}
-                  className="cursor-pointer"
-                  aria-label="Discovery radius"
-                />
+  value={discoveryRadius} 
+  onValueChange={handleRadiusChange} 
+  onValueCommit={() => {
+    console.log('Saving radius:', discoveryRadius[0]);
+    saveRadius();
+  }}
+  onPointerUp={() => {
+    // ✅ ADDED: Fallback trigger
+    console.log('Pointer up, saving radius');
+    saveRadius();
+  }}
+  max={50000} 
+  step={500}
+  className="cursor-pointer"
+  aria-label="Discovery radius"
+/>
                 <div className="flex justify-between text-[10px] text-muted-foreground mt-3 font-semibold">
                   <span>0km</span>
                   <span>25km</span>
