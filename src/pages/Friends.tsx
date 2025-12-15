@@ -6,7 +6,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { 
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { Search, Filter, ArrowUpDown, Loader2, MapPin, User, Mail } from "lucide-react";
+import { Search, Filter, ArrowUpDown, Loader2, MapPin, User, Mail, Radar } from "lucide-react"; 
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useGeolocation } from '@/contexts/LocationContext';
@@ -30,35 +32,6 @@ const DEBOUNCE_DELAY = 500;
 const MAX_NEARBY_USERS = 50;
 const LOCATION_CHANGE_THRESHOLD_KM = 0.1; // ✅ CHANGED: More sensitive to location changes (100m)
 const REFRESH_INTERVAL_MS = 120000; // 2 minutes 
-
-const { data: userProfile } = useQuery({
-  queryKey: ['user-profile-radius', userId],
-  queryFn: async () => {
-    if (!userId) return null;
-    const { data } = await supabase
-      .from('profiles')
-      .select('preferences')
-      .eq('user_id', userId)
-      .single();
-    return data;
-  },
-  enabled: !!userId,
-  staleTime: 60000, // Cache for 1 minute
-});
-
-// ✅ Calculate radius in KM from saved preferences (stored in meters)
-const NEARBY_RADIUS_KM = useMemo(() => {
-  const savedRadius = userProfile?.preferences?.discovery_radius;
-  // Default to 10km if not set, convert meters to km
-  return savedRadius ? savedRadius / 1000 : 10;
-}, [userProfile]); 
-
-if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
-  uniqueCandidatesMap.set(loc.user_id, { 
-    ...loc, 
-    distance: dist 
-  });
-}
 
 /**
  * ✅ FIXED: useDebounce hook
@@ -114,8 +87,39 @@ interface NearbyUser {
 
 export default function Friends() {
   const { user } = useAuth();
-  const userId = user?.id;
+  const userId = user?.id; 
 
+  const { data: userProfile } = useQuery({
+  queryKey: ['user-profile-radius', userId],
+  queryFn: async () => {
+    if (!userId) return null;
+    const { data } = await supabase
+      .from('profiles')
+      .select('preferences')
+      .eq('user_id', userId)
+      .single();
+    return data;
+  },
+  enabled: !!userId,
+  staleTime: 60000, // Cache for 1 minute
+});
+
+// ✅ Calculate radius in KM from saved preferences (stored in meters)
+const NEARBY_RADIUS_KM = useMemo(() => {
+  const savedRadius = userProfile?.preferences?.discovery_radius;
+  // Default to 10km if not set, convert meters to km
+  return savedRadius ? savedRadius / 1000 : 10;
+}, [userProfile]); 
+
+if (dist <= NEARBY_RADIUS_KM && !isNaN(dist)) {
+  uniqueCandidatesMap.set(loc.user_id, { 
+    ...loc, 
+    distance: dist 
+  });
+}
+
+  const navigate = useNavigate();
+  
   // State
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, DEBOUNCE_DELAY);
@@ -622,7 +626,7 @@ export default function Friends() {
   </div>
 )}
           
-          {discoverView === 'nearby' && (
+          {/*  {discoverView === 'nearby' && ( */}
             <div className="space-y-2">
               {!userLocation ? (
                 <Card className="border-dashed">
