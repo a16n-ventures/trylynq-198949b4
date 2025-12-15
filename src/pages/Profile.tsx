@@ -284,36 +284,47 @@ const Profile = () => {
   });
 
   // Enhanced location toggle with proper async handling
-  const toggleLocationMutation = useMutation({
+const toggleLocationMutation = useMutation({
   mutationFn: async ({ checked, coords }: { checked: boolean; coords?: { lat: number; lng: number } }) => {
     if (!user) throw new Error("User not authenticated");
 
-    // ✅ FIXED: Always upsert with the toggle state
-    const payload: any = {
-      user_id: user.id,
-      is_sharing_location: checked,
-      updated_at: new Date().toISOString(),
-    };
-
-    // If enabling, include coordinates
-    if (checked && coords) {
-      payload.latitude = coords.lat;
-      payload.longitude = coords.lng;
-      payload.last_seen = new Date().toISOString();
-    }
-
     console.log('🔄 Updating location sharing:', { checked, hasCoords: !!coords });
 
-    const { error } = await supabase
-      .from('user_locations')
-      .upsert(payload, { 
-        onConflict: 'user_id',
-        ignoreDuplicates: false 
-      });
-    
-    if (error) {
-      console.error('❌ Location toggle error:', error);
-      throw error;
+    if (checked) {
+      // ✅ ENABLING: Include coordinates (required)
+      if (!coords) {
+        throw new Error("Coordinates required to enable location sharing");
+      }
+
+      const payload = {
+        user_id: user.id,
+        is_sharing_location: true,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        last_seen: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('user_locations')
+        .upsert(payload, { 
+          onConflict: 'user_id',
+          ignoreDuplicates: false 
+        });
+      
+      if (error) throw error;
+
+    } else {
+      // ✅ DISABLING: Only update the toggle, don't touch coordinates
+      const { error } = await supabase
+        .from('user_locations')
+        .update({ 
+          is_sharing_location: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
     }
 
     console.log('✅ Location sharing updated successfully:', checked);
@@ -334,9 +345,9 @@ const Profile = () => {
       };
     });
 
-    // ✅ Force page reload to restart LocationContext with new setting
+    // Only reload if enabling (to restart LocationContext)
     if (newState) {
-      window.location.reload();
+      setTimeout(() => window.location.reload(), 500);
     }
   },
   onError: (error: any) => {
@@ -801,7 +812,7 @@ const handleRadiusChange = useCallback((value: number[]) => {
     console.log('👆 Pointer up, saving radius');
     saveRadius();
   }}
-  max={250000} 
+  max={100000} 
   step={500}
   min={25000}
   className="cursor-pointer"
@@ -811,8 +822,6 @@ const handleRadiusChange = useCallback((value: number[]) => {
                   <span>25km</span>
                   <span>50km</span>
                   <span>100km</span>
-                  <span>150km</span>
-                  <span>250km</span>
                 </div>
               </div>
             </div>
