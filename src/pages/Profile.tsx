@@ -368,7 +368,22 @@ const Profile = () => {
     } catch (error: any) {
       toast.error(error.message || "Could not access location");
     }
-  }, [currentLocation, requestLocation, toggleLocationMutation]);
+  }, [currentLocation, requestLocation, toggleLocationMutation]); 
+
+  const saveRadius = useCallback(() => {
+  console.log('🔵 saveRadius called with:', discoveryRadius[0]);
+  updateProfileMutation.mutate({ 
+    discovery_radius: discoveryRadius[0] 
+  }, {
+    onSuccess: () => {
+      console.log('✅ Radius saved successfully');
+      toast.success(`Discovery radius set to ${(discoveryRadius[0] / 1000).toFixed(1)}km`);
+    },
+    onError: (error) => {
+      console.error('❌ Failed to save radius:', error);
+    }
+  });
+}, [discoveryRadius, updateProfileMutation]);
 
   // Delete account mutation with cascade handling
   const deleteAccountMutation = useMutation({
