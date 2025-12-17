@@ -456,7 +456,89 @@ export default function Friends() {
           <TabsTrigger value="friends">Friends</TabsTrigger>
         </TabsList>
 
-                        )}
+        {/* DISCOVER TAB */}
+        <TabsContent value="discover" className="mt-4">
+          <div className="flex gap-2 mb-4 p-1 bg-muted/20 rounded-lg w-fit mx-auto">
+            <button 
+              onClick={() => setDiscoverView('nearby')} 
+              className={`px-4 py-1.5 text-sm rounded-md transition-all flex items-center gap-1 ${
+                discoverView === 'nearby' 
+                  ? 'bg-background shadow-sm font-medium text-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <MapPin className="w-3 h-3" /> Nearby
+            </button>
+            <button 
+              onClick={() => setDiscoverView('contacts')} 
+              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
+                discoverView === 'contacts' 
+                  ? 'bg-background shadow-sm font-medium text-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              My Contacts {contacts.length > 0 && `(${contacts.length})`}
+            </button>
+          </div>
+
+          {/* NEARBY VIEW */} 
+          {discoverView === 'nearby' && (
+            <>
+              <div className="mb-3 px-4">
+                <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Radar className="w-3 h-3" />
+                    <span>Search radius: <strong>{NEARBY_RADIUS_KM}km</strong></span>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-6 text-xs"
+                    onClick={() => navigate('/app/profile')}
+                  >
+                    Adjust in Profile →
+                  </Button>
+                </div>
+              </div> 
+              
+              <div className="space-y-2">
+                {!userLocation ? (
+                  <Card className="border-dashed">
+                    <CardContent className="py-8 text-center">
+                      <MapPin className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
+                      <p className="text-muted-foreground text-sm">Enable location to see nearby people</p>
+                      <Button variant="outline" className="mt-3" onClick={requestLocation}>
+                        <MapPin className="w-4 h-4 mr-2" /> Enable Location
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : loadingNearby ? (
+                  <FriendSkeleton />
+                ) : nearbyError ? (
+                  <Card className="border-destructive/50">
+                    <CardContent className="py-8 text-center">
+                      <p className="text-destructive text-sm mb-2">Failed to load nearby users</p>
+                      <Button variant="outline" size="sm" onClick={fetchNearbyUsers}>
+                        Try Again
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : nearbyUsers.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p>No one within {NEARBY_RADIUS_KM}km</p>
+                    <p className="text-xs mt-1">Invite friends to join!</p>
+                  </div>
+                ) : (
+                  nearbyUsers.map(p => (
+                    <NearbyUserCard
+                      key={p.user_id}
+                      profile={p}
+                      onAddFriend={(profile) => mutations.sendRequest.mutate(profile)}
+                      isAdding={mutations.sendRequest.isPending && mutations.sendRequest.variables?.user_id === p.user_id}
+                    />
+                  ))
+                )}
               </div> 
             </>
           )}
@@ -618,88 +700,6 @@ export default function Friends() {
             </div>
           )}
         </TabsContent>
-        {/* DISCOVER TAB */}
-        <TabsContent value="discover" className="mt-4">
-          <div className="flex gap-2 mb-4 p-1 bg-muted/20 rounded-lg w-fit mx-auto">
-            <button 
-              onClick={() => setDiscoverView('nearby')} 
-              className={`px-4 py-1.5 text-sm rounded-md transition-all flex items-center gap-1 ${
-                discoverView === 'nearby' 
-                  ? 'bg-background shadow-sm font-medium text-foreground' 
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <MapPin className="w-3 h-3" /> Nearby
-            </button>
-            <button 
-              onClick={() => setDiscoverView('contacts')} 
-              className={`px-4 py-1.5 text-sm rounded-md transition-all ${
-                discoverView === 'contacts' 
-                  ? 'bg-background shadow-sm font-medium text-foreground' 
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              My Contacts {contacts.length > 0 && `(${contacts.length})`}
-            </button>
-          </div>
-
-          {/* NEARBY VIEW */} 
-          {discoverView === 'nearby' && (
-            <>
-              <div className="mb-3 px-4">
-                <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <Radar className="w-3 h-3" />
-                    <span>Search radius: <strong>{NEARBY_RADIUS_KM}km</strong></span>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-6 text-xs"
-                    onClick={() => navigate('/app/profile')}
-                  >
-                    Adjust in Profile →
-                  </Button>
-                </div>
-              </div> 
-              
-              <div className="space-y-2">
-                {!userLocation ? (
-                  <Card className="border-dashed">
-                    <CardContent className="py-8 text-center">
-                      <MapPin className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
-                      <p className="text-muted-foreground text-sm">Enable location to see nearby people</p>
-                      <Button variant="outline" className="mt-3" onClick={requestLocation}>
-                        <MapPin className="w-4 h-4 mr-2" /> Enable Location
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ) : loadingNearby ? (
-                  <FriendSkeleton />
-                ) : nearbyError ? (
-                  <Card className="border-destructive/50">
-                    <CardContent className="py-8 text-center">
-                      <p className="text-destructive text-sm mb-2">Failed to load nearby users</p>
-                      <Button variant="outline" size="sm" onClick={fetchNearbyUsers}>
-                        Try Again
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ) : nearbyUsers.length === 0 ? (
-                  <div className="text-center py-10 text-muted-foreground">
-                    <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>No one within {NEARBY_RADIUS_KM}km</p>
-                    <p className="text-xs mt-1">Invite friends to join!</p>
-                  </div>
-                ) : (
-                  nearbyUsers.map(p => (
-                    <NearbyUserCard
-                      key={p.user_id}
-                      profile={p}
-                      onAddFriend={(profile) => mutations.sendRequest.mutate(profile)}
-                      isAdding={mutations.sendRequest.isPending && mutations.sendRequest.variables?.user_id === p.user_id}
-                    />
-                  ))
       </Tabs>
 
       {/* Modals */}
