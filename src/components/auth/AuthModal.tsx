@@ -74,7 +74,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog className="mx-10" open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md border-0 shadow-2xl bg-background/95 backdrop-blur-xl p-8">
         <DialogHeader className="text-center space-y-2">
           <DialogTitle className="text-2xl font-bold tracking-tight">
