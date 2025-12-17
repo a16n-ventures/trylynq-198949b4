@@ -998,7 +998,7 @@ const Profile = () => {
                 </div>
                 <div>
                   <div className="font-semibold text-sm text-amber-900 dark:text-amber-100 flex items-center gap-2">
-                    Lynq Premium
+                    Ahmia Premium
                     <Star className="w-3.5 h-3.5 text-amber-500" />
                   </div>
                   <div className="text-xs text-amber-700/80 dark:text-amber-300/70">Unlock exclusive features & benefits</div>
@@ -1074,7 +1074,7 @@ const Profile = () => {
 
         {/* Footer Info */}
         <div className="text-center pb-8 space-y-3">
-          <p className="text-xs text-muted-foreground/60 font-medium">Lynq v1.0.0 • Build 2024.11</p>
+          <p className="text-xs text-muted-foreground/60 font-medium">Ahmia v1.0.0 • Build 2024.11</p>
           <div className="flex justify-center gap-6 text-xs text-muted-foreground/70">
             <button className="hover:text-primary transition-colors font-medium">Terms</button>
             <button className="hover:text-primary transition-colors font-medium">Privacy</button>
@@ -1085,7 +1085,7 @@ const Profile = () => {
 
       {/* Profile Settings Dialog - NEW */}
       <Dialog open={showProfileSettings} onOpenChange={setShowProfileSettings}>
-        <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] mx-4">
+        <DialogContent className="sm:max-w-md max-w-[calc(100vw-2rem)] mx-4">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
               <Settings className="w-5 h-5 text-primary" />
@@ -1126,7 +1126,7 @@ const Profile = () => {
               <Input
                 id="settings-username"
                 type="text"
-                placeholder="johndoe_123"
+                placeholder="barack_300"
                 value={settingsForm.username}
                 onChange={(e) => setSettingsForm(prev => ({ 
                   ...prev, 
@@ -1149,7 +1149,7 @@ const Profile = () => {
               <Input
                 id="settings-email"
                 type="email"
-                placeholder="john@example.com"
+                placeholder="barack@example.com"
                 value={settingsForm.email}
                 onChange={(e) => setSettingsForm(prev => ({ ...prev, email: e.target.value }))}
                 className="h-11"
