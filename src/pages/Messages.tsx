@@ -45,7 +45,6 @@ const getDisplayName = (profile: any): string => {
   // Priority order: display_name > username > full_name > email
   if (profile.display_name?.trim()) return profile.display_name.trim();
   if (profile.username?.trim()) return profile.username.trim();
-  if (profile.full_name?.trim()) return profile.full_name.trim();
   if (profile.email) return profile.email.split('@')[0];
   
   return 'User';
@@ -92,8 +91,8 @@ export default function Messages() {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, user_id, display_name, username, email, avatar_url, full_name')
-        .eq('id', user.id)
+        .select('id, user_id, display_name, username, email, avatar_url')
+        .eq('user_id', user.id)
         .single();
       
       if (error) {
@@ -179,7 +178,7 @@ export default function Messages() {
       // Step 3: Fetch ALL profiles for partners with comprehensive field selection
       const { data: profiles, error: profileError } = await supabase
         .from('profiles')
-        .select('id, user_id, display_name, username, email, avatar_url, full_name')
+        .select('id, user_id, display_name, username, email, avatar_url')
         .in('id', idsList);
 
       if (profileError) {
@@ -253,7 +252,7 @@ export default function Messages() {
         // Fetch ALL communities with complete field selection
         const { data: communities, error: commError } = await supabase
           .from('communities')
-          .select('id, name, description, avatar_url, member_count, creator_id, created_at')
+          .select('id, name, description, cover_url, member_count, creator_id, created_at')
           .order('created_at', { ascending: false });
 
         if (commError) {
@@ -298,7 +297,7 @@ export default function Messages() {
             id: c.id,
             name: communityName,
             description: c.description?.trim() || '',
-            avatar: c.avatar_url,
+            cover: c.cover_url,
             member_count: c.member_count || 0,
             my_role: (myRole || 'none') as 'admin' | 'moderator' | 'member' | 'none',
             is_joined: !!myRole,
@@ -376,7 +375,7 @@ export default function Messages() {
           .from('community_messages')
           .select(`
             *,
-            sender:profiles!sender_id(id, user_id, display_name, username, email, avatar_url, full_name)
+            sender:profiles!sender_id(id, user_id, display_name, username, email, avatar_url)
           `)
           .eq('community_id', selectedChat.id)
           .order('created_at', { ascending: true });
@@ -485,8 +484,8 @@ export default function Messages() {
           name: newCommName.trim(), 
           description: newCommDesc.trim(), 
           creator_id: user.id, 
-          member_count: 1,
-          avatar_url: coverUrl
+          member_count: newComm.member_count,
+          cover_url: coverUrl
         })
         .select()
         .single();
@@ -1061,7 +1060,7 @@ export default function Messages() {
                   <AvatarImage src={comm.avatar} />
                   <AvatarFallback>{comm.name?.[0]?.toUpperCase() || 'C'}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedChat({ type: 'community', id: comm.id, name: comm.name, avatar: comm.avatar, description: comm.description, my_role: comm.my_role, member_count: comm.member_count })}>
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedChat({ type: 'community', id: comm.id, name: comm.name, cover: comm.cover_url, description: comm.description, my_role: comm.my_role, member_count: comm.member_count })}>
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{comm.name}</h3>
                     {comm.my_role === 'admin' && <Badge className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200">Admin</Badge>}
@@ -1075,7 +1074,7 @@ export default function Messages() {
                   size="sm" 
                   variant={comm.my_role !== 'none' ? "outline" : "default"} 
                   className="rounded-full px-5 transition-transform active:scale-95"
-                  onClick={() => comm.my_role !== 'none' ? setSelectedChat({ type: 'community', id: comm.id, name: comm.name, avatar: comm.avatar, description: comm.description, my_role: comm.my_role, member_count: comm.member_count }) : joinCommunity.mutate(comm.id)}
+                  onClick={() => comm.my_role !== 'none' ? setSelectedChat({ type: 'community', id: comm.id, name: comm.name, cover: comm.cover_url, description: comm.description, my_role: comm.my_role, member_count: comm.member_count }) : joinCommunity.mutate(comm.id)}
                 >
                   {comm.my_role !== 'none' ? "Open" : "Join"}
                 </Button>
@@ -1226,7 +1225,7 @@ export default function Messages() {
           setNewCommCoverPreview(null);
         }
       }}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto">
           <DialogHeader>
             <DialogTitle>Create Community</DialogTitle>
             <DialogDescription>Create a space for your community to connect</DialogDescription>
