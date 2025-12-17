@@ -116,13 +116,13 @@ const Premium = () => {
       currency: "NGN",
       payment_options: "card, banktransfer, ussd",
       customer: {
-        email: user.email || "user@lynqapp.com",
-        name: user.email || "Lynq User",
+        email: user.email || "user@try.usecorridor.xyz/ahmia",
+        name: user.email || "Ahmia User",
       },
       customizations: {
-        title: "Lynq Premium",
+        title: "Ahmia Premium",
         description: `Upgrade to ${title}`,
-        logo: "https://lynq.app/logo.png",
+        logo: "https://try.usecorridor.xyz/ahmia/logo.png",
       },
       callback: async function(response: any) {
         const toastId = toast.loading("Verifying transaction...");
@@ -162,8 +162,8 @@ const Premium = () => {
     {
       icon: <Crown className="w-5 h-5" />,
       title: 'Profile Visibility Boost',
-      description: 'Get 3x more profile views and friend suggestions',
-      price: { monthly: 999, yearly: 9999 }
+      description: 'Get 20x more profile views and friend suggestions',
+      price: { monthly: 2499, yearly: 24999 }
     },
     {
       icon: <TrendingUp className="w-5 h-5" />,
@@ -175,7 +175,7 @@ const Premium = () => {
       icon: <Star className="w-5 h-5" />,
       title: 'Premium Badge',
       description: 'Stand out with a special premium badge on your profile',
-      price: { monthly: 599, yearly: 4999 }
+      price: { monthly: 999, yearly: 9999 }
     }
   ];
 
@@ -250,7 +250,7 @@ const Premium = () => {
             <h1 className="text-xl font-bold">Premium</h1>
           </div>
           <p className="text-white/80 text-sm mb-4">
-            {isPremiumActive ? "You are currently a Premium member." : "Upgrade your social life with Lynq Premium."}
+            {isPremiumActive ? "You are currently a Premium member." : "Upgrade your social life with Ahmia Premium."}
           </p>
         </div>
       </div>
@@ -291,7 +291,7 @@ const Premium = () => {
                 <Crown className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <CardTitle className="text-lg">Lynq Unlimited</CardTitle>
+                <CardTitle className="text-lg">Ahmia Unlimited</CardTitle>
                 <p className="text-xs text-muted-foreground">All features included</p>
               </div>
             </div>
