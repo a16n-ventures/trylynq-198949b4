@@ -697,43 +697,7 @@ const handleRadiusChange = useCallback((value: number[]) => {
               </Card>
             );
           })}
-        </div>
-
-        {/* REFERRAL CARD */}
-        <Card className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white border-0 shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/10 rounded-full -ml-16 -mb-16 blur-2xl" />
-          
-          <CardContent className="p-6 relative z-10">
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center shrink-0">
-                <Gift className="w-6 h-6 text-yellow-300" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-lg mb-1">Invite & Earn</h3>
-                <p className="text-xs text-white/90 leading-relaxed">
-                  Share your referral link. When friends join, you both get 7 days of Premium access!
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex gap-2">
-              <div className="bg-white/15 border border-white/30 backdrop-blur-sm rounded-xl px-4 py-3 flex-1 flex items-center justify-between">
-                <span className="text-xs font-mono text-white truncate">
-                  ahmia/ref/{user?.id.slice(0,6).toUpperCase()}
-                </span>
-              </div>
-              <Button 
-                size="sm" 
-                variant="secondary" 
-                className="text-indigo-700 font-bold shrink-0 shadow-md hover:shadow-lg transition-all px-6"
-                onClick={handleReferralCopy}
-              >
-                <Copy className="w-4 h-4 mr-2" /> Copy
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        </div> 
 
         {/* BIO SECTION */}
         <Card className="border-0 shadow-md">
@@ -774,6 +738,42 @@ const handleRadiusChange = useCallback((value: number[]) => {
                 {profile?.bio || "No bio yet. Tap edit to tell us about yourself and connect with like-minded people!"}
               </p>
             )}
+          </CardContent>
+        </Card>
+
+        {/* REFERRAL CARD */}
+        <Card className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white border-0 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/10 rounded-full -ml-16 -mb-16 blur-2xl" />
+          
+          <CardContent className="p-6 relative z-10">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center shrink-0">
+                <Gift className="w-6 h-6 text-yellow-300" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-lg mb-1">Invite & Earn</h3>
+                <p className="text-xs text-white/90 leading-relaxed">
+                  Share your referral link. When friends join, you both get 7 days of Premium access!
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <div className="bg-white/15 border border-white/30 backdrop-blur-sm rounded-xl px-4 py-3 flex-1 flex items-center justify-between">
+                <span className="text-xs font-mono text-white truncate">
+                  ahmia/ref/{user?.id.slice(0,6).toUpperCase()}
+                </span>
+              </div>
+              <Button 
+                size="sm" 
+                variant="secondary" 
+                className="text-indigo-700 font-bold shrink-0 shadow-md hover:shadow-lg transition-all px-6"
+                onClick={handleReferralCopy}
+              >
+                <Copy className="w-4 h-4 mr-2" /> Copy
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
