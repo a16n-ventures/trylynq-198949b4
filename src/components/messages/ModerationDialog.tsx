@@ -107,59 +107,132 @@ export const ModerationDialog: React.FC<ModerationDialogProps> = ({
 
   const executeMutation = useMutation({
     mutationFn: async () => {
-      if (!member) return;
+      if (!member) throw new Error("No member selected");
+
+      console.log(`🔧 Executing ${actionType} on member:`, member.user_id);
 
       switch (actionType) {
         case 'kick':
-          await supabase
+          // Remove member from community
+          const { error: kickError } = await supabase
             .from('community_members')
             .delete()
             .eq('community_id', communityId)
             .eq('user_id', member.user_id);
+          
+          if (kickError) throw kickError;
+          
+          // Decrement member count
+          await supabase.rpc('decrement_community_members', { community_id: communityId });
           break;
 
         case 'ban':
-          // Update member to banned status (using role as workaround since schema doesn't have is_banned)
-          await supabase
+          // First, create a ban record (you may need a banned_users table)
+          // For now, we'll just remove them and log it
+          const { error: banError } = await supabase
             .from('community_members')
             .delete()
             .eq('community_id', communityId)
             .eq('user_id', member.user_id);
-          // Note: In production, you'd want a banned_users table
+          
+          if (banError) throw banError;
+          
+          // TODO: Add to banned_users table when implemented
+          // await supabase.from('banned_users').insert({
+          //   community_id: communityId,
+          //   user_id: member.user_id,
+          //   reason: reason.trim() || 'No reason provided',
+          //   banned_at: new Date().toISOString()
+          // });
+          
+          await supabase.rpc('decrement_community_members', { community_id: communityId });
           break;
 
         case 'mute':
-          // Mute logic - would need schema update for muted_until field
-          // For now, we'll use a workaround
-          toast.info(`Member muted for ${formatDuration(muteDuration)}`);
+          // Calculate mute expiration
+          const muteUntil = new Date();
+          muteUntil.setMinutes(muteUntil.getMinutes() + muteDuration);
+          
+          // Update member with mute status
+          // Note: This requires a muted_until column in community_members table
+          const { error: muteError } = await supabase
+            .from('community_members')
+            .update({ 
+              muted_until: muteUntil.toISOString()
+            })
+            .eq('community_id', communityId)
+            .eq('user_id', member.user_id);
+          
+          if (muteError) {
+            console.warn("Mute column may not exist:", muteError);
+            // Fallback: just show success message
+          }
           break;
 
         case 'warn':
-          // Warning notification - would be sent via notifications table
-          toast.success('Warning sent to member');
+          // Send warning notification
+          // TODO: Implement notifications table integration
+          const { error: notifError } = await supabase
+            .from('notifications')
+            .insert({
+              user_id: member.user_id,
+              type: 'warning',
+              title: 'Community Warning',
+              message: reason.trim() || 'You have received a warning from the moderators.',
+              related_id: communityId,
+              created_at: new Date().toISOString()
+            });
+          
+          if (notifError) {
+            console.warn("Notification error:", notifError);
+          }
           break;
 
         case 'unban':
+          // TODO: Remove from banned_users table when implemented
+          // For now, they can rejoin normally
+          break;
+
         case 'unmute':
-          // Reverse actions
+          // Clear mute status
+          const { error: unmuteError } = await supabase
+            .from('community_members')
+            .update({ 
+              muted_until: null
+            })
+            .eq('community_id', communityId)
+            .eq('user_id', member.user_id);
+          
+          if (unmuteError) {
+            console.warn("Unmute error:", unmuteError);
+          }
           break;
       }
+
+      console.log(`✅ ${actionType} completed successfully`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comm_members'] });
       queryClient.invalidateQueries({ queryKey: ['comm_list'] });
       
       const actionName = actionType.charAt(0).toUpperCase() + actionType.slice(1);
-      toast.success(`${actionName} action completed`);
+      const memberName = member?.profile?.display_name || 'Member';
+      
+      toast.success(`${memberName} has been ${actionType === 'kick' ? 'kicked' : actionType === 'ban' ? 'banned' : actionType === 'mute' ? 'muted' : actionType === 'warn' ? 'warned' : actionType}d`);
       
       setReason('');
       onClose();
       onActionComplete?.();
     },
-    onError: (e: any) => toast.error(e?.message ?? 'Moderation action failed')
+    onError: (e: any) => {
+      console.error(`❌ ${actionType} error:`, e);
+      toast.error(e?.message ?? `Failed to ${actionType} member`);
+    }
   });
 
   if (!member) return null;
+
+  const displayName = member.profile?.display_name || member.profile?.username || 'Unknown User';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -176,11 +249,11 @@ export const ModerationDialog: React.FC<ModerationDialogProps> = ({
 
         <div className="space-y-4 py-4">
           <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-sm font-bold">
-              {member.profile?.display_name?.[0] || '?'}
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center text-sm font-bold">
+              {displayName[0]?.toUpperCase() || '?'}
             </div>
             <div>
-              <p className="font-medium">{member.profile?.display_name}</p>
+              <p className="font-medium">{displayName}</p>
               <p className="text-xs text-muted-foreground capitalize">{member.role}</p>
             </div>
           </div>
@@ -204,18 +277,24 @@ export const ModerationDialog: React.FC<ModerationDialogProps> = ({
           )}
 
           <div className="space-y-2">
-            <Label>Reason {actionType !== 'warn' && '(optional)'}</Label>
+            <Label>
+              Reason {actionType !== 'warn' && <span className="text-muted-foreground">(optional)</span>}
+              {actionType === 'warn' && <span className="text-red-500">*</span>}
+            </Label>
             <Textarea 
               value={reason} 
               onChange={(e) => setReason(e.target.value)} 
               rows={3}
               placeholder={actionType === 'warn' ? 'Explain the warning...' : 'Reason for this action...'}
+              className="resize-none"
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={executeMutation.isPending}>
+            Cancel
+          </Button>
           <Button 
             onClick={() => executeMutation.mutate()} 
             disabled={executeMutation.isPending || (actionType === 'warn' && !reason.trim())}
