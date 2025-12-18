@@ -47,7 +47,7 @@ const getDisplayName = (profile: any): string => {
   if (profile.username?.trim()) return profile.username.trim();
   if (profile.email) return profile.email.split('@')[0];
   
-  return 'User';
+  return 'Unknown User';
 };
 
 export default function Messages() {
@@ -86,23 +86,23 @@ export default function Messages() {
 
   // Profile for typing identity
   const { data: userProfile } = useQuery({
-    queryKey: ['my_profile', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, user_id, display_name, username, email, avatar_url')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (error) {
-        console.error("Error fetching user profile:", error);
-        return null;
-      }
-      return data;
-    },
-    enabled: !!user?.id
-  });
+  queryKey: ['my_profile', user?.id],
+  queryFn: async () => {
+    if (!user?.id) return null;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, user_id, display_name, username, email, avatar_url')  // Added full_name
+      .eq('user_id', user.id)
+      .single();
+    
+    if (error) {
+      console.error("Error fetching user profile:", error);
+      return null;
+    }
+    return data;
+  },
+  enabled: !!user?.id
+});
 
   const currentUser = useMemo(() => ({
     id: user?.id,
@@ -177,9 +177,9 @@ export default function Messages() {
 
       // Step 3: Fetch ALL profiles for partners with comprehensive field selection
       const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, user_id, display_name, username, email, avatar_url')
-        .in('id', idsList);
+  .from('profiles')
+  .select('id, user_id, display_name, username, email, avatar_url')
+  .in('user_id', idsList);
 
       if (profileError) {
         console.error("❌ Profile fetch error:", profileError);
@@ -189,13 +189,16 @@ export default function Messages() {
 
       // Step 4: Create profile lookup map
       const profileLookup = new Map<string, any>();
-      profiles?.forEach((p: any) => {
-        profileLookup.set(p.id, p);
-        // Also map by user_id if different
-        if (p.user_id && p.user_id !== p.id) {
-          profileLookup.set(p.user_id, p);
-        }
-      });
+profiles?.forEach((p: any) => {
+  // Map by user_id (primary key for lookups)
+  if (p.user_id) {
+    profileLookup.set(p.user_id, p);
+  }
+  // Also map by id if different
+  if (p.id && p.id !== p.user_id) {
+    profileLookup.set(p.id, p);
+  }
+});
 
       // Step 5: Fetch unread counts
       const { data: unreadData } = await supabase
@@ -286,23 +289,25 @@ export default function Messages() {
 
         // Map communities with proper data validation
         return communities.map((c: any) => {
-          const myRole = membershipMap.get(c.id);
-          
-          const communityName = c.name?.trim() || 'Unnamed Community';
-          
-          console.log(`✅ Community: "${communityName}" - Role: ${myRole || 'none'}`);
+  const myRole = membershipMap.get(c.id);
+  
+  const communityName = c.name?.trim() || 'Unnamed Community';
+  
+  console.log(`✅ Community: "${communityName}" - Role: ${myRole || 'none'} - Cover: ${c.cover_url ? 'Yes' : 'No'}`);
 
-          return {
-            type: 'community' as const,
-            id: c.id,
-            name: communityName,
-            description: c.description?.trim() || '',
-            cover: c.cover_url,
-            member_count: c.member_count || 0,
-            my_role: (myRole || 'none') as 'admin' | 'moderator' | 'member' | 'none',
-            is_joined: !!myRole,
-          };
-        });
+  return {
+    type: 'community' as const,
+    id: c.id,
+    name: communityName,
+    description: c.description?.trim() || '',
+    cover: c.cover_url || undefined,
+    cover_url: c.cover_url || undefined,  // Add this field
+    avatar: c.cover_url || undefined,      // Add this field for consistency
+    member_count: c.member_count || 0,
+    my_role: (myRole || 'none') as 'admin' | 'moderator' | 'member' | 'none',
+    is_joined: !!myRole,
+  };
+});
       } catch (e) {
         console.error("💥 Community fetch error:", e);
         return [];
@@ -317,35 +322,34 @@ export default function Messages() {
   const { friends: rawFriends = [] } = useFriends(user?.id);
 
   const friends = useMemo(() => {
-    if (!rawFriends || !user?.id) return [];
+  if (!rawFriends || !user?.id) return [];
+  
+  console.log("👫 Processing friends:", rawFriends.length);
+  
+  return rawFriends.map((f: any) => {
+    // Get the correct profile based on relationship
+    const rawProfile = f.requester_id === user.id ? f.addressee : f.requester;
+    const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
     
-    console.log("👫 Processing friends:", rawFriends.length);
+    if (!profile) {
+      console.warn('⚠️ Missing profile in friend relationship:', f);
+      return null;
+    }
+
+    const friendId = profile.user_id || profile.id;  // Use user_id first
+    const friendName = getDisplayName(profile);
+
+    console.log(`✅ Friend: ${friendName} (${friendId})`);
     
-    return rawFriends.map((f: any) => {
-      // Get the correct profile based on relationship
-      const rawProfile = f.requester_id === user.id ? f.addressee : f.requester;
-      const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
-      
-      if (!profile) {
-        console.warn('⚠️ Missing profile in friend relationship:', f);
-        return null;
-      }
-
-      const friendId = profile.id || profile.user_id;
-      const friendName = getDisplayName(profile);
-
-      console.log(`✅ Friend: ${friendName} (${friendId})`);
-      
-      return {
-        id: friendId,
-        name: friendName,
-        avatar: profile.avatar_url,
-        is_online: false,
-        last_seen: profile.last_seen || null
-      };
-    }).filter(Boolean);
-  }, [rawFriends, user?.id]);
-
+    return {
+      id: friendId,
+      name: friendName,
+      avatar: profile.avatar_url,
+      is_online: false,
+      last_seen: profile.last_seen || null
+    };
+  }).filter(Boolean);
+}, [rawFriends, user?.id]);
   // FIXED: Messages query with proper sender name resolution
   const { data: messages = [] } = useQuery({
     queryKey: ['messages', selectedChat?.type, selectedChat?.id, user?.id],
@@ -464,50 +468,78 @@ export default function Messages() {
   });
 
 const createCommunity = useMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error("Not authenticated");
-      if (!newCommName.trim()) throw new Error("Community name is required");
+  mutationFn: async () => {
+    if (!user) throw new Error("Not authenticated");
+    if (!newCommName.trim()) throw new Error("Community name is required");
 
-      let coverUrl: string | null = null;
-      if (newCommCoverFile) {
-        const fileExt = newCommCoverFile.name.split('.').pop();
-        const filePath = `community-covers/${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('chat-attachments').upload(filePath, newCommCoverFile);
-        if (uploadError) throw uploadError;
-        const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
-        coverUrl = urlData.publicUrl;
+    let coverUrl: string | null = null;
+    if (newCommCoverFile) {
+      const fileExt = newCommCoverFile.name.split('.').pop();
+      const filePath = `community-covers/${user.id}-${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError, data: uploadData } = await supabase.storage
+        .from('chat-attachments')
+        .upload(filePath, newCommCoverFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (uploadError) {
+        console.error("Cover upload error:", uploadError);
+        throw new Error("Failed to upload cover image");
       }
+      
+      const { data: urlData } = supabase.storage
+        .from('chat-attachments')
+        .getPublicUrl(filePath);
+      
+      coverUrl = urlData.publicUrl;
+      console.log("✅ Cover uploaded successfully:", coverUrl);
+    }
 
       const { data: comm, error } = await supabase
-        .from('communities')
-        .insert({ 
-          name: newCommName.trim(), 
-          description: newCommDesc.trim(), 
-          creator_id: user.id, 
-          member_count: 1,
-          cover_url: coverUrl
-        })
-        .select()
-        .single();
-      if (error) throw error;
+      .from('communities')
+      .insert({ 
+        name: newCommName.trim(), 
+        description: newCommDesc.trim(), 
+        creator_id: user.id, 
+        member_count: 1,
+        cover_url: coverUrl
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error("Community creation error:", error);
+      throw error;
+    }
 
-      await supabase.from('community_members').insert({ community_id: comm.id, user_id: user.id, role: 'admin' });
-      return comm;
-    },
-    onSuccess: () => {
-      setIsCreateCommunityOpen(false);
-      setNewCommName('');
-      setNewCommDesc('');
-      setNewCommCoverFile(null);
-      if (newCommCoverPreview?.startsWith('blob:')) {
-        try { URL.revokeObjectURL(newCommCoverPreview); } catch {}
-      }
-      setNewCommCoverPreview(null);
-      queryClient.invalidateQueries({ queryKey: ['comm_list'] });
-      toast.success("Community created!");
-    },
-    onError: (e: any) => toast.error(e?.message ?? "Failed to create community")
-  });
+      await supabase.from('community_members').insert({ 
+      community_id: comm.id, 
+      user_id: user.id, 
+      role: 'admin' 
+    });
+    
+    return comm;
+  },
+  onSuccess: (comm) => {
+    console.log("✅ Community created:", comm);
+    setIsCreateCommunityOpen(false);
+    setNewCommName('');
+    setNewCommDesc('');
+    setNewCommCoverFile(null);
+    if (newCommCoverPreview?.startsWith('blob:')) {
+      try { URL.revokeObjectURL(newCommCoverPreview); } catch {}
+    }
+    setNewCommCoverPreview(null);
+    queryClient.invalidateQueries({ queryKey: ['comm_list'] });
+    toast.success("Community created successfully!");
+  },
+  onError: (e: any) => {
+    console.error("❌ Create community error:", e);
+    toast.error(e?.message ?? "Failed to create community");
+  }
+});
 
   const pinMessage = useMutation({
     mutationFn: async ({ messageId, isPinned }: { messageId: string; isPinned: boolean }) => {
@@ -772,14 +804,15 @@ const createCommunity = useMutation({
               coverUrl={selectedChat.avatar}
             />
             {selectedChat.my_role === 'admin' && (
-              <CommunitySettingsDialog 
-                isOpen={isSettingsOpen} 
-                onClose={() => setIsSettingsOpen(false)} 
-                communityId={selectedChat.id} 
-                currentName={selectedChat.name} 
-                currentDesc={selectedChat.description || ''} 
-              />
-            )}
+  <CommunitySettingsDialog 
+    isOpen={isSettingsOpen} 
+    onClose={() => setIsSettingsOpen(false)} 
+    communityId={selectedChat.id} 
+    currentName={selectedChat.name} 
+    currentDesc={selectedChat.description || ''} 
+    currentCoverUrl={selectedChat.cover || selectedChat.cover_url || selectedChat.avatar}  // Add this
+  />
+)}
           </>
         )}
 
@@ -1056,10 +1089,21 @@ const createCommunity = useMutation({
           ) : (
             commList.filter((c) => c.name.toLowerCase().includes(debouncedSearch.toLowerCase())).map((comm) => (
               <div key={comm.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl transition-all bg-gradient-to-r from-background to-muted/5 group">
-                <Avatar className="h-14 w-14 rounded-2xl border-2 border-background shadow-md cursor-pointer group-hover:shadow-lg transition-all" onClick={() => setSelectedChat({ type: 'community', id: comm.id, name: comm.name, avatar: comm.avatar, description: comm.description, my_role: comm.my_role, member_count: comm.member_count })}>
-                  <AvatarImage src={comm.avatar} />
-                  <AvatarFallback>{comm.name?.[0]?.toUpperCase() || 'C'}</AvatarFallback>
-                </Avatar>
+                <Avatar className="h-14 w-14 rounded-2xl border-2 border-background shadow-md cursor-pointer group-hover:shadow-lg transition-all" 
+  onClick={() => setSelectedChat({ 
+    type: 'community', 
+    id: comm.id, 
+    name: comm.name, 
+    avatar: comm.cover || comm.cover_url || comm.avatar,  // Use all possible fields
+    cover: comm.cover || comm.cover_url,
+    cover_url: comm.cover_url,
+    description: comm.description, 
+    my_role: comm.my_role, 
+    member_count: comm.member_count 
+  })}>
+  <AvatarImage src={comm.cover || comm.cover_url || comm.avatar} />
+  <AvatarFallback>{comm.name?.[0]?.toUpperCase() || 'C'}</AvatarFallback>
+</Avatar>
                 <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedChat({ type: 'community', id: comm.id, name: comm.name, cover: comm.cover_url, description: comm.description, my_role: comm.my_role, member_count: comm.member_count })}>
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{comm.name}</h3>
