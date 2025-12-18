@@ -285,6 +285,7 @@ export default function Discover() {
       const { data: comms, error: commsError } = await supabase
         .from('communities')
         .select('id, name, description, member_count, avatar_url, cover_url')
+        .order('created_at', { ascending: false })
         .limit(20);
 
       if (commsError) {
@@ -293,7 +294,7 @@ export default function Discover() {
         console.log("🏛️ Communities fetched:", comms?.length);
       }
       
-      if (comms) {
+      if (comms && comms.length > 0) {
         const { data: memberships } = await supabase
           .from('community_members')
           .select('community_id, role')
@@ -514,75 +515,82 @@ export default function Discover() {
   };
 
   const handleRSVP = async (eventId: string) => {
-    if (!user) return;
-    try {
-      const event = events.find(e => e.id === eventId) || smartFeed.find(e => e.id === eventId);
-      console.log("🎟️ RSVP for event:", eventId, "- Currently attending:", event?.is_attending);
+  if (!user) return;
+  
+  try {
+    const event = events.find(e => e.id === eventId) || smartFeed.find(e => e.id === eventId);
+    console.log("🎟️ RSVP for event:", eventId, "- Currently attending:", event?.is_attending, "- Price:", event?.price);
+    
+    if (event?.is_attending) {
+      // Cancel RSVP
+      const { error } = await supabase.from('event_attendees').delete().match({
+        event_id: eventId,
+        user_id: user.id
+      });
       
-      if (event?.is_attending) {
-        const { error } = await supabase.from('event_attendees').delete().match({
-          event_id: eventId,
-          user_id: user.id
-        });
-        
-        if (error) throw error;
-        
-        const { error: decrementError } = await supabase.rpc('decrement_event_attendees', { 
-          event_id: eventId 
-        });
-        
-        if (decrementError) {
-          console.warn("⚠️ Failed to decrement count:", decrementError);
-        }
-        
-        toast.success("RSVP cancelled");
-        console.log("✅ RSVP cancelled");
-      } else {
-        const { error } = await supabase.from('event_attendees').insert({
-          event_id: eventId,
-          user_id: user.id,
-          status: 'confirmed'
-        });
-        
-        if (error) throw error;
-        
-        const { error: incrementError } = await supabase.rpc('increment_event_attendees', { 
-          event_id: eventId 
-        });
-        
-        if (incrementError) {
-          console.warn("⚠️ Failed to increment count:", incrementError);
-        }
-        
-        toast.success("You're going! 🎉");
-        console.log("✅ RSVP confirmed");
+      if (error) throw error;
+      
+      const { error: decrementError } = await supabase.rpc('decrement_event_attendees', { 
+        event_id: eventId 
+      });
+      
+      if (decrementError) {
+        console.warn("⚠️ Failed to decrement count:", decrementError);
       }
       
-      setEvents(prev => prev.map(e => 
-        e.id === eventId 
-          ? { 
-              ...e, 
-              is_attending: !e.is_attending,
-              attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)
-            }
-          : e
-      ));
+      toast.success("RSVP cancelled");
+      console.log("✅ RSVP cancelled");
+    } else {
+             const { error } = await supabase.from('event_attendees').insert({
+        event_id: eventId,
+        user_id: user.id,
+        status: 'confirmed'
+      });
       
-      setSmartFeed(prev => prev.map(e => 
-        e.id === eventId 
-          ? { 
-              ...e, 
-              is_attending: !e.is_attending,
-              attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)
-            }
-          : e
-      ));
-    } catch (e: any) {
-      console.error("❌ RSVP error:", e);
-      toast.error(e.message || "Failed to RSVP");
+      if (error) throw error;
+      
+      const { error: incrementError } = await supabase.rpc('increment_event_attendees', { 
+        event_id: eventId 
+      });
+      
+      if (incrementError) {
+        console.warn("⚠️ Failed to increment count:", incrementError);
+      }
+      
+      toast.success(event?.price && event.price > 0 
+        ? `Ticket purchased! You're going! 🎉` 
+        : `You're going! 🎉`
+      );
+      console.log("✅ RSVP confirmed");
     }
-  };
-
+    
+    // Update local state for events list
+    setEvents(prev => prev.map(e => 
+      e.id === eventId 
+        ? { 
+            ...e, 
+            is_attending: !e.is_attending,
+            attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)
+          }
+        : e
+    ));
+    
+    // Update local state for smart feed
+    setSmartFeed(prev => prev.map(e => 
+      e.id === eventId 
+        ? { 
+            ...e, 
+            is_attending: !e.is_attending,
+            attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)
+          }
+        : e
+    ));
+  } catch (e: any) {
+    console.error("❌ RSVP error:", e);
+    toast.error(e.message || "Failed to RSVP");
+  }
+};
+  
   return (
     <div className="container-mobile py-4 space-y-6 pb-24">
       {/* STORIES TRAY */}
@@ -710,29 +718,35 @@ export default function Discover() {
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-base truncate">{e.title}</h3>
-                        {e.is_attending && (
-                          <Badge className="bg-green-600 text-xs">
-                            <Check className="w-3 h-3 mr-1" />
-                            Going
-                          </Badge>
-                        )}
-                        {e.is_sponsored && (
-                          <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">
-                            Sponsored
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                        <MapPin className="w-3.5 h-3.5" /> 
-                        <span className="truncate">{e.location}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                        <Users className="w-3 h-3" />
-                        {e.attendee_count || 0} attending
-                      </div>
-                    </div>
+  <div className="flex items-center gap-2">
+    <h3 className="font-bold text-base truncate">{e.title}</h3>
+    {e.is_attending && (
+      <Badge className="bg-green-600 text-xs">
+        <Check className="w-3 h-3 mr-1" />
+        Going
+      </Badge>
+    )}
+    {e.is_sponsored && (
+      <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">
+        Sponsored
+      </Badge>
+    )}
+    {/* ADDED: Show price badge */}
+    {e.price !== undefined && e.price > 0 && (
+      <Badge variant="outline" className="text-[10px] h-5 border-primary text-primary">
+        ${e.price}
+      </Badge>
+    )}
+  </div>
+  <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+    <MapPin className="w-3.5 h-3.5" /> 
+    <span className="truncate">{e.location}</span>
+  </div>
+  <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+    <Users className="w-3 h-3" />
+    {e.attendee_count || 0} attending
+  </div>
+</div>
                     <Button 
                       size="sm" 
                       variant={e.is_attending ? "default" : "outline"}
