@@ -320,6 +320,7 @@ if (commsError) {
   };
 });
 setCommunities(enrichedComms);
+      }
       
       // 3. Events with RSVP status
       const { data: evts } = await supabase
@@ -372,6 +373,7 @@ attendeeCounts?.forEach((a: any) => {
   };
 });
 setEvents(mappedEvents);
+      }
 
       // 4. Premium & AI (Enhanced)
       const init = async () => {
