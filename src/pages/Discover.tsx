@@ -24,9 +24,10 @@ interface Community {
   member_count: number | null; 
   description: string | null; 
   avatar_url: string | null;
+  cover_url?: string | null;  // ADDED: Support cover_url from database
   is_member?: boolean;
   my_role?: 'admin' | 'member' | null;
-}
+} 'admin' | 'member' | null;
 
 interface Event { 
   id: string; 
@@ -281,7 +282,16 @@ export default function Discover() {
       if (storyData) setStoryUsers(Array.from(new Map(storyData.map(i => [i.id, { id: i.id, display_name: i.display_name, avatar_url: i.avatar_url }])).values()));
 
       // 2. Communities with membership status (use left join instead of inner)
-      const { data: comms } = await supabase.from('communities').select('*').limit(20);
+      const { data: comms, error: commsError } = await supabase
+  .from('communities')
+  .select('id, name, description, member_count, avatar_url, cover_url')  // ADDED cover_url
+  .limit(20);
+
+if (commsError) {
+  console.error("❌ Communities fetch error:", commsError);
+} else {
+  console.log("🏛️ Communities fetched:", comms?.length);
+}
       
       if (comms) {
         // Fetch memberships separately to avoid inner join filtering
@@ -292,17 +302,24 @@ export default function Discover() {
         
         const membershipMap = new Map(memberships?.map(m => [m.community_id, m.role]) || []);
         
-        const enrichedComms: Community[] = comms.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          member_count: c.member_count,
-          description: c.description,
-          avatar_url: c.avatar_url,
-          is_member: membershipMap.has(c.id),
-          my_role: (membershipMap.get(c.id) as 'admin' | 'member') || null
-        }));
-        setCommunities(enrichedComms);
-      }
+        const enrichedComms: Community[] = comms.map((c: any) => {
+  const isMember = membershipMap.has(c.id);
+  const role = membershipMap.get(c.id) as 'admin' | 'member' | undefined;
+  
+  console.log(`✅ Community: "${c.name}" - Members: ${c.member_count || 0} - Cover: ${c.cover_url ? 'Yes' : 'No'} - Joined: ${isMember}`);
+  
+  return {
+    id: c.id,
+    name: c.name,
+    member_count: c.member_count || 0,  // Ensure it's a number
+    description: c.description,
+    avatar_url: c.cover_url || c.avatar_url,  // FIXED: Prioritize cover_url
+    cover_url: c.cover_url,  // Keep original cover_url
+    is_member: isMember,
+    my_role: role || null
+  };
+});
+setCommunities(enrichedComms);
       
       // 3. Events with RSVP status
       const { data: evts } = await supabase
@@ -321,23 +338,40 @@ export default function Discover() {
           .eq('user_id', user.id)
           .in('event_id', eventIds);
 
-        const rsvpSet = new Set(rsvps?.map(r => r.event_id) || []);
+        const rsvpSet = new Set(rsvps?.map(r => r.event_id) || []); 
 
-        const mappedEvents: Event[] = evts.map((e: any) => ({
-          id: e.id,
-          title: e.title,
-          start_date: e.start_date,
-          end_date: e.end_date,
-          location: e.location,
-          image_url: e.image_url,
-          description: e.description,
-          price: e.price,
-          attendee_count: e.attendee_count,
-          is_attending: rsvpSet.has(e.id),
-          is_sponsored: e.is_sponsored // [MODIFIED: map sponsored status]
-        }));
-        setEvents(mappedEvents);
-      }
+        const { data: attendeeCounts } = await supabase
+  .from('event_attendees')
+  .select('event_id')
+  .in('event_id', eventIds)
+  .eq('status', 'confirmed');
+
+const attendeeMap = new Map<string, number>();
+attendeeCounts?.forEach((a: any) => {
+  attendeeMap.set(a.event_id, (attendeeMap.get(a.event_id) || 0) + 1);
+});
+
+        const mappedEvents: Event[] = evts.map((e: any) => {
+  const attendeeCount = attendeeMap.get(e.id) || e.attendee_count || 0;  // FIXED: Use actual count
+  const isAttending = rsvpSet.has(e.id);
+  
+  console.log(`✅ Event: "${e.title}" - Attendees: ${attendeeCount} - Attending: ${isAttending} - Sponsored: ${e.is_sponsored || false}`);
+  
+  return {
+    id: e.id,
+    title: e.title,
+    start_date: e.start_date,
+    end_date: e.end_date,
+    location: e.location,
+    image_url: e.image_url,
+    description: e.description,
+    price: e.price,
+    attendee_count: attendeeCount,  // Use calculated count
+    is_attending: isAttending,
+    is_sponsored: e.is_sponsored || false
+  };
+});
+setEvents(mappedEvents);
 
       // 4. Premium & AI (Enhanced)
       const { data: sub } = await supabase.from('subscriptions').select('status').eq('user_id', user.id).single();
@@ -363,14 +397,16 @@ export default function Discover() {
 
             if (ai) {
               const formatted: Event[] = ai.map((item: any) => ({
-                id: item.id,
-                title: item.title,
-                start_date: item.start_date || new Date().toISOString(),
-                location: item.location || 'Online',
-                image_url: item.image_url, // Now includes visual data
-                match_score: (item.final_score || item.similarity || 0) * 100, // Convert 0.95 -> 95%
-                is_sponsored: item.is_sponsored
-              }));
+  id: item.id,
+  title: item.title,
+  start_date: item.start_date || new Date().toISOString(),
+  location: item.location || 'Online',
+  image_url: item.image_url,
+  match_score: (item.final_score || item.similarity || 0) * 100,
+  is_sponsored: item.is_sponsored,
+  attendee_count: item.attendee_count || 0,  // ADDED: Include attendee count
+  is_attending: item.is_attending || false    // ADDED: Include RSVP status
+}));
               setSmartFeed(formatted);
             }
           } catch (err) {
@@ -409,71 +445,126 @@ export default function Discover() {
   };
 
   const handleJoinCommunity = async (communityId: string) => {
-    if (!user) return;
-    try {
-      const { error } = await supabase.from('community_members').insert({
-        community_id: communityId,
-        user_id: user.id,
-        role: 'member'
+  if (!user) return;
+  try {
+    console.log("👥 Joining community:", communityId);
+    
+    const { error } = await supabase.from('community_members').insert({
+      community_id: communityId,
+      user_id: user.id,
+      role: 'member'
+    });
+    
+    if (error) {
+      console.error("❌ Join error:", error);
+      throw error;
+    }
+    
+    // FIXED: Increment member count in database
+    const { error: incrementError } = await supabase.rpc('increment_community_members', { 
+      community_id: communityId 
+    });
+    
+    if (incrementError) {
+      console.warn("⚠️ Failed to increment count:", incrementError);
+    }
+    
+    toast.success("Joined community!");
+      
+      // Update local state
+      setCommunities(prev => prev.map(c => 
+      c.id === communityId 
+        ? { 
+            ...c, 
+            is_member: true, 
+            my_role: 'member', 
+            member_count: (c.member_count || 0) + 1  // Properly increment
+          }
+        : c
+    ));
+    
+    console.log("✅ Successfully joined community");
+  } catch (e: any) {
+    console.error("❌ Join community error:", e);
+    toast.error(e.message || "Failed to join");
+  }
+};
+
+  const handleRSVP = async (eventId: string) => {
+  if (!user) return;
+  try {
+    const event = events.find(e => e.id === eventId) || smartFeed.find(e => e.id === eventId);
+    console.log("🎟️ RSVP for event:", eventId, "- Currently attending:", event?.is_attending);
+    
+    if (event?.is_attending) {
+      // Cancel RSVP
+      const { error } = await supabase.from('event_attendees').delete().match({
+        event_id: eventId,
+        user_id: user.id
       });
       
       if (error) throw error;
       
-      toast.success("Joined community!");
+      // FIXED: Decrement attendee count in database
+      const { error: decrementError } = await supabase.rpc('decrement_event_attendees', { 
+        event_id: eventId 
+      });
       
-      // Update local state
-      setCommunities(prev => prev.map(c => 
-        c.id === communityId 
-          ? { ...c, is_member: true, my_role: 'member', member_count: (c.member_count || 0) + 1 }
-          : c
-      ));
-    } catch (e: any) {
-      toast.error(e.message || "Failed to join");
-    }
-  };
-
-  const handleRSVP = async (eventId: string) => {
-    if (!user) return;
-    try {
-      const event = events.find(e => e.id === eventId);
+      if (decrementError) {
+        console.warn("⚠️ Failed to decrement count:", decrementError);
+      }
       
-      if (event?.is_attending) {
-        // Cancel RSVP
-        await supabase.from('event_attendees').delete().match({
-          event_id: eventId,
-          user_id: user.id
-        });
-        toast.success("RSVP cancelled");
+      toast.success("RSVP cancelled");
+      console.log("✅ RSVP cancelled");
       } else {
         // Create RSVP - FIXED: Added status='confirmed'
-        await supabase.from('event_attendees').insert({
-          event_id: eventId,
-          user_id: user.id,
-          status: 'confirmed'
-        });
-        toast.success("You're going! 🎉");
+        const { error } = await supabase.from('event_attendees').insert({
+        event_id: eventId,
+        user_id: user.id,
+        status: 'confirmed'
+      });
+      
+      if (error) throw error;
+      
+      // FIXED: Increment attendee count in database
+      const { error: incrementError } = await supabase.rpc('increment_event_attendees', { 
+        event_id: eventId 
+      });
+      
+      if (incrementError) {
+        console.warn("⚠️ Failed to increment count:", incrementError);
       }
+      
+      toast.success("You're going! 🎉");
+      console.log("✅ RSVP confirmed");
+    }
       
       // Update local state
       setEvents(prev => prev.map(e => 
-        e.id === eventId 
-          ? { 
-              ...e, 
-              is_attending: !e.is_attending,
-              attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)
-            }
-          : e
-      ));
-      
-      setSmartFeed(prev => prev.map(e => 
-        e.id === eventId 
-          ? { ...e, is_attending: !e.is_attending }
-          : e
-      ));
-    } catch (e: any) {
-      toast.error(e.message || "Failed to RSVP");
-    }
-  };
+      e.id === eventId 
+        ? { 
+            ...e, 
+            is_attending: !e.is_attending,
+            attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)  // Properly update
+          }
+        : e
+    ));
+    
+    // Update local state for smart feed
+    setSmartFeed(prev => prev.map(e => 
+      e.id === eventId 
+        ? { 
+            ...e, 
+            is_attending: !e.is_attending,
+            attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)  // Properly update
+          }
+        : e
+    ));
+  } catch (e: any) {
+    console.error("❌ RSVP error:", e);
+    toast.error(e.message || "Failed to RSVP");
+  }
+};
 
   return (
     <div className="container-mobile py-4 space-y-6 pb-24">
@@ -536,7 +627,11 @@ export default function Discover() {
               communities.map(c => (
                 <Card key={c.id} className="hover:shadow-md transition-all border-border/50 cursor-pointer">
                   <CardContent className="p-4 flex gap-4 items-center">
-                    <img src={c.avatar_url || '/default-avatar.png'} className="w-14 h-14 rounded-2xl bg-muted object-cover" />
+                    <img 
+  src={c.cover_url || c.avatar_url || '/default-avatar.png'} 
+  className="w-14 h-14 rounded-2xl bg-muted object-cover" 
+  alt={c.name}
+/>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold truncate text-lg">{c.name}</h3>
