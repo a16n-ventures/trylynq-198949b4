@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
   Users, Calendar, MapPin, X, Loader2, Plus, 
   Heart, Share2, Sparkles, Lock, RefreshCw, Check,
-  Clock, Ticket, ExternalLink, Megaphone
+  Clock, Ticket, ExternalLink, Megaphone, MessageSquare
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
