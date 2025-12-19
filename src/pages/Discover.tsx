@@ -172,6 +172,133 @@ function EventDetailModal({ event, isOpen, onClose, onRSVP }: {
   );
 }
 
+interface CommunityDetailModalProps {
+  community: Community | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onJoin: (communityId: string) => void;
+  onOpen: () => void;
+}
+
+function CommunityDetailModal({ 
+  community, 
+  isOpen, 
+  onClose, 
+  onJoin,
+  onOpen 
+}: CommunityDetailModalProps) {
+  if (!community) return null;
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric'
+    });
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
+        {/* Cover Photo */}
+        {(community.cover_url || community.avatar_url) && (
+          <div className="w-full h-48 bg-muted relative">
+            <img 
+              src={community.cover_url || community.avatar_url || '/default-avatar.png'} 
+              alt={community.name}
+              className="w-full h-full object-cover"
+            />
+            {community.is_member && (
+              <Badge className="absolute top-4 right-4 bg-green-600 backdrop-blur-md border-0">
+                <Check className="w-3 h-3 mr-1" />
+                {community.my_role === 'admin' ? 'Admin' : 'Joined'}
+              </Badge>
+            )}
+          </div>
+        )}
+        
+        <div className="p-6 space-y-4">
+          {/* Title & Description */}
+          <div>
+            <h2 className="text-2xl font-bold mb-2">{community.name}</h2>
+            {community.description && (
+              <p className="text-muted-foreground">{community.description}</p>
+            )}
+          </div>
+
+          {/* Community Stats */}
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex items-start gap-3">
+              <Users className="w-5 h-5 text-primary mt-0.5" />
+              <div>
+                <p className="font-medium">Members</p>
+                <p className="text-sm text-muted-foreground">
+                  {community.member_count || 0} {community.member_count === 1 ? 'member' : 'members'}
+                </p>
+              </div>
+            </div>
+
+            {community.my_role && (
+              <div className="flex items-start gap-3">
+                <Badge className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center mt-0.5">
+                  <Check className="w-3 h-3" />
+                </Badge>
+                <div>
+                  <p className="font-medium">Your Role</p>
+                  <p className="text-sm text-muted-foreground capitalize">
+                    {community.my_role}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-start gap-3">
+              <Sparkles className="w-5 h-5 text-primary mt-0.5" />
+              <div>
+                <p className="font-medium">Community Type</p>
+                <p className="text-sm text-muted-foreground">
+                  Public • Open to join
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <DialogFooter className="gap-2 border-t pt-4 flex-col sm:flex-row">
+            <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
+              Close
+            </Button>
+            
+            {community.is_member ? (
+              <Button 
+                onClick={() => {
+                  onOpen();
+                  onClose();
+                }}
+                className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Open Community
+              </Button>
+            ) : (
+              <Button 
+                onClick={() => {
+                  onJoin(community.id);
+                  onClose();
+                }}
+                className="w-full sm:w-auto"
+              >
+                <Users className="w-4 h-4 mr-2" />
+                Join Community
+              </Button>
+            )}
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // --- UI COMPONENTS ---
 const FeedSkeleton = () => (
   <div className="space-y-4">
@@ -263,6 +390,7 @@ export default function Discover() {
   const [loading, setLoading] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
   const [scriptLoaded, setScriptLoaded] = useState(false);
+  const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
   
   const [preview, setPreview] = useState<{ file: File, url: string } | null>(null);
   const [caption, setCaption] = useState("");
@@ -903,56 +1031,57 @@ export default function Discover() {
 
           {/* Communities */}
           <TabsContent value="communities" className="mt-6 space-y-3 animate-in fade-in-50">
-            {loading ? <FeedSkeleton /> : communities.length === 0 ? (
-              <EmptyState icon={Users} title="No Communities Yet" desc="Be the first to start a tribe in your area." action="Create Community" onAction={() => navigate('/app/messages')} />
-            ) : (
-              communities.map(c => (
-                <Card key={c.id} className="hover:shadow-md transition-all border-border/50 cursor-pointer">
-                  <CardContent className="p-4 flex gap-4 items-center">
-                    <img 
-  src={c.cover_url || c.avatar_url || '/default-avatar.png'} 
-  className="w-14 h-14 rounded-2xl bg-muted object-cover" 
-  alt={c.name}
-/>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold truncate text-lg">{c.name}</h3>
-                        {c.is_member && (
-                          <Badge variant="secondary" className="text-xs">
-                            {c.my_role === 'admin' ? 'Admin' : 'Joined'}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-1">{c.description}</p>
-                      <div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium">
-                        <Users className="w-3 h-3" /> {c.member_count} members
-                      </div>
-                    </div>
-                    {c.is_member ? (
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="rounded-full px-4"
-                        onClick={() => navigate('/app/messages')}
-                      >
-                        <Check className="w-4 h-4 mr-1" />
-                        Open
-                      </Button>
-                    ) : (
-                      <Button 
-                        size="sm" 
-                        variant="secondary" 
-                        className="rounded-full px-4"
-                        onClick={() => handleJoinCommunity(c.id)}
-                      >
-                        Join
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </TabsContent>
+  {loading ? <FeedSkeleton /> : communities.length === 0 ? (
+    <EmptyState 
+      icon={Users} 
+      title="No Communities Yet" 
+      desc="Be the first to start a tribe in your area." 
+      action="Create Community" 
+      onAction={() => navigate('/app/messages')} 
+    />
+  ) : (
+    communities.map(c => (
+      <Card 
+        key={c.id} 
+        className="hover:shadow-md transition-all border-border/50 cursor-pointer"
+        onClick={() => setSelectedCommunity(c)}
+      >
+        <CardContent className="p-4 flex gap-4 items-center">
+          <img 
+            src={c.cover_url || c.avatar_url || '/default-avatar.png'} 
+            className="w-14 h-14 rounded-2xl bg-muted object-cover" 
+            alt={c.name}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold truncate text-lg">{c.name}</h3>
+              {c.is_member && (
+                <Badge variant="secondary" className="text-xs">
+                  {c.my_role === 'admin' ? 'Admin' : 'Joined'}
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground line-clamp-1">{c.description}</p>
+            <div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium">
+              <Users className="w-3 h-3" /> {c.member_count} members
+            </div>
+          </div>
+          <Button 
+            size="sm" 
+            variant={c.is_member ? "outline" : "secondary"}
+            className="rounded-full px-4"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedCommunity(c);
+            }}
+          >
+            View
+          </Button>
+        </CardContent>
+      </Card>
+    ))
+  )}
+</TabsContent>
 
           {/* Events */}
           <TabsContent value="events" className="mt-6 space-y-3 animate-in fade-in-50">
@@ -1065,7 +1194,15 @@ export default function Discover() {
         isOpen={!!selectedEvent}
         onClose={() => setSelectedEvent(null)}
         onRSVP={handleRSVP}
-      />
+      /> 
+
+      <CommunityDetailModal 
+  community={selectedCommunity}
+  isOpen={!!selectedCommunity}
+  onClose={() => setSelectedCommunity(null)}
+  onJoin={handleJoinCommunity}
+  onOpen={() => navigate('/app/messages')}
+/>
     </div>
   );
 }
