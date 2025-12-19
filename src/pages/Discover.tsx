@@ -378,7 +378,6 @@ export default function Discover() {
       }
 
       // 4. Premium & AI (Enhanced)
-      const init = async () => {
       // 1. Fetch Subscription
       const { data: sub } = await supabase
         .from('subscriptions')
