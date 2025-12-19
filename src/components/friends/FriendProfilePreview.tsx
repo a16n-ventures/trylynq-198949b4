@@ -82,7 +82,7 @@ export function FriendProfilePreview({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto">
         <DialogHeader>
           <DialogTitle className="sr-only">Profile Preview</DialogTitle>
         </DialogHeader>
