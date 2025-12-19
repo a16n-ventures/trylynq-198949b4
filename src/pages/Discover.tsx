@@ -24,10 +24,10 @@ interface Community {
   member_count: number | null; 
   description: string | null; 
   avatar_url: string | null;
-  cover_url?: string | null;
+  cover_url?: string | null;  // ADDED: Support cover_url from database
   is_member?: boolean;
   my_role?: 'admin' | 'member' | null;
-}
+} 'admin' | 'member' | null;
 
 interface Event { 
   id: string; 
@@ -41,7 +41,7 @@ interface Event {
   price?: number;
   attendee_count?: number;
   is_attending?: boolean;
-  is_sponsored?: boolean;
+  is_sponsored?: boolean; // [MODIFIED: Added is_sponsored]
 }
 
 type ProfileWithStoryInner = { id: string; display_name: string | null; avatar_url: string | null; stories: { id: string; created_at: string }[]; };
@@ -82,6 +82,7 @@ function EventDetailModal({ event, isOpen, onClose, onRSVP }: {
                 {event.match_score.toFixed(0)}% Match
               </Badge>
             )}
+             {/* [MODIFIED: Display Sponsored Badge in Modal] */}
             {event.is_sponsored && (
               <Badge className="absolute top-4 left-4 bg-yellow-500/90 hover:bg-yellow-600 text-white backdrop-blur-md border-0">
                 <Megaphone className="w-3 h-3 mr-1" />
@@ -133,6 +134,7 @@ function EventDetailModal({ event, isOpen, onClose, onRSVP }: {
               </div>
             )}
 
+            {/* [MODIFIED: Always show attendees] */}
             <div className="flex items-start gap-3">
               <Users className="w-5 h-5 text-primary mt-0.5" />
               <div>
@@ -217,6 +219,7 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
 
   const current = stories[index];
   const next = () => index < stories.length - 1 ? (setIndex(i => i + 1), setLiked(false)) : onClose();
+  const prev = () => setIndex(i => Math.max(i - 1, 0));
 
   if (loading) return <div className="fixed inset-0 z-50 bg-black flex items-center justify-center"><Loader2 className="text-white animate-spin" /></div>;
   if (!current) return null;
@@ -229,7 +232,7 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
           {stories.map((_, i) => <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm"><div className={`h-full bg-white transition-all duration-300 ${i <= index ? 'w-full' : 'w-0'}`} /></div>)}
         </div>
         <div className="absolute top-6 left-0 w-full p-4 z-20 flex items-center gap-3 bg-gradient-to-b from-black/60 to-transparent">
-          <img src={user.avatar_url || '/default-avatar.png'} className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" alt={user.display_name || 'User'} />
+          <img src={user.avatar_url || '/default-avatar.png'} className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" />
           <span className="text-white font-bold text-sm drop-shadow-md">{user.display_name || 'User'}</span>
         </div>
         <div className="flex-1 flex items-center justify-center bg-black relative" onClick={next}>
@@ -267,10 +270,7 @@ export default function Discover() {
 
   useEffect(() => {
     if (!user) return;
-    
     const init = async () => {
-      console.log("🔍 Initializing Discover page for user:", user.id);
-
       // 1. Profiles
       const { data: me } = await supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
       if (me) {
@@ -281,20 +281,21 @@ export default function Discover() {
       const { data: storyData } = await supabase.from('profiles').select('id, display_name, avatar_url, stories:stories!author_id(id, created_at)').filter('stories.created_at', 'gte', yesterday).returns<ProfileWithStoryInner[]>();
       if (storyData) setStoryUsers(Array.from(new Map(storyData.map(i => [i.id, { id: i.id, display_name: i.display_name, avatar_url: i.avatar_url }])).values()));
 
-      // 2. Communities with membership status
+      // 2. Communities with membership status (use left join instead of inner)
       const { data: comms, error: commsError } = await supabase
         .from('communities')
         .select('id, name, description, member_count, avatar_url, cover_url')
         .order('created_at', { ascending: false })
         .limit(20);
-
+      
       if (commsError) {
         console.error("❌ Communities fetch error:", commsError);
       } else {
         console.log("🏛️ Communities fetched:", comms?.length);
       }
       
-      if (comms && comms.length > 0) {
+      if (comms) {
+        // Fetch memberships separately to avoid inner join filtering
         const { data: memberships } = await supabase
           .from('community_members')
           .select('community_id, role')
@@ -303,18 +304,18 @@ export default function Discover() {
         const membershipMap = new Map(memberships?.map(m => [m.community_id, m.role]) || []);
         
         const enrichedComms: Community[] = comms.map((c: any) => {
-          const isMember = membershipMap.has(c.id);
-          const role = membershipMap.get(c.id) as 'admin' | 'member' | undefined;
-  
-          console.log(`✅ Community: "${c.name}" - Members: ${c.member_count || 0} - Cover: ${c.cover_url ? 'Yes' : 'No'} - Joined: ${isMember}`);
+        const isMember = membershipMap.has(c.id);
+        const role = membershipMap.get(c.id) as 'admin' | 'member' | undefined;
+        
+        console.log(`✅ Community: "${c.name}" - Members: ${c.member_count || 0} - Cover: ${c.cover_url ? 'Yes' : 'No'} - Joined: ${isMember}`);
   
           return {
             id: c.id,
             name: c.name,
-            member_count: c.member_count || 0,
+            member_count: c.member_count || 0,  // Ensure it's a number
             description: c.description,
-            avatar_url: c.cover_url || c.avatar_url,
-            cover_url: c.cover_url,
+            avatar_url: c.cover_url || c.avatar_url,  // FIXED: Prioritize cover_url
+            cover_url: c.cover_url,  // Keep original cover_url
             is_member: isMember,
             my_role: role || null
           };
@@ -323,20 +324,15 @@ export default function Discover() {
       }
       
       // 3. Events with RSVP status
-      const { data: evts, error: evtsError } = await supabase
+      const { data: evts } = await supabase
         .from('events')
         .select('*')
         .gte('start_date', new Date().toISOString())
         .order('start_date', { ascending: true })
         .limit(20);
       
-      if (evtsError) {
-        console.error("❌ Events fetch error:", evtsError);
-      } else {
-        console.log("📅 Events fetched:", evts?.length);
-      }
-      
       if (evts) {
+        // Check RSVP status for each event
         const eventIds = evts.map((e: any) => e.id);
         const { data: rsvps } = await supabase
           .from('event_attendees')
@@ -351,17 +347,17 @@ export default function Discover() {
           .select('event_id')
           .in('event_id', eventIds)
           .eq('status', 'confirmed');
-
+        
         const attendeeMap = new Map<string, number>();
         attendeeCounts?.forEach((a: any) => {
           attendeeMap.set(a.event_id, (attendeeMap.get(a.event_id) || 0) + 1);
         });
 
         const mappedEvents: Event[] = evts.map((e: any) => {
-          const attendeeCount = attendeeMap.get(e.id) || e.attendee_count || 0;
-          const isAttending = rsvpSet.has(e.id);
-          
-          console.log(`✅ Event: "${e.title}" - Attendees: ${attendeeCount} - Attending: ${isAttending} - Sponsored: ${e.is_sponsored || false}`);
+        const attendeeCount = attendeeMap.get(e.id) || e.attendee_count || 0;  // FIXED: Use actual count
+        const isAttending = rsvpSet.has(e.id);
+        
+        console.log(`✅ Event: "${e.title}" - Attendees: ${attendeeCount} - Attending: ${isAttending} - Sponsored: ${e.is_sponsored || false}`);
   
           return {
             id: e.id,
@@ -372,7 +368,7 @@ export default function Discover() {
             image_url: e.image_url,
             description: e.description,
             price: e.price,
-            attendee_count: attendeeCount,
+            attendee_count: attendeeCount,  // Use calculated count
             is_attending: isAttending,
             is_sponsored: e.is_sponsored || false
           };
@@ -380,7 +376,9 @@ export default function Discover() {
         setEvents(mappedEvents);
       }
 
-      // 4. Premium & AI
+      // 4. Premium & AI (Enhanced)
+      const init = async () => {
+      // 1. Fetch Subscription
       const { data: sub } = await supabase
         .from('subscriptions')
         .select('status')
@@ -389,15 +387,14 @@ export default function Discover() {
 
       const prem = sub?.status === 'active';
       setIsPremium(prem);
-      console.log("💎 Premium status:", prem);
 
       if (prem) {
+        // 2. Get Location & Fetch AI Feed
         navigator.geolocation.getCurrentPosition(
           async (position) => {
             const { latitude, longitude } = position.coords;
 
             try {
-              console.log("🤖 Calling AI Edge Function...");
               const { data: ai, error } = await supabase.functions.invoke('generate-smart-feed', {
                 body: {
                   user_id: user.id,
@@ -406,13 +403,12 @@ export default function Discover() {
                 },
               });
 
-              if (error) {
-                console.error("❌ AI Feed Error:", error);
-                throw error;
-              }
+              if (error) throw error;
 
               if (ai) {
-                const formatted: Event[] = ai.map((item: any) => ({
+                // FIX: Removed 'Event[]' type to avoid collision with global DOM Event
+                // You can use 'any[]' or import your specific type (e.g., AppEvent[])
+                const formatted = ai.map((item: any) => ({
                   id: item.id,
                   title: item.title,
                   start_date: item.start_date || new Date().toISOString(),
@@ -423,25 +419,26 @@ export default function Discover() {
                   attendee_count: item.attendee_count || 0,
                   is_attending: item.is_attending || false,
                 }));
-                console.log("✅ AI Feed generated:", formatted.length, "events");
+                
                 setSmartFeed(formatted);
               }
             } catch (err) {
-              console.error('❌ AI Feed Error:', err);
+              console.error('AI Feed Error:', err);
             } finally {
+              // FIX: Stop loading ONLY after the async AI work is done
               setLoading(false);
             }
           },
           (err) => {
-            console.warn('⚠️ Location denied, falling back to basic AI', err);
+            console.warn('Location denied, falling back to basic AI', err);
+            // FIX: Ensure loading stops even if location is denied
             setLoading(false);
           }
         );
       } else {
+        // FIX: If not premium, stop loading immediately
         setLoading(false);
       }
-
-      console.log("✅ Discover page initialization complete");
     };
 
     init();
@@ -464,133 +461,385 @@ export default function Discover() {
       setCaption("");
       window.location.reload();
     } catch (e) { 
-      console.error("❌ Story upload error:", e);
       toast.error("Upload failed"); 
     }
     setUploading(false);
   };
 
   const handleJoinCommunity = async (communityId: string) => {
-    if (!user) return;
-    try {
-      console.log("👥 Joining community:", communityId);
+  if (!user) return;
+  try {
+    console.log("👥 Joining community:", communityId);
+    
+    const { error } = await supabase.from('community_members').insert({
+      community_id: communityId,
+      user_id: user.id,
+      role: 'member'
+    });
+    
+    if (error) {
+      console.error("❌ Join error:", error);
+      throw error;
+    }
+    
+    // FIXED: Increment member count in database
+    const { error: incrementError } = await supabase.rpc('increment_community_members', { 
+      community_id: communityId 
+    });
+    
+    if (incrementError) {
+      console.warn("⚠️ Failed to increment count:", incrementError);
+    }
+    
+    toast.success("Joined community!");
       
-      const { error } = await supabase.from('community_members').insert({
-        community_id: communityId,
-        user_id: user.id,
-        role: 'member'
-      });
-      
-      if (error) {
-        console.error("❌ Join error:", error);
-        throw error;
-      }
-      
-      const { error: incrementError } = await supabase.rpc('increment_community_members', { 
-        community_id: communityId 
-      });
-      
-      if (incrementError) {
-        console.warn("⚠️ Failed to increment count:", incrementError);
-      }
-      
-      toast.success("Joined community!");
-      
+      // Update local state
       setCommunities(prev => prev.map(c => 
-        c.id === communityId 
-          ? { 
-              ...c, 
-              is_member: true, 
-              my_role: 'member', 
-              member_count: (c.member_count || 0) + 1
-            }
-          : c
-      ));
+      c.id === communityId 
+        ? { 
+            ...c, 
+            is_member: true, 
+            my_role: 'member', 
+            member_count: (c.member_count || 0) + 1  // Properly increment
+          }
+        : c
+    ));
+    
+    console.log("✅ Successfully joined community");
+      } catch (e: any) {
+        console.error("❌ Join community error:", e);
+        toast.error(e.message || "Failed to join");
+      }
+    };
+    
+    declare global {
+      interface Window {
+        FlutterwaveCheckout?: (options: any) => void;
+      }
+    }
+
+  const loadFlutterwaveScript = () => {
+    return new Promise<void>((resolve, reject) => {
+      if (document.getElementById('flutterwave-script')) {
+        resolve();
+        return;
+      }
+      const script = document.createElement('script');
+      script.id = 'flutterwave-script';
+      script.src = 'https://checkout.flutterwave.com/v3.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load Flutterwave script'));
+      document.body.appendChild(script);
+    });
+  };
+  
+  const FLUTTERWAVE_PUBLIC_KEY = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
+  
+  const initiateFlutterwavePayment = async (paymentData: {
+    amount: number;
+    currency: string;
+    email: string;
+    name: string;
+    phone: string;
+    tx_ref: string;
+    event_id: string;
+    event_title: string;
+    user_id: string;
+  }) => {
+    try {
+      if (!scriptLoaded || !FLUTTERWAVE_PUBLIC_KEY) {
+        throw new Error('Payment system not ready');
+      }
+  
+      console.log("🚀 Initiating Flutterwave payment for event...");
       
-      console.log("✅ Successfully joined community");
-    } catch (e: any) {
-      console.error("❌ Join community error:", e);
-      toast.error(e.message || "Failed to join");
+      // Store pending transaction BEFORE payment
+      const { error: transactionError } = await supabase.from('transactions').insert({
+        user_id: paymentData.user_id,
+        amount: paymentData.amount,
+        type: 'debit',
+        status: 'pending',
+        description: `Event ticket: ${paymentData.event_title}`,
+        reference: paymentData.tx_ref,
+        related_id: paymentData.event_id
+      });
+      
+      if (transactionError) {
+        console.error("❌ Transaction creation error:", transactionError);
+        throw transactionError;
+      }
+  
+      // Configure Flutterwave payment
+      const config = {
+        public_key: FLUTTERWAVE_PUBLIC_KEY,
+        tx_ref: paymentData.tx_ref,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        payment_options: "card, banktransfer, ussd",
+        customer: {
+          email: paymentData.email,
+          name: paymentData.name,
+          phone_number: paymentData.phone || '',
+        },
+        customizations: {
+          title: "Event Ticket Purchase",
+          description: paymentData.event_title,
+          logo: "https://try.usecorridor.xyz/ahmia/logo.png",
+        },
+        callback: async function(response: any) {
+          console.log("💳 Payment response:", response);
+          
+          if (response.status === "successful" || response.status === "completed") {
+            const toastId = toast.loading("Confirming your ticket purchase...");
+            
+            try {
+              // Verify the transaction with your backend
+              const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-flutterwave-payment', {
+                body: { 
+                  transaction_id: response.transaction_id,
+                  tx_ref: paymentData.tx_ref 
+                }
+              });
+              
+              if (verifyError) throw verifyError;
+              
+              // Create event RSVP after successful payment
+              const { error: rsvpError } = await supabase
+                .from('event_attendees')
+                .insert({
+                  event_id: paymentData.event_id,
+                  user_id: paymentData.user_id,
+                  status: 'confirmed'
+                });
+              
+              if (rsvpError) throw rsvpError;
+              
+              // Increment attendee count
+              await supabase.rpc('increment_event_attendees', { 
+                event_id: paymentData.event_id 
+              });
+              
+              // Update transaction status to completed
+              await supabase
+                .from('transactions')
+                .update({ 
+                  status: 'completed',
+                  flutterwave_transaction_id: response.transaction_id
+                })
+                .eq('reference', paymentData.tx_ref);
+              
+              // Update local state
+              setEvents(prev => prev.map(e => 
+                e.id === paymentData.event_id 
+                  ? { 
+                      ...e, 
+                      is_attending: true,
+                      attendee_count: (e.attendee_count || 0) + 1
+                    }
+                  : e
+              ));
+              
+              setSmartFeed(prev => prev.map(e => 
+                e.id === paymentData.event_id 
+                  ? { 
+                      ...e, 
+                      is_attending: true,
+                      attendee_count: (e.attendee_count || 0) + 1
+                    }
+                  : e
+              ));
+              
+              toast.success("Ticket purchased successfully! 🎉", { id: toastId });
+              console.log("✅ Event RSVP confirmed after payment");
+              
+            } catch (error: any) {
+              console.error("❌ Post-payment error:", error);
+              toast.error("Payment received but confirmation failed. Contact support.", { id: toastId });
+              
+              // Update transaction to completed anyway (payment was successful)
+              await supabase
+                .from('transactions')
+                .update({ 
+                  status: 'completed',
+                  flutterwave_transaction_id: response.transaction_id
+                })
+                .eq('reference', paymentData.tx_ref);
+            }
+          } else {
+            toast.error("Payment was not successful");
+            
+            // Update transaction status to failed
+            await supabase
+              .from('transactions')
+              .update({ status: 'failed' })
+              .eq('reference', paymentData.tx_ref);
+          }
+        },
+        onclose: function() {
+          console.log("Payment modal closed");
+        }
+      };
+  
+      // Launch Flutterwave payment modal
+      if (window.FlutterwaveCheckout) {
+        window.FlutterwaveCheckout(config);
+        console.log("✅ Payment modal opened");
+      } else {
+        throw new Error("Flutterwave checkout not available");
+      }
+      
+    } catch (error: any) {
+      console.error("❌ Payment initiation error:", error);
+      toast.error(error.message || "Failed to initiate payment");
+      
+      // Update transaction to failed
+      await supabase
+        .from('transactions')
+        .update({ status: 'failed' })
+        .eq('reference', paymentData.tx_ref);
+      
+      throw error;
     }
   };
 
   const handleRSVP = async (eventId: string) => {
-  if (!user) return;
-  
-  try {
-    const event = events.find(e => e.id === eventId) || smartFeed.find(e => e.id === eventId);
-    console.log("🎟️ RSVP for event:", eventId, "- Currently attending:", event?.is_attending, "- Price:", event?.price);
+    if (!user) return;
     
-    if (event?.is_attending) {
-      // Cancel RSVP
-      const { error } = await supabase.from('event_attendees').delete().match({
-        event_id: eventId,
-        user_id: user.id
-      });
+    try {
+      const event = events.find(e => e.id === eventId) || smartFeed.find(e => e.id === eventId);
+      console.log("🎟️ RSVP for event:", eventId, "- Currently attending:", event?.is_attending, "- Price:", event?.price);
       
-      if (error) throw error;
-      
-      const { error: decrementError } = await supabase.rpc('decrement_event_attendees', { 
-        event_id: eventId 
-      });
-      
-      if (decrementError) {
-        console.warn("⚠️ Failed to decrement count:", decrementError);
+      if (event?.is_attending) {
+        // Cancel RSVP (no refund for now)
+        const { error } = await supabase.from('event_attendees').delete().match({
+          event_id: eventId,
+          user_id: user.id
+        });
+        
+        if (error) throw error;
+        
+        const { error: decrementError } = await supabase.rpc('decrement_event_attendees', { 
+          event_id: eventId 
+        });
+        
+        if (decrementError) {
+          console.warn("⚠️ Failed to decrement count:", decrementError);
+        }
+        
+        toast.success("RSVP cancelled");
+        console.log("✅ RSVP cancelled");
+        
+        // Update local state
+        setEvents(prev => prev.map(e => 
+          e.id === eventId 
+            ? { 
+                ...e, 
+                is_attending: false,
+                attendee_count: (e.attendee_count || 0) - 1
+              }
+            : e
+        ));
+        
+        setSmartFeed(prev => prev.map(e => 
+          e.id === eventId 
+            ? { 
+                ...e, 
+                is_attending: false,
+                attendee_count: (e.attendee_count || 0) - 1
+              }
+            : e
+        ));
+      } else {
+        // FIXED: Check if event requires payment
+        if (event?.price && event.price > 0) {
+          console.log("💰 Paid event detected - Price:", event.price);
+          
+          // Get user profile for payment details
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('email, display_name, phone')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (!profile) {
+            toast.error("Unable to load your profile. Please try again.");
+            return;
+          }
+          
+          // Prepare payment data
+          const paymentData = {
+            amount: event.price,
+            currency: 'NGN', // Change to your currency
+            email: profile.email || user.email || '',
+            name: profile.display_name || 'User',
+            phone: profile.phone || '',
+            tx_ref: `event_${eventId}_${Date.now()}`,
+            event_id: eventId,
+            event_title: event.title,
+            user_id: user.id
+          };
+          
+          console.log("💳 Initiating payment with data:", { ...paymentData, amount: `₦${paymentData.amount}` });
+          
+          // Call Flutterwave payment function (RSVP happens in callback)
+          await initiateFlutterwavePayment(paymentData);
+          
+          // Don't create RSVP here - it's handled in the payment callback
+          return; // Exit early, don't update state until payment succeeds
+          
+        } else {
+        
+          // Free event - Create RSVP immediately
+          console.log("🎫 Free event - Creating RSVP...");
+          
+          const { error } = await supabase.from('event_attendees').insert({
+            event_id: eventId,
+            user_id: user.id,
+            status: 'confirmed'
+          });
+          
+          if (error) throw error;
+          
+          const { error: incrementError } = await supabase.rpc('increment_event_attendees', { 
+            event_id: eventId 
+          });
+          
+          if (incrementError) {
+            console.warn("⚠️ Failed to increment count:", incrementError);
+          }
+          
+          toast.success("You're going! 🎉");
+          console.log("✅ Free RSVP confirmed");
+          
+          // Update local state
+          setEvents(prev => prev.map(e => 
+            e.id === eventId 
+              ? { 
+                  ...e, 
+                  is_attending: true,
+                  attendee_count: (e.attendee_count || 0) + 1
+                }
+              : e
+          ));
+          
+          setSmartFeed(prev => prev.map(e => 
+            e.id === eventId 
+              ? { 
+                  ...e, 
+                  is_attending: true,
+                  attendee_count: (e.attendee_count || 0) + 1
+                }
+              : e
+          ));
+        }
       }
-      
-      toast.success("RSVP cancelled");
-      console.log("✅ RSVP cancelled");
-    } else {
-             const { error } = await supabase.from('event_attendees').insert({
-        event_id: eventId,
-        user_id: user.id,
-        status: 'confirmed'
-      });
-      
-      if (error) throw error;
-      
-      const { error: incrementError } = await supabase.rpc('increment_event_attendees', { 
-        event_id: eventId 
-      });
-      
-      if (incrementError) {
-        console.warn("⚠️ Failed to increment count:", incrementError);
-      }
-      
-      toast.success(event?.price && event.price > 0 
-        ? `Ticket purchased! You're going! 🎉` 
-        : `You're going! 🎉`
-      );
-      console.log("✅ RSVP confirmed");
+    } catch (e: any) {
+      console.error("❌ RSVP error:", e);
+      toast.error(e.message || "Failed to RSVP");
     }
-    
-    // Update local state for events list
-    setEvents(prev => prev.map(e => 
-      e.id === eventId 
-        ? { 
-            ...e, 
-            is_attending: !e.is_attending,
-            attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)
-          }
-        : e
-    ));
-    
-    // Update local state for smart feed
-    setSmartFeed(prev => prev.map(e => 
-      e.id === eventId 
-        ? { 
-            ...e, 
-            is_attending: !e.is_attending,
-            attendee_count: (e.attendee_count || 0) + (e.is_attending ? -1 : 1)
-          }
-        : e
-    ));
-  } catch (e: any) {
-    console.error("❌ RSVP error:", e);
-    toast.error(e.message || "Failed to RSVP");
-  }
-};
-  
+  };
+
   return (
     <div className="container-mobile py-4 space-y-6 pb-24">
       {/* STORIES TRAY */}
@@ -604,7 +853,7 @@ export default function Discover() {
             <div className="flex flex-col items-center gap-2 flex-shrink-0 relative cursor-pointer group" onClick={() => fileRef.current?.click()}>
               <input type="file" ref={fileRef} className="hidden" accept="image/*,video/*" onChange={(e) => e.target.files?.[0] && setPreview({ file: e.target.files[0], url: URL.createObjectURL(e.target.files[0]) })} />
               <div className="w-16 h-16 rounded-full p-[2px] border-2 border-dashed border-muted-foreground/30 relative group-hover:border-primary transition-colors">
-                <img src={currentUserProfile?.avatar_url || '/default-avatar.png'} className="w-full h-full rounded-full object-cover opacity-50" alt="Your avatar" />
+                <img src={currentUserProfile?.avatar_url || '/default-avatar.png'} className="w-full h-full rounded-full object-cover opacity-50" />
                 <div className="absolute inset-0 flex items-center justify-center bg-background/20 rounded-full"><Plus className="w-6 h-6 text-primary drop-shadow-sm" /></div>
               </div>
               <span className="text-xs font-medium text-muted-foreground">Add Story</span>
@@ -612,7 +861,7 @@ export default function Discover() {
             {storyUsers.map(u => u.id !== user?.id && (
               <div key={u.id} className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0 group" onClick={() => setSelectedStory(u)}>
                 <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-orange-500 to-purple-600 group-hover:scale-105 transition-transform shadow-sm">
-                  <img src={u.avatar_url || '/default-avatar.png'} className="w-full h-full rounded-full object-cover border-2 border-background" alt={u.display_name || 'User'} />
+                  <img src={u.avatar_url || '/default-avatar.png'} className="w-full h-full rounded-full object-cover border-2 border-background" />
                 </div>
                 <span className="text-xs font-medium max-w-[70px] truncate">{u.display_name || 'User'}</span>
               </div>
@@ -621,11 +870,11 @@ export default function Discover() {
         )}
       </div>
 
-      <Dialog open={!!preview} onOpenChange={() => setPreview(null)}>
+            <Dialog open={!!preview} onOpenChange={() => setPreview(null)}>
         <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-xl border-0">
           <DialogHeader><DialogTitle>Create Story</DialogTitle></DialogHeader>
           <div className="aspect-[9/16] bg-black/10 rounded-xl overflow-hidden flex items-center justify-center relative border">
-            {preview?.file.type.startsWith('video') ? <video src={preview.url} controls className="max-h-full max-w-full" /> : <img src={preview?.url} className="max-h-full max-w-full object-contain" alt="Preview" />}
+            {preview?.file.type.startsWith('video') ? <video src={preview.url} controls className="max-h-full max-w-full" /> : <img src={preview?.url} className="max-h-full max-w-full object-contain" />}
           </div>
           <div className="space-y-4 pt-2">
             <Input placeholder="Add a caption..." value={caption} onChange={e => setCaption(e.target.value)} className="bg-muted/50 border-0" />
@@ -653,10 +902,10 @@ export default function Discover() {
                 <Card key={c.id} className="hover:shadow-md transition-all border-border/50 cursor-pointer">
                   <CardContent className="p-4 flex gap-4 items-center">
                     <img 
-                      src={c.cover_url || c.avatar_url || '/default-avatar.png'} 
-                      className="w-14 h-14 rounded-2xl bg-muted object-cover" 
-                      alt={c.name}
-                    />
+  src={c.cover_url || c.avatar_url || '/default-avatar.png'} 
+  className="w-14 h-14 rounded-2xl bg-muted object-cover" 
+  alt={c.name}
+/>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold truncate text-lg">{c.name}</h3>
@@ -718,35 +967,31 @@ export default function Discover() {
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-  <div className="flex items-center gap-2">
-    <h3 className="font-bold text-base truncate">{e.title}</h3>
-    {e.is_attending && (
-      <Badge className="bg-green-600 text-xs">
-        <Check className="w-3 h-3 mr-1" />
-        Going
-      </Badge>
-    )}
-    {e.is_sponsored && (
-      <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">
-        Sponsored
-      </Badge>
-    )}
-    {/* ADDED: Show price badge */}
-    {e.price !== undefined && e.price > 0 && (
-      <Badge variant="outline" className="text-[10px] h-5 border-primary text-primary">
-        ${e.price}
-      </Badge>
-    )}
-  </div>
-  <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-    <MapPin className="w-3.5 h-3.5" /> 
-    <span className="truncate">{e.location}</span>
-  </div>
-  <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-    <Users className="w-3 h-3" />
-    {e.attendee_count || 0} attending
-  </div>
-</div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-base truncate">{e.title}</h3>
+                        {e.is_attending && (
+                          <Badge className="bg-green-600 text-xs">
+                            <Check className="w-3 h-3 mr-1" />
+                            Going
+                          </Badge>
+                        )}
+                         {/* [MODIFIED: Added Sponsored Badge] */}
+                        {e.is_sponsored && (
+                          <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">
+                            Sponsored
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                        <MapPin className="w-3.5 h-3.5" /> 
+                        <span className="truncate">{e.location}</span>
+                      </div>
+                      {/* [MODIFIED: Ensure attendee count is always visible] */}
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                        <Users className="w-3 h-3" />
+                        {e.attendee_count || 0} attending
+                      </div>
+                    </div>
                     <Button 
                       size="sm" 
                       variant={e.is_attending ? "default" : "outline"}
@@ -786,7 +1031,7 @@ export default function Discover() {
                   onClick={() => setSelectedEvent(e)}
                 >
                   <div className="h-32 bg-muted relative">
-                    {e.image_url && <img src={e.image_url} className="w-full h-full object-cover" alt={e.title} />}
+                    {e.image_url && <img src={e.image_url} className="w-full h-full object-cover" />}
                     <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full backdrop-blur-md flex gap-1 font-bold items-center">
                       <Sparkles className="w-3 h-3 text-yellow-400" /> 
                       {(e.match_score || 95).toFixed(0)}% Match
