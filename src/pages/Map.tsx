@@ -393,7 +393,7 @@ const { data: events = [], isLoading: eventsLoading } = useQuery({
             </Button>
           </div>
 
-          <div className="max-h-[45vh] overflow-y-auto px-4 pb-6">
+          <div className="relative max-h-[45vh] overflow-y-auto px-4 pb-6">
             {/* Conditional Rendering */}
             {selectedFriend && activeView === 'friends' ? (
                 <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
