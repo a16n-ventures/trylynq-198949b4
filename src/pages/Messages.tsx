@@ -777,7 +777,7 @@ const createCommunity = useMutation({
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full h-9 w-9"><MoreVertical className="h-4 h-4" /></Button>
+                <Button variant="ghost" size="icon" className="rounded-full h-9 w-9"><MoreVertical className="w-4 h-4" /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem onClick={() => setIsInfoOpen(true)}>
@@ -1094,7 +1094,7 @@ const createCommunity = useMutation({
     type: 'community', 
     id: comm.id, 
     name: comm.name, 
-    avatar: comm.cover || comm.cover_url || comm.avatar,  // Use all possible fields
+    avatar: comm.cover || comm.cover_url || comm.avatar, 
     cover: comm.cover || comm.cover_url,
     cover_url: comm.cover_url,
     description: comm.description, 
