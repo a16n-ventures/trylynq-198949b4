@@ -694,7 +694,7 @@ export default function Discover() {
       const { error: transactionError } = await supabase.from('transactions').insert({
         user_id: paymentData.user_id,
         amount: paymentData.amount,
-        type: 'debit',
+        type: 'purchase',
         status: 'pending',
         description: `Event ticket: ${paymentData.event_title}`,
         reference: paymentData.tx_ref,
@@ -1037,7 +1037,7 @@ export default function Discover() {
       title="No Communities Yet" 
       desc="Be the first to start a tribe in your area." 
       action="Create Community" 
-      onAction={() => navigate('/app/messages')} 
+      onAction={() => navigate('/app/messages?tab=community')} 
     />
   ) : (
     communities.map(c => (
