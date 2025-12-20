@@ -710,7 +710,7 @@ const CreateEvent = () => {
 
       {/* Share Dialog */}
       <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto">
           <DialogHeader>
             <DialogTitle>Event Created Successfully! 🎉</DialogTitle>
             <DialogDescription>
