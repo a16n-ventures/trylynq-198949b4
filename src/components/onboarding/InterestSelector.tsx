@@ -46,8 +46,6 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
 
     setLoading(true);
     try {
-      // CHANGED: Use .upsert() instead of .update()
-      // This creates the row if it's missing (fixing broken signups)
       const { data, error } = await supabase
         .from('profiles')
         .upsert({ 
@@ -55,16 +53,15 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
           interests: selected,
           updated_at: new Date().toISOString(),
         }, { 
-          onConflict: 'user_id' // Ensure we don't create duplicates
+          onConflict: 'user_id'
         })
-       .select();
+        .select();
 
       if (error) {
         console.error("Supabase Update Error:", error.message, error.details);
         throw new Error(error.message);
       }
 
-      // If no data returned, RLS likely silently blocked the update
       if (!data || data.length === 0) {
         console.error("Update failed: No rows returned. Check RLS policies.");
         throw new Error("Update blocked by security policy.");
@@ -72,7 +69,7 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
 
       console.log("Save successful:", data);
 
-      // 2. Optional: Trigger AI (wrapped in try/catch so it doesn't block the main flow)
+      // Optional: Trigger AI
       try {
         await supabase.functions.invoke('generate-user-embedding', {
           body: { user_id: user.id, interests: selected }
@@ -87,11 +84,45 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
     } catch (err: any) {
       console.error("Full Error Object:", err);
       toast.error(`Failed to save: ${err.message || "Unknown error"}`);
-    } finally {
-      setLoading(false);
+      setLoading(false); // ✅ Only reset on error
     }
+    // ✅ Don't reset loading on success - let the full-screen loader show during navigation
   };
 
+  // ✅ FULL-SCREEN LOADER - Shows while saving and navigating
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[500px] p-8 animate-in fade-in zoom-in-95 duration-300">
+        <div className="text-center space-y-6">
+          {/* Animated icon */}
+          <div className="relative w-20 h-20 mx-auto">
+            <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" />
+            <div className="relative w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
+              <Sparkles className="w-10 h-10 text-primary animate-pulse" />
+            </div>
+          </div>
+
+          {/* Main message */}
+          <div className="space-y-2">
+            <h3 className="text-2xl font-bold tracking-tight">
+              Setting up your experience...
+            </h3>
+            <p className="text-muted-foreground max-w-sm mx-auto">
+              We're personalizing your feed based on your interests
+            </p>
+          </div>
+
+          {/* Loading indicator */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>This will only take a moment</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ NORMAL INTEREST SELECTION UI
   return (
     <div className="flex flex-col h-full max-w-md mx-auto p-6 animate-in fade-in slide-in-from-bottom-4">
       <div className="text-center mb-6 space-y-2">
@@ -152,3 +183,45 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
     </div>
   );
 }
+
+// ============================================================================
+// COMPLETE FLOW SUMMARY
+// ============================================================================
+
+/**
+ * ✅ USER EXPERIENCE NOW:
+ * 
+ * 1. User signs up
+ * 2. Lands on /onboarding (no loader)
+ * 3. Sees interest selection UI
+ * 4. Selects 3+ interests
+ * 5. Clicks "Continue"
+ * 6. Button shows "Personalizing..." (immediate feedback)
+ * 7. Full screen changes to "Setting up your experience..." (this component)
+ * 8. Interests save to database
+ * 9. onComplete() navigates to /app/discover
+ * 10. ProtectedRoute checks interests (finds them)
+ * 11. User sees their feed (no loader in ProtectedRoute)
+ * 
+ * LOADERS:
+ * ✅ InterestSelector: "Setting up your experience..." (while saving)
+ * ✅ ProtectedRoute: "Loading..." (only during auth check)
+ * ❌ ProtectedRoute: NO "Setting up..." on app pages (we removed it)
+ */
+
+// ============================================================================
+// KEY CHANGES FROM ORIGINAL
+// ============================================================================
+
+/**
+ * CHANGED:
+ * 1. Added full-screen loader that replaces entire component when loading=true
+ * 2. Moved setLoading(false) to only happen on error (line 68)
+ * 3. Don't reset loading on success - let it show during navigation
+ * 4. Added animations for smooth transition
+ * 
+ * RESULT:
+ * - User sees clear feedback that something is happening
+ * - No blank screen or jarring transitions
+ * - "Setting up..." appears ONLY on onboarding, never on /app pages
+ */
