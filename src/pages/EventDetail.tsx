@@ -252,8 +252,8 @@ const EventDetail = () => {
       // Fetch friend profiles
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, display_name, avatar_url')
-        .in('id', friendIds);
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', friendIds);
       
       return profiles || [];
     },
