@@ -321,34 +321,78 @@ profiles?.forEach((p: any) => {
   // FIXED FRIENDS HOOK - Robust name resolution
   const { friends: rawFriends = [] } = useFriends(user?.id);
 
-  const friends = useMemo(() => {
-  if (!rawFriends || !user?.id) return [];
-  
-  console.log("👫 Processing friends:", rawFriends.length);
-  
-  return rawFriends.map((f: any) => {
-    // Get the correct profile based on relationship
-    const rawProfile = f.requester_id === user.id ? f.addressee : f.requester;
-    const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
-    
-    if (!profile) {
-      console.warn('⚠️ Missing profile in friend relationship:', f);
-      return null;
-    }
+// Debug: Log raw friends structure
+useEffect(() => {
+  if (rawFriends && rawFriends.length > 0) {
+    console.log("🔍 Raw friends structure:", JSON.stringify(rawFriends[0], null, 2));
+  }
+}, [rawFriends]);
 
-    const friendId = profile.user_id || profile.id;  // Use user_id first
-    const friendName = getDisplayName(profile);
+const friends = useMemo(() => {
+  if (!rawFriends || !user?.id) {
+    console.log("❌ No friends data available");
+    return [];
+  }
+  
+  console.log("👫 Processing", rawFriends.length, "friend relationships");
+  
+  const processed = rawFriends
+    .map((friendship: any, index: number) => {
+      console.log(`\n--- Processing friendship ${index + 1} ---`);
+      console.log("Friendship data:", friendship);
+      
+      let profile = null;
+      let friendId = null;
 
-    console.log(`✅ Friend: ${friendName} (${friendId})`);
-    
-    return {
-      id: friendId,
-      name: friendName,
-      avatar: profile.avatar_url,
-      is_online: false,
-      last_seen: profile.last_seen || null
-    };
-  }).filter(Boolean);
+      // Case 1: Current user is requester (they sent the request)
+      if (friendship.requester_id === user.id) {
+        console.log("→ User is requester, friend is addressee");
+        profile = Array.isArray(friendship.addressee) 
+          ? friendship.addressee[0] 
+          : friendship.addressee;
+        friendId = friendship.addressee_id;
+      } 
+      // Case 2: Current user is addressee (they received the request)
+      else if (friendship.addressee_id === user.id) {
+        console.log("→ User is addressee, friend is requester");
+        profile = Array.isArray(friendship.requester) 
+          ? friendship.requester[0] 
+          : friendship.requester;
+        friendId = friendship.requester_id;
+      }
+      // Case 3: Fallback - shouldn't happen but handle gracefully
+      else {
+        console.warn("⚠️ User ID doesn't match requester or addressee!");
+        return null;
+      }
+
+      // Validate we have the data we need
+      if (!profile) {
+        console.error("❌ Profile is null/undefined");
+        console.error("Friendship object:", friendship);
+        return null;
+      }
+
+      if (!friendId) {
+        console.error("❌ Friend ID could not be determined");
+        return null;
+      }
+
+      const displayName = getDisplayName(profile);
+      console.log(`✅ Resolved: ${displayName} (ID: ${friendId})`);
+      
+      return {
+        id: friendId,
+        name: displayName,
+        avatar: profile.avatar_url || null,
+        is_online: profile.is_online || false,
+        last_seen: profile.last_seen || null
+      };
+    })
+    .filter((f): f is NonNullable<typeof f> => f !== null);
+
+  console.log(`\n✅ Successfully processed ${processed.length} out of ${rawFriends.length} friends\n`);
+  return processed;
 }, [rawFriends, user?.id]);
   // FIXED: Messages query with proper sender name resolution
   const { data: messages = [] } = useQuery({
@@ -1155,7 +1199,7 @@ const createCommunity = useMutation({
             </div>
           )}
 
-          <ScrollArea className="flex-1 px-6 h-[400px]"> 
+          <ScrollArea className="flex-1 px-6"> 
             <div className="space-y-6 pb-6 pt-2">
               {friends.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
