@@ -370,10 +370,42 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
           <span className="text-white font-bold text-sm drop-shadow-md">{user.display_name || 'User'}</span>
         </div>
         <div className="flex-1 flex items-center justify-center bg-black relative" onClick={next}>
-          <div className="w-full h-full flex items-center justify-center p-8">
-            <p className="text-white text-xl text-center">{current.content || ''}</p>
-          </div>
-        </div>
+  <div className="w-full h-full flex items-center justify-center p-4">
+    {current.media_url ? (
+      // Show uploaded media
+      current.media_type === 'video' ? (
+        <video 
+          src={current.media_url} 
+          className="max-w-full max-h-full object-contain rounded-lg"
+          autoPlay
+          loop
+          muted
+          playsInline
+        />
+      ) : (
+        <img 
+          src={current.media_url} 
+          className="max-w-full max-h-full object-contain rounded-lg"
+          alt="Story"
+        />
+      )
+    ) : (
+      // Fallback to text-only story
+      <p className="text-white text-xl text-center px-8 leading-relaxed">
+        {current.content || ''}
+      </p>
+    )}
+  </div>
+  
+  {/* Show caption if media exists */}
+  {current.media_url && current.content && (
+    <div className="absolute bottom-20 left-0 right-0 px-6">
+      <p className="text-white text-center text-sm bg-black/40 backdrop-blur-sm rounded-full py-2 px-4">
+        {current.content}
+      </p>
+    </div>
+  )}
+</div>
         <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
           <Input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Reply..." className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0" onClick={(e) => e.stopPropagation()} />
           <Button size="icon" variant="ghost" className="text-white rounded-full hover:bg-white/10" onClick={(e) => { e.stopPropagation(); setLiked(!liked); toast.success("Reaction sent ❤️"); }}><Heart className={`w-7 h-7 transition-transform active:scale-125 ${liked ? 'fill-red-500 text-red-500' : ''}`} /></Button>
@@ -1096,17 +1128,68 @@ if (storyData) {
       </div>
 
             <Dialog open={!!preview} onOpenChange={() => setPreview(null)}>
-        <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-xl border-0">
-          <DialogHeader><DialogTitle>Create Story</DialogTitle></DialogHeader>
-          <div className="aspect-[9/16] bg-black/10 rounded-xl overflow-hidden flex items-center justify-center relative border">
-            {preview?.file.type.startsWith('video') ? <video src={preview.url} controls className="max-h-full max-w-full" /> : <img src={preview?.url} className="max-h-full max-w-full object-contain" />}
-          </div>
-          <div className="space-y-4 pt-2">
-            <Input placeholder="Add a caption..." value={caption} onChange={e => setCaption(e.target.value)} className="bg-muted/50 border-0" />
-            <DialogFooter className="gap-2"><Button variant="ghost" onClick={() => setPreview(null)}>Cancel</Button><Button onClick={handleUpload} disabled={uploading} className="gradient-primary text-white">{uploading ? <Loader2 className="animate-spin" /> : 'Share to Story'}</Button></DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
+  <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-xl border-0">
+    <DialogHeader>
+      <DialogTitle>Create Story</DialogTitle>
+    </DialogHeader>
+    
+    {/* ✅ FIXED: Reduced height to prevent overflow */}
+    <div className="h-[40vh] max-h-[400px] min-h-[300px] bg-black/10 rounded-xl overflow-hidden flex items-center justify-center relative border">
+      {preview?.file.type.startsWith('video') ? (
+        <video 
+          src={preview.url} 
+          controls 
+          className="max-h-full max-w-full object-contain" 
+        />
+      ) : (
+        <img 
+          src={preview?.url} 
+          className="max-h-full max-w-full object-contain" 
+          alt="Preview"
+        />
+      )}
+    </div>
+    
+    <div className="space-y-4 pt-2">
+      <Input 
+        placeholder="Add a caption..." 
+        value={caption} 
+        onChange={e => setCaption(e.target.value)} 
+        className="bg-muted/50 border-0" 
+        maxLength={150}
+      />
+      <div className="text-xs text-muted-foreground text-right">
+        {caption.length}/150
+      </div>
+      
+      <DialogFooter className="gap-2">
+        <Button 
+          variant="ghost" 
+          onClick={() => setPreview(null)}
+        >
+          Cancel
+        </Button>
+        <Button 
+          onClick={handleUpload} 
+          disabled={uploading} 
+          className="gradient-primary text-white"
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Uploading...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Share to Story
+            </>
+          )}
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
 
       {/* TABS */}
       <div className="px-1">
