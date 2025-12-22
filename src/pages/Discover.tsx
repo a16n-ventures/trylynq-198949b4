@@ -17,7 +17,14 @@ import { useNavigate } from "react-router-dom";
 
 // --- TYPES ---
 interface Profile { id: string; display_name: string | null; avatar_url: string | null; }
-interface Story { id: string; content: string | null; created_at: string; author_id: string | null; }
+interface Story { 
+  id: string; 
+  content: string | null; 
+  created_at: string; 
+  author_id: string | null;
+  media_url?: string | null; 
+  media_type?: 'image' | 'video' | null; 
+}
 interface Community { 
   id: string; 
   name: string; 
@@ -406,9 +413,33 @@ export default function Discover() {
         setCurrentUserProfile({ id: me.id, display_name: me.display_name, avatar_url: me.avatar_url });
       }
       
-      const yesterday = new Date(Date.now() - 864e5).toISOString();
-      const { data: storyData } = await supabase.from('profiles').select('id, display_name, avatar_url, stories:stories!author_id(id, created_at)').filter('stories.created_at', 'gte', yesterday).returns<ProfileWithStoryInner[]>();
-      if (storyData) setStoryUsers(Array.from(new Map(storyData.map(i => [i.id, { id: i.id, display_name: i.display_name, avatar_url: i.avatar_url }])).values()));
+      const yesterday = new Date();
+yesterday.setHours(yesterday.getHours() - 24);
+
+const { data: storyData } = await supabase
+  .from('profiles')
+  .select(`
+    id, 
+    display_name, 
+    avatar_url, 
+    stories:stories!author_id(id, created_at, content, media_url, media_type)
+  `)
+  .gte('stories.created_at', yesterday.toISOString())
+  .order('stories.created_at', { ascending: false, foreignTable: 'stories' });
+
+if (storyData) {
+  // Only show profiles that have stories in the last 24 hours
+  const usersWithStories = storyData
+    .filter((p: any) => p.stories && p.stories.length > 0)
+    .map((p: any) => ({
+      id: p.id,
+      display_name: p.display_name,
+      avatar_url: p.avatar_url
+    }));
+  
+  setStoryUsers(usersWithStories);
+  console.log(`✅ Found ${usersWithStories.length} users with active stories`);
+}
 
       // 2. Communities with membership status (use left join instead of inner)
       const { data: comms, error: commsError } = await supabase
@@ -430,27 +461,40 @@ export default function Discover() {
           .select('community_id, role')
           .eq('user_id', user.id);
         
-        const membershipMap = new Map(memberships?.map(m => [m.community_id, m.role]) || []);
+        const membershipMap = new Map(memberships?.map(m => [m.community_id, m.role]) || []); 
+
+        const communityIds = comms.map(c => c.id);
+  const { data: memberCounts } = await supabase
+    .from('community_members')
+    .select('community_id')
+    .in('community_id', communityIds);
+  
+  const memberCountMap = new Map<string, number>();
+  memberCounts?.forEach((m: any) => {
+    memberCountMap.set(m.community_id, (memberCountMap.get(m.community_id) || 0) + 1);
+  });
         
         const enrichedComms: Community[] = comms.map((c: any) => {
-        const isMember = membershipMap.has(c.id);
-        const role = membershipMap.get(c.id) as 'admin' | 'member' | undefined;
-        
-        console.log(`✅ Community: "${c.name}" - Members: ${c.member_count || 0} - Cover: ${c.cover_url ? 'Yes' : 'No'} - Joined: ${isMember}`);
+    const isMember = membershipMap.has(c.id);
+    const role = membershipMap.get(c.id) as 'admin' | 'member' | undefined;
+    const actualMemberCount = memberCountMap.get(c.id) || 0;  // ✅ Always accurate
+    
+    console.log(`✅ Community: "${c.name}" - Actual: ${actualMemberCount} - DB: ${c.member_count} - Joined: ${isMember}`);
+    
+    return {
+      id: c.id,
+      name: c.name,
+      member_count: actualMemberCount,  // ✅ Use calculated count
+      description: c.description,
+      avatar_url: c.cover_url || c.avatar_url,
+      cover_url: c.cover_url,
+      is_member: isMember,
+      my_role: role || null
+    };
+  });
   
-          return {
-            id: c.id,
-            name: c.name,
-            member_count: c.member_count || 0,  // Ensure it's a number
-            description: c.description,
-            avatar_url: c.cover_url || c.avatar_url,  // FIXED: Prioritize cover_url
-            cover_url: c.cover_url,  // Keep original cover_url
-            is_member: isMember,
-            my_role: role || null
-          };
-        });
-        setCommunities(enrichedComms);
-      }
+  setCommunities(enrichedComms);
+}
       
       // 3. Events with RSVP status
       const { data: evts } = await supabase
@@ -573,26 +617,71 @@ export default function Discover() {
   }, [user]);
 
   const handleUpload = async () => {
-    if (!preview || !user) return;
-    setUploading(true);
-    try {
-      const ext = preview.file.name.split('.').pop();
-      const path = `${user.id}/${Date.now()}.${ext}`;
-      await supabase.storage.from('stories').upload(path, preview.file);
-      const { data: { publicUrl } } = supabase.storage.from('stories').getPublicUrl(path);
-      await supabase.from('stories').insert({ 
+  if (!preview || !user) return;
+  setUploading(true);
+  
+  try {
+    // 1. Upload media to storage
+    const ext = preview.file.name.split('.').pop();
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('stories')
+      .upload(path, preview.file);
+    
+    if (uploadError) throw uploadError;
+    
+    // 2. Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('stories')
+      .getPublicUrl(path);
+    
+    // 3. Create story record with media URL
+    const { error: insertError } = await supabase
+      .from('stories')
+      .insert({ 
         author_id: user.id, 
-        content: caption || 'New story'
+        content: caption || null,
+        media_url: publicUrl,  // ✅ Store media URL
+        media_type: preview.file.type.startsWith('video') ? 'video' : 'image'
       });
-      toast.success("Story posted!");
-      setPreview(null);
-      setCaption("");
-      window.location.reload();
-    } catch (e) { 
-      toast.error("Upload failed"); 
+    
+    if (insertError) throw insertError;
+    
+    toast.success("Story posted! 📸");
+    setPreview(null);
+    setCaption("");
+    
+    // Refresh stories without full page reload
+    const yesterday = new Date();
+    yesterday.setHours(yesterday.getHours() - 24);
+    
+    const { data: updatedStories } = await supabase
+      .from('profiles')
+      .select(`
+        id, display_name, avatar_url, 
+        stories:stories!author_id(id, created_at, content, media_url, media_type)
+      `)
+      .gte('stories.created_at', yesterday.toISOString());
+    
+    if (updatedStories) {
+      const usersWithStories = updatedStories
+        .filter((p: any) => p.stories && p.stories.length > 0)
+        .map((p: any) => ({
+          id: p.id,
+          display_name: p.display_name,
+          avatar_url: p.avatar_url
+        }));
+      setStoryUsers(usersWithStories);
     }
+    
+  } catch (e: any) {
+    console.error("Story upload error:", e);
+    toast.error(e.message || "Upload failed");
+  } finally {
     setUploading(false);
-  };
+  }
+};
 
   const handleJoinCommunity = async (communityId: string) => {
   if (!user) return;
