@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { 
   Users, Calendar, MapPin, X, Loader2, Plus, 
   Heart, Share2, Sparkles, Lock, RefreshCw, Check,
-  Clock, Ticket, ExternalLink, Megaphone, MessageSquare
+  Clock, Ticket, ExternalLink, Megaphone, MessageSquare,
+MoreVertical, Trash2, Copy 
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns"; 
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -333,9 +335,6 @@ const EmptyState = ({ icon: Icon, title, desc, action, onAction }: any) => (
     </CardContent>
   </Card>
 );
-
-const [showStoryActions, setShowStoryActions] = useState(false);
-const [deletingStory, setDeletingStory] = useState(false);
 
 // Then update the StoryViewer component:
 
