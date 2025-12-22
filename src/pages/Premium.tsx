@@ -7,7 +7,10 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext'; 
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery, useQueryClient } from '@tanstack/react-query'; 
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePremiumFeatures, useHasFeature } from '@/hooks/usePremiumFeatures';
+import { initiatePremiumPayment } from '@/utils/premiumPayment';
+import { FeatureCard } from '@/components/premium/FeatureCard';
 
 // --- Type definitions ---
 declare global {
@@ -41,6 +44,12 @@ const Premium = () => {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const { data: premiumFeatures = [], isLoading: isLoadingFeatures } = usePremiumFeatures(user?.id);
+  const hasFullPackage = useHasFeature(user?.id, 'full_package');
+  const hasProfileBoost = useHasFeature(user?.id, 'profile_boost');
+  const hasEventBoost = useHasFeature(user?.id, 'event_boost');
+  const hasProfileBadge = useHasFeature(user?.id, 'profile_badge');
 
   // --- 1. CHECK SUBSCRIPTION STATUS ---
   const { data: subscription, isLoading: isLoadingSub } = useQuery({
@@ -78,7 +87,7 @@ const Premium = () => {
     const remotePrice = settings?.find(s => s.key === 'premium_prices')?.value as { monthly?: number; yearly?: number } | undefined;
     return {
       monthly: remotePrice?.monthly || 2499, 
-      yearly: remotePrice?.yearly || 19999   
+      yearly: remotePrice?.yearly || 24999   
     };
   }, [settings]);
 
@@ -90,12 +99,11 @@ const Premium = () => {
   }, []);
 
   // --- 3. PAYMENT HANDLER ---
-  const handlePayment = (amount: number, title: string) => {
-    if (isPremiumActive) {
-      toast.info("You are already a Premium member!");
-      return;
-    }
-
+  const handlePayment = (
+    featureType: 'full_package' | 'profile_boost' | 'event_boost' | 'profile_badge',
+    amount: number,
+    title: string
+  ) => {
     if (!scriptLoaded || !FLUTTERWAVE_PUBLIC_KEY) {
       toast.error('Payment system loading...');
       return;
@@ -107,42 +115,29 @@ const Premium = () => {
     }
 
     setIsProcessing(true);
-    const tx_ref = `lynq-${user.id}-${Date.now()}`;
 
-    const config = {
-      public_key: FLUTTERWAVE_PUBLIC_KEY,
-      tx_ref: tx_ref,
-      amount: amount,
-      currency: "NGN",
-      payment_options: "card, banktransfer, ussd",
-      customer: {
-        email: user.email || "user@try.usecorridor.xyz/ahmia",
-        name: user.email || "Ahmia User",
+    initiatePremiumPayment(
+      {
+        userId: user.id,
+        userEmail: user.email || '',
+        featureType,
+        amount,
+        billingPeriod,
+        featureTitle: title
       },
-      customizations: {
-        title: "Ahmia Premium",
-        description: `Upgrade to ${title}`,
-        logo: "https://try.usecorridor.xyz/ahmia/logo.png",
+      FLUTTERWAVE_PUBLIC_KEY,
+      () => {
+        // Success callback
+        queryClient.invalidateQueries({ queryKey: ['premium-features'] });
+        navigate('/app/profile');
+        setIsProcessing(false);
       },
-      callback: async function(response: any) {
-        const toastId = toast.loading("Verifying transaction...");
-        try {
-          await new Promise(r => setTimeout(r, 2000));
-          await queryClient.invalidateQueries({ queryKey: ['subscription'] });
-          toast.success("Transaction successful!", { id: toastId });
-          navigate('/app/profile');
-        } catch (err) {
-          console.error(err);
-          toast.info("Payment received! Updating account...", { id: toastId });
-          navigate('/app/profile');
-        } finally {
-          setIsProcessing(false);
-        }
-      },
-      onclose: function() {
+      () => {
+        // Close callback
         setIsProcessing(false);
       }
-    };
+    );
+  };
 
     window.FlutterwaveCheckout && window.FlutterwaveCheckout(config);
   };
@@ -336,11 +331,30 @@ const Premium = () => {
         </Card>
 
         {/* 2. SINGLE UPGRADES SECTION (Restored) */}
-        {!isPremiumActive && (
+                {!hasFullPackage && (
           <div className="space-y-3 pt-2">
             <h3 className="font-semibold text-sm text-muted-foreground ml-1 uppercase tracking-wider">Single Upgrades</h3>
-            {singleFeatures.map((feature, index) => (
-              <SingleFeatureCard key={index} feature={feature} />
+            {singleFeatures.map((feature) => (
+              <FeatureCard
+                key={feature.type}
+                icon={feature.icon}
+                title={feature.title}
+                description={feature.description}
+                monthlyPrice={pricing[feature.type].monthly}
+                yearlyPrice={pricing[feature.type].yearly}
+                billingPeriod={billingPeriod}
+                isProcessing={isProcessing}
+                isActive={
+                  feature.type === 'profile_boost' ? hasProfileBoost :
+                  feature.type === 'event_boost' ? hasEventBoost :
+                  hasProfileBadge
+                }
+                onPurchase={() => handlePayment(
+                  feature.type,
+                  billingPeriod === 'monthly' ? pricing[feature.type].monthly : pricing[feature.type].yearly,
+                  feature.title
+                )}
+              />
             ))}
           </div>
         )}
