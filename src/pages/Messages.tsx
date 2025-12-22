@@ -607,69 +607,207 @@ const createCommunity = useMutation({
     }
   });
 
-  const sendMessage = useMutation({
-    mutationFn: async (vars: { content: string | null; file: File | null }) => {
-      if ((!vars.content && !vars.file) || !selectedChat || !user) return;
-
-      let imageUrl: string | null = null;
-      if (vars.file) {
-        const fileExt = vars.file.name.split('.').pop();
-        const filePath = `${user.id}/${Date.now()}.${fileExt}`;
-        const { error } = await supabase.storage.from('chat-attachments').upload(filePath, vars.file);
-        if (error) throw error;
-        const { data } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
-        imageUrl = data.publicUrl;
-      }
-
-      const payload = { sender_id: user.id, content: vars.content || null, image_url: imageUrl };
-
-      if (selectedChat.type === 'dm') {
-        const { error } = await supabase.from('messages').insert({ ...payload, receiver_id: selectedChat.partner_id } as any);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('community_messages').insert({ ...payload, community_id: selectedChat.id } as any);
-        if (error) throw error;
-      }
-    },
-    onMutate: async (vars) => {
-      if (!selectedChat || !user) return;
-      await queryClient.cancelQueries({ queryKey: ['messages', selectedChat.type, selectedChat.id] });
-      const previousMessages = queryClient.getQueryData<Message[]>(['messages', selectedChat.type, selectedChat.id]);
-
-      const optimisticMessage: Message = {
-        id: `temp-${Date.now()}`,
-        content: vars.content ?? null,
-        image_url: vars.file ? URL.createObjectURL(vars.file) : undefined,
-        created_at: new Date().toISOString(),
-        sender_id: user.id,
-        is_me: true,
-        pending: true
-      };
-      queryClient.setQueryData(['messages', selectedChat.type, selectedChat.id], (old: Message[] | undefined) => {
-        return old ? [...old, optimisticMessage] : [optimisticMessage];
-      });
-
-      setMessageInput('');
-      if (imagePreview?.startsWith('blob:')) {
-        try { URL.revokeObjectURL(imagePreview); } catch {}
-      }
-      setImageFile(null);
-      setImagePreview(null);
-      scrollToBottom();
-
-      return { previousMessages };
-    },
-    onError: (err: any, _vars, context: any) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(['messages', selectedChat?.type, selectedChat?.id], context.previousMessages);
-      }
-      toast.error("Failed to send message");
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages', selectedChat?.type, selectedChat?.id] });
-      queryClient.invalidateQueries({ queryKey: ['dm_list'] });
+const sendMessage = useMutation({
+  mutationFn: async (vars: { content: string | null; file: File | null }) => {
+    // Validation
+    if ((!vars.content && !vars.file) || !selectedChat || !user) {
+      throw new Error('Missing required data');
     }
-  });
+
+    console.log('📤 Sending message:', {
+      type: selectedChat.type,
+      hasContent: !!vars.content,
+      hasFile: !!vars.file
+    });
+
+    // 1. Upload file if exists
+    let imageUrl: string | null = null;
+    if (vars.file) {
+      console.log('📁 Uploading file...');
+      
+      const fileExt = vars.file.name.split('.').pop();
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError, data: uploadData } = await supabase.storage
+        .from('chat-attachments')
+        .upload(filePath, vars.file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (uploadError) {
+        console.error('❌ Upload error:', uploadError);
+        throw new Error(`Upload failed: ${uploadError.message}`);
+      }
+      
+      const { data: urlData } = supabase.storage
+        .from('chat-attachments')
+        .getPublicUrl(filePath);
+      
+      imageUrl = urlData.publicUrl;
+      console.log('✅ File uploaded:', imageUrl);
+    }
+
+    // 2. Insert message based on type
+    if (selectedChat.type === 'dm') {
+      console.log('💬 Sending DM to:', selectedChat.partner_id);
+      
+      // ✅ FIX: Include all required fields for messages table
+      const dmPayload = {
+        sender_id: user.id,
+        receiver_id: selectedChat.partner_id,
+        content: vars.content || null,
+        image_url: imageUrl,
+        is_read: false,  // ✅ ADD THIS if column exists
+        created_at: new Date().toISOString()  // ✅ Explicit timestamp
+      };
+      
+      console.log('📦 DM Payload:', dmPayload);
+      
+      const { data, error } = await supabase
+        .from('messages')
+        .insert(dmPayload)
+        .select()  // ✅ Return inserted data
+        .single();
+      
+      if (error) {
+        console.error('❌ DM Insert Error:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw new Error(`DM failed: ${error.message}`);
+      }
+      
+      console.log('✅ DM sent:', data);
+      return data;
+      
+    } else {
+      console.log('🏛️ Sending community message to:', selectedChat.id);
+      
+      // ✅ FIX: Include all required fields for community_messages table
+      const communityPayload = {
+        sender_id: user.id,
+        community_id: selectedChat.id,
+        content: vars.content || null,
+        image_url: imageUrl,
+        created_at: new Date().toISOString(),
+        is_deleted: false,  // ✅ ADD THIS if column exists
+        is_pinned: false    // ✅ ADD THIS if column exists
+      };
+      
+      console.log('📦 Community Payload:', communityPayload);
+      
+      const { data, error } = await supabase
+        .from('community_messages')
+        .insert(communityPayload)
+        .select()  // ✅ Return inserted data
+        .single();
+      
+      if (error) {
+        console.error('❌ Community Insert Error:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw new Error(`Community message failed: ${error.message}`);
+      }
+      
+      console.log('✅ Community message sent:', data);
+      return data;
+    }
+  },
+  
+  onMutate: async (vars) => {
+    if (!selectedChat || !user) return;
+    
+    console.log('🔄 Optimistic update...');
+    
+    // Cancel outgoing queries
+    await queryClient.cancelQueries({ 
+      queryKey: ['messages', selectedChat.type, selectedChat.id] 
+    });
+    
+    // Snapshot previous value
+    const previousMessages = queryClient.getQueryData<Message[]>([
+      'messages', 
+      selectedChat.type, 
+      selectedChat.id
+    ]);
+
+    // Create optimistic message
+    const optimisticMessage: Message = {
+      id: `temp-${Date.now()}`,
+      content: vars.content ?? null,
+      image_url: vars.file ? URL.createObjectURL(vars.file) : undefined,
+      created_at: new Date().toISOString(),
+      sender_id: user.id,
+      is_me: true,
+      pending: true,
+      sender_name: 'You',  // ✅ ADD THIS
+      sender_avatar: undefined
+    };
+    
+    // Optimistically update cache
+    queryClient.setQueryData(
+      ['messages', selectedChat.type, selectedChat.id], 
+      (old: Message[] | undefined) => {
+        return old ? [...old, optimisticMessage] : [optimisticMessage];
+      }
+    );
+
+    // Clear input immediately
+    setMessageInput('');
+    if (imagePreview?.startsWith('blob:')) {
+      try { URL.revokeObjectURL(imagePreview); } catch {}
+    }
+    setImageFile(null);
+    setImagePreview(null);
+    scrollToBottom();
+
+    return { previousMessages };
+  },
+  
+  onError: (err: any, _vars, context: any) => {
+    console.error('❌ Send message error:', err);
+    
+    // Rollback optimistic update
+    if (context?.previousMessages) {
+      queryClient.setQueryData(
+        ['messages', selectedChat?.type, selectedChat?.id], 
+        context.previousMessages
+      );
+    }
+    
+    // Show specific error message
+    const errorMessage = err.message || 'Failed to send message';
+    toast.error(errorMessage);
+    
+    // Log for debugging
+    console.error('Full error object:', err);
+  },
+  
+  onSuccess: (data) => {
+    console.log('✅ Message sent successfully:', data);
+    toast.success('Message sent!');
+  },
+  
+  onSettled: () => {
+    console.log('🔄 Invalidating queries...');
+    
+    // Refetch messages
+    queryClient.invalidateQueries({ 
+      queryKey: ['messages', selectedChat?.type, selectedChat?.id] 
+    });
+    
+    // Refetch DM list (updates "last message")
+    queryClient.invalidateQueries({ 
+      queryKey: ['dm_list'] 
+    });
+  }
+});
 
   const editMessage = useMutation({
     mutationFn: async ({ msg, newContent }: { msg: Message, newContent: string }) => {
