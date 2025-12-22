@@ -172,7 +172,7 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
         >
           {loading ? (
             <>
-              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              <Loader2 className="w-5 h-5 mr-2 items-center animate-spin" />
               Personalizing...
             </>
           ) : (
