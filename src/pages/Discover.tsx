@@ -334,17 +334,30 @@ const EmptyState = ({ icon: Icon, title, desc, action, onAction }: any) => (
   </Card>
 );
 
+const [showStoryActions, setShowStoryActions] = useState(false);
+const [deletingStory, setDeletingStory] = useState(false);
+
+// Then update the StoryViewer component:
+
 function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) {
+  const { user: currentUser } = useAuth();
   const [stories, setStories] = useState<Story[]>([]);
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(false);
   const [msg, setMsg] = useState("");
+  const [showActions, setShowActions] = useState(false);  // ✅ NEW
 
   useEffect(() => {
     const load = async () => {
       const yesterday = new Date(Date.now() - 864e5).toISOString();
-      const { data } = await supabase.from('stories').select('id, content, created_at, author_id').eq('author_id', user.id).gte('created_at', yesterday).order('created_at', { ascending: true });
+      const { data } = await supabase
+        .from('stories')
+        .select('id, content, created_at, author_id, media_url, media_type')
+        .eq('author_id', user.id)
+        .gte('created_at', yesterday)
+        .order('created_at', { ascending: true });
+      
       if (data) setStories(data);
       setLoading(false);
     };
@@ -352,65 +365,225 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
   }, [user.id]);
 
   const current = stories[index];
+  const isMyStory = currentUser?.id === user.id;  // ✅ Check if viewing own story
+  
   const next = () => index < stories.length - 1 ? (setIndex(i => i + 1), setLiked(false)) : onClose();
   const prev = () => setIndex(i => Math.max(i - 1, 0));
 
-  if (loading) return <div className="fixed inset-0 z-50 bg-black flex items-center justify-center"><Loader2 className="text-white animate-spin" /></div>;
+  // ✅ NEW: Delete story function
+  const handleDeleteStory = async () => {
+    if (!current || !currentUser) return;
+    
+    const confirmed = window.confirm('Delete this story? This cannot be undone.');
+    if (!confirmed) return;
+    
+    try {
+      // Delete from database
+      const { error } = await supabase
+        .from('stories')
+        .delete()
+        .eq('id', current.id)
+        .eq('author_id', currentUser.id);  // Security: only delete own stories
+      
+      if (error) throw error;
+      
+      // Delete from storage if has media
+      if (current.media_url) {
+        const path = current.media_url.split('/').slice(-3).join('/');  // Extract path from URL
+        await supabase.storage.from('chat-attachments').remove([path]);
+      }
+      
+      toast.success('Story deleted');
+      
+      // If no more stories, close viewer
+      if (stories.length === 1) {
+        onClose();
+      } else {
+        // Remove from local state
+        setStories(prev => prev.filter(s => s.id !== current.id));
+        if (index >= stories.length - 1) setIndex(Math.max(0, index - 1));
+      }
+      
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete story');
+    }
+  };
+
+  // ✅ NEW: Share to DM function
+  const handleShareToDM = () => {
+    toast.info('Share to DM - Coming soon!');
+    // TODO: Navigate to messages with story link
+    // navigate('/app/messages', { state: { shareStory: current.id } });
+  };
+
+  if (loading) return (
+    <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+      <Loader2 className="text-white animate-spin" />
+    </div>
+  );
+  
   if (!current) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex items-center justify-center sm:p-4 animate-in fade-in duration-300">
-      <button onClick={onClose} className="absolute top-6 right-6 z-50 text-white/80 hover:text-white"><X className="w-8 h-8" /></button>
+      {/* Close button */}
+      <button 
+        onClick={onClose} 
+        className="absolute top-6 right-6 z-50 text-white/80 hover:text-white"
+      >
+        <X className="w-8 h-8" />
+      </button>
+      
+      {/* ✅ NEW: Actions menu (only for own stories) */}
+      {isMyStory && (
+        <button 
+          onClick={() => setShowActions(!showActions)} 
+          className="absolute top-6 right-20 z-50 text-white/80 hover:text-white"
+        >
+          <MoreVertical className="w-7 h-7" />
+        </button>
+      )}
+      
       <div className="relative w-full h-full sm:max-w-md sm:h-[85vh] bg-black sm:rounded-2xl overflow-hidden flex flex-col border border-white/10 shadow-2xl">
+        {/* Progress bars */}
         <div className="absolute top-0 w-full z-20 flex gap-1 p-2">
-          {stories.map((_, i) => <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm"><div className={`h-full bg-white transition-all duration-300 ${i <= index ? 'w-full' : 'w-0'}`} /></div>)}
+          {stories.map((_, i) => (
+            <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm">
+              <div className={`h-full bg-white transition-all duration-300 ${i <= index ? 'w-full' : 'w-0'}`} />
+            </div>
+          ))}
         </div>
+        
+        {/* User header */}
         <div className="absolute top-6 left-0 w-full p-4 z-20 flex items-center gap-3 bg-gradient-to-b from-black/60 to-transparent">
-          <img src={user.avatar_url || '/default-avatar.png'} className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" />
-          <span className="text-white font-bold text-sm drop-shadow-md">{user.display_name || 'User'}</span>
+          <img 
+            src={user.avatar_url || '/default-avatar.png'} 
+            className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" 
+            alt={user.display_name || 'User'}
+          />
+          <div className="flex-1">
+            <span className="text-white font-bold text-sm drop-shadow-md block">
+              {isMyStory ? 'Your Story' : (user.display_name || 'User')}
+            </span>
+            <span className="text-white/70 text-xs">
+              {formatDistanceToNow(new Date(current.created_at), { addSuffix: true })}
+            </span>
+          </div>
         </div>
+        
+        {/* ✅ NEW: Actions dropdown */}
+        {isMyStory && showActions && (
+          <div className="absolute top-20 right-4 z-30 bg-black/90 backdrop-blur-xl rounded-xl border border-white/20 overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <button 
+              onClick={handleDeleteStory}
+              className="w-full px-4 py-3 text-left text-red-400 hover:bg-red-500/20 flex items-center gap-3 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="text-sm font-medium">Delete Story</span>
+            </button>
+            <button 
+              onClick={handleShareToDM}
+              className="w-full px-4 py-3 text-left text-white hover:bg-white/10 flex items-center gap-3 transition-colors"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span className="text-sm font-medium">Share to DM</span>
+            </button>
+            <button 
+              onClick={() => {
+                navigator.clipboard.writeText(current.media_url || current.content || '');
+                toast.success('Copied!');
+              }}
+              className="w-full px-4 py-3 text-left text-white hover:bg-white/10 flex items-center gap-3 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+              <span className="text-sm font-medium">Copy</span>
+            </button>
+          </div>
+        )}
+        
+        {/* Main content area */}
         <div className="flex-1 flex items-center justify-center bg-black relative" onClick={next}>
-  <div className="w-full h-full flex items-center justify-center p-4">
-    {current.media_url ? (
-      // Show uploaded media
-      current.media_type === 'video' ? (
-        <video 
-          src={current.media_url} 
-          className="max-w-full max-h-full object-contain rounded-lg"
-          autoPlay
-          loop
-          muted
-          playsInline
-        />
-      ) : (
-        <img 
-          src={current.media_url} 
-          className="max-w-full max-h-full object-contain rounded-lg"
-          alt="Story"
-        />
-      )
-    ) : (
-      // Fallback to text-only story
-      <p className="text-white text-xl text-center px-8 leading-relaxed">
-        {current.content || ''}
-      </p>
-    )}
-  </div>
-  
-  {/* Show caption if media exists */}
-  {current.media_url && current.content && (
-    <div className="absolute bottom-20 left-0 right-0 px-6">
-      <p className="text-white text-center text-sm bg-black/40 backdrop-blur-sm rounded-full py-2 px-4">
-        {current.content}
-      </p>
-    </div>
-  )}
-</div>
-        <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
-          <Input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Reply..." className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0" onClick={(e) => e.stopPropagation()} />
-          <Button size="icon" variant="ghost" className="text-white rounded-full hover:bg-white/10" onClick={(e) => { e.stopPropagation(); setLiked(!liked); toast.success("Reaction sent ❤️"); }}><Heart className={`w-7 h-7 transition-transform active:scale-125 ${liked ? 'fill-red-500 text-red-500' : ''}`} /></Button>
-          <Button size="icon" variant="ghost" className="text-white rounded-full hover:bg-white/10"><Share2 className="w-7 h-7" /></Button>
+          <div className="w-full h-full flex items-center justify-center p-4">
+            {current.media_url ? (
+              current.media_type === 'video' ? (
+                <video 
+                  src={current.media_url} 
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                />
+              ) : (
+                <img 
+                  src={current.media_url} 
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                  alt="Story"
+                />
+              )
+            ) : (
+              <p className="text-white text-xl text-center px-8 leading-relaxed">
+                {current.content || ''}
+              </p>
+            )}
+          </div>
+          
+          {/* Caption */}
+          {current.media_url && current.content && (
+            <div className="absolute bottom-20 left-0 right-0 px-6">
+              <p className="text-white text-center text-sm bg-black/40 backdrop-blur-sm rounded-full py-2 px-4">
+                {current.content}
+              </p>
+            </div>
+          )}
         </div>
+        
+        {/* Bottom bar - Only show reply/reaction for other people's stories */}
+        {!isMyStory && (
+          <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
+            <Input 
+              value={msg} 
+              onChange={(e) => setMsg(e.target.value)} 
+              placeholder="Reply..." 
+              className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0" 
+              onClick={(e) => e.stopPropagation()} 
+            />
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className="text-white rounded-full hover:bg-white/10" 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                setLiked(!liked); 
+                toast.success("Reaction sent ❤️"); 
+              }}
+            >
+              <Heart className={`w-7 h-7 transition-transform active:scale-125 ${liked ? 'fill-red-500 text-red-500' : ''}`} />
+            </Button>
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className="text-white rounded-full hover:bg-white/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleShareToDM();
+              }}
+            >
+              <Share2 className="w-7 h-7" />
+            </Button>
+          </div>
+        )}
+        
+        {/* ✅ NEW: View count for own stories */}
+        {isMyStory && (
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
+            <div className="bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full flex items-center gap-2">
+              <Users className="w-4 h-4 text-white" />
+              <span className="text-white text-sm font-medium">0 views</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1101,34 +1274,91 @@ if (storyData) {
     <div className="container-mobile py-4 space-y-6 pb-24">
       {/* STORIES TRAY */}
       <div className="w-full overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
-        {loading ? (
-          <div className="flex gap-4">
-            <div className="w-16 h-16 bg-muted rounded-full animate-pulse" />
-          </div>
-        ) : (
-          <div className="flex gap-4 items-start">
-            <div className="flex flex-col items-center gap-2 flex-shrink-0 relative cursor-pointer group" onClick={() => fileRef.current?.click()}>
-              <input type="file" ref={fileRef} className="hidden" accept="image/*,video/*" onChange={(e) => e.target.files?.[0] && setPreview({ file: e.target.files[0], url: URL.createObjectURL(e.target.files[0]) })} />
-              <div className="w-16 h-16 rounded-full p-[2px] border-2 border-dashed border-muted-foreground/30 relative group-hover:border-primary transition-colors">
-                <img src={currentUserProfile?.avatar_url || '/default-avatar.png'} className="w-full h-full rounded-full object-cover opacity-50" />
-                <div className="absolute inset-0 flex items-center justify-center bg-background/20 rounded-full"><Plus className="w-6 h-6 text-primary drop-shadow-sm" /></div>
-              </div>
-              <span className="text-xs font-medium text-muted-foreground">Add Story</span>
-            </div>
-            {storyUsers.map(u => u.id !== user?.id && (
-              <div key={u.id} className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0 group" onClick={() => setSelectedStory(u)}>
-                <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-orange-500 to-purple-600 group-hover:scale-105 transition-transform shadow-sm">
-                  <img src={u.avatar_url || '/default-avatar.png'} className="w-full h-full rounded-full object-cover border-2 border-background" />
+  {loading ? (
+    <div className="flex gap-4">
+      <div className="w-16 h-16 bg-muted rounded-full animate-pulse" />
+    </div>
+  ) : (
+    <div className="flex gap-4 items-start">
+      {(() => {
+        // Check if current user has stories
+        const myStory = storyUsers.find(u => u.id === user?.id);
+        
+        return (
+          <>
+            {/* Show user's own story OR add button */}
+            {myStory ? (
+              // ✅ User has stories - show their story with gradient ring
+              <div 
+                className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0 group" 
+                onClick={() => setSelectedStory(myStory)}
+              >
+                <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-purple-600 via-pink-500 to-orange-400 group-hover:scale-105 transition-transform shadow-sm">
+                  <img 
+                    src={myStory.avatar_url || '/default-avatar.png'} 
+                    className="w-full h-full rounded-full object-cover border-2 border-background" 
+                    alt="Your story"
+                  />
                 </div>
-                <span className="text-xs font-medium max-w-[70px] truncate">{u.display_name || 'User'}</span>
+                <span className="text-xs font-bold max-w-[70px] truncate">Your Story</span>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
+            ) : (
+              // ✅ No stories - show add button
+              <div 
+                className="flex flex-col items-center gap-2 flex-shrink-0 relative cursor-pointer group" 
+                onClick={() => fileRef.current?.click()}
+              >
+                <input 
+                  type="file" 
+                  ref={fileRef} 
+                  className="hidden" 
+                  accept="image/*,video/*" 
+                  onChange={(e) => e.target.files?.[0] && setPreview({ file: e.target.files[0], url: URL.createObjectURL(e.target.files[0]) })} 
+                />
+                <div className="w-16 h-16 rounded-full p-[2px] border-2 border-dashed border-muted-foreground/30 relative group-hover:border-primary transition-colors">
+                  <img 
+                    src={currentUserProfile?.avatar_url || '/default-avatar.png'} 
+                    className="w-full h-full rounded-full object-cover opacity-50" 
+                    alt="Add story"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/20 rounded-full">
+                    <Plus className="w-6 h-6 text-primary drop-shadow-sm" />
+                  </div>
+                </div>
+                <span className="text-xs font-medium text-muted-foreground">Add Story</span>
+              </div>
+            )}
+            
+            {/* Other users' stories */}
+            {storyUsers
+              .filter(u => u.id !== user?.id)
+              .map(u => (
+                <div 
+                  key={u.id} 
+                  className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0 group" 
+                  onClick={() => setSelectedStory(u)}
+                >
+                  <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-orange-500 to-purple-600 group-hover:scale-105 transition-transform shadow-sm">
+                    <img 
+                      src={u.avatar_url || '/default-avatar.png'} 
+                      className="w-full h-full rounded-full object-cover border-2 border-background" 
+                      alt={u.display_name || 'User'}
+                    />
+                  </div>
+                  <span className="text-xs font-medium max-w-[70px] truncate">
+                    {u.display_name || 'User'}
+                  </span>
+                </div>
+              ))}
+          </>
+        );
+      })()}
+    </div>
+  )}
+</div>
+      
             <Dialog open={!!preview} onOpenChange={() => setPreview(null)}>
-  <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-xl border-0">
+  <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto bg-background/95 backdrop-blur-xl border-0">
     <DialogHeader>
       <DialogTitle>Create Story</DialogTitle>
     </DialogHeader>
