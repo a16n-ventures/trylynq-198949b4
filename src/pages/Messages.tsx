@@ -624,10 +624,10 @@ const createCommunity = useMutation({
       const payload = { sender_id: user.id, content: vars.content || null, image_url: imageUrl };
 
       if (selectedChat.type === 'dm') {
-        const { error } = await supabase.from('messages').insert({ ...payload, receiver_id: selectedChat.partner_id });
+        const { error } = await supabase.from('messages').insert({ ...payload, receiver_id: selectedChat.partner_id } as any);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('community_messages').insert({ ...payload, community_id: selectedChat.id });
+        const { error } = await supabase.from('community_messages').insert({ ...payload, community_id: selectedChat.id } as any);
         if (error) throw error;
       }
     },
@@ -1174,7 +1174,7 @@ const createCommunity = useMutation({
 
       {/* New Chat Dialog */}
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
-        <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto max-h-[85vh] flex flex-col p-0 overflow-y-auto">
+        <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto max-h-[85vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b">
             <DialogTitle className="text-xl">New Message</DialogTitle>
             <DialogDescription>
@@ -1199,8 +1199,8 @@ const createCommunity = useMutation({
             </div>
           )}
 
-          <ScrollArea className="flex-1 px-6"> 
-            <div className="space-y-6 pb-6 pt-2">
+          <ScrollArea className="flex-1 max-h-[50vh] px-6"> 
+            <div className="space-y-6 pb-6 pt-2 pr-2">
               {friends.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
