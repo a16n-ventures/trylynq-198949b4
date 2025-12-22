@@ -138,9 +138,7 @@ const Premium = () => {
       }
     );
   };
-
-    window.FlutterwaveCheckout && window.FlutterwaveCheckout(config);
-  };
+  // FIX #1: Removed stray 'window.FlutterwaveCheckout' code that was here causing syntax errors
 
   // --- 4. FEATURES LIST (Bundle vs Single) ---
   const fullPremiumFeatures = [
@@ -155,18 +153,22 @@ const Premium = () => {
   // The "A La Carte" menu
   const singleFeatures = [
     {
+      // FIX #2: Added 'type' property so we can identify features in the loop
+      type: 'profile_boost' as const, 
       icon: <Crown className="w-5 h-5" />,
       title: 'Profile Visibility Boost',
       description: 'Get 20x more profile views and friend suggestions',
       price: { monthly: 2499, yearly: 24999 }
     },
     {
+      type: 'event_boost' as const,
       icon: <TrendingUp className="w-5 h-5" />,
       title: 'Event Promotion',
       description: 'Promote your events to reach more people in your area',
       price: { monthly: 1499, yearly: 14999 }
     },
     {
+      type: 'profile_badge' as const,
       icon: <Star className="w-5 h-5" />,
       title: 'Premium Badge',
       description: 'Stand out with a special premium badge on your profile',
@@ -175,51 +177,6 @@ const Premium = () => {
   ];
 
   const yearlySavings = Math.round((pricing.monthly * 12) - pricing.yearly);
-
-  // --- Render Helpers ---
-  const SingleFeatureCard = ({ feature }: { feature: (typeof singleFeatures)[0] }) => (
-    <Card className="gradient-card shadow-card border-0 relative overflow-hidden hover:shadow-lg transition-shadow">
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-3">
-          <div className="gradient-primary text-white w-10 h-10 rounded-lg flex items-center justify-center shadow-sm">
-            {feature.icon}
-          </div>
-          <div>
-            <CardTitle className="text-base font-bold">{feature.title}</CardTitle>
-            <p className="text-xs text-muted-foreground leading-tight">{feature.description}</p>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-baseline justify-between border-t border-border/50 pt-3">
-          <div>
-            <span className="text-xl font-bold">
-              ₦{billingPeriod === 'monthly' ? feature.price.monthly.toLocaleString() : feature.price.yearly.toLocaleString()}
-            </span>
-            <span className="text-xs text-muted-foreground ml-1">
-              /{billingPeriod === 'monthly' ? 'mo' : 'yr'}
-            </span>
-          </div>
-          {billingPeriod === 'yearly' && (
-            <Badge variant="secondary" className="bg-green-100 text-green-800 text-[10px] px-1.5 h-5">
-              -30%
-            </Badge>
-          )}
-        </div>
-        <Button 
-          className="w-full gradient-primary text-white shadow-sm h-9 text-sm"
-          onClick={() => handlePayment(
-            billingPeriod === 'monthly' ? feature.price.monthly : feature.price.yearly,
-            feature.title
-          )}
-          disabled={isProcessing || isPremiumActive}
-        >
-          {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}
-          Get This Feature
-        </Button>
-      </CardContent>
-    </Card>
-  );
 
   if (isLoadingSettings || isLoadingSub) {
     return (
@@ -319,6 +276,7 @@ const Premium = () => {
                <Button 
                   className="w-full gradient-primary text-white h-11 shadow-md"
                   onClick={() => handlePayment(
+                    'full_package', // FIX #3: Added missing 'featureType' argument
                     billingPeriod === 'monthly' ? pricing.monthly : pricing.yearly,
                     'Lynq Unlimited'
                   )}
@@ -330,8 +288,8 @@ const Premium = () => {
           </CardContent>
         </Card>
 
-        {/* 2. SINGLE UPGRADES SECTION (Restored) */}
-                {!hasFullPackage && (
+        {/* 2. SINGLE UPGRADES SECTION */}
+        {!hasFullPackage && (
           <div className="space-y-3 pt-2">
             <h3 className="font-semibold text-sm text-muted-foreground ml-1 uppercase tracking-wider">Single Upgrades</h3>
             {singleFeatures.map((feature) => (
@@ -340,8 +298,9 @@ const Premium = () => {
                 icon={feature.icon}
                 title={feature.title}
                 description={feature.description}
-                monthlyPrice={pricing[feature.type].monthly}
-                yearlyPrice={pricing[feature.type].yearly}
+                // FIX #4: Use the price from the 'feature' object itself, NOT global 'pricing'
+                monthlyPrice={feature.price.monthly} 
+                yearlyPrice={feature.price.yearly}
                 billingPeriod={billingPeriod}
                 isProcessing={isProcessing}
                 isActive={
@@ -351,7 +310,7 @@ const Premium = () => {
                 }
                 onPurchase={() => handlePayment(
                   feature.type,
-                  billingPeriod === 'monthly' ? pricing[feature.type].monthly : pricing[feature.type].yearly,
+                  billingPeriod === 'monthly' ? feature.price.monthly : feature.price.yearly,
                   feature.title
                 )}
               />
@@ -371,4 +330,3 @@ const Premium = () => {
 };
 
 export default Premium;
-        
