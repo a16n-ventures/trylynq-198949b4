@@ -952,27 +952,29 @@ const sendMessage = useMutation({
           </div>
           
           <div className="flex items-center gap-0.5">
-            {chatImages.length > 0 && (
-              <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setIsGalleryOpen(true)}>
-                <Grid className="w-5 h-5" />
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full h-9 w-9"><MoreVertical className="w-4 h-4" /></Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onClick={() => setIsInfoOpen(true)}>
-                  <Info className="w-4 h-4 mr-2" /> {isComm ? 'Community Info' : 'View Profile'}
-                </DropdownMenuItem>
-                {isComm && selectedChat.my_role === 'admin' && (
-                  <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
-                    <Settings className="w-4 h-4 mr-2" /> Settings
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+  {chatImages.length > 0 && (
+    <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setIsGalleryOpen(true)}>
+      <Grid className="w-5 h-5" />
+    </Button>
+  )}
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button variant="ghost" size="icon" className="rounded-full h-9 w-9">
+        <MoreVertical className="w-4 h-4" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuItem onClick={() => setIsInfoOpen(true)}>
+        <Info className="w-4 h-4 mr-2" /> {isComm ? 'Community Info' : 'View Profile'}
+      </DropdownMenuItem>
+      {isComm && (selectedChat.my_role === 'admin' || selectedChat.my_role === 'moderator') && (
+        <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
+          <Settings className="w-4 h-4 mr-2" /> Settings
+        </DropdownMenuItem>
+      )}
+    </DropdownMenuContent>
+  </DropdownMenu>
+</div>
         </div>
 
         {/* Dialogs */}
@@ -1312,34 +1314,35 @@ const sendMessage = useMutation({
 
       {/* New Chat Dialog */}
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
-        <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto max-h-[85vh] flex flex-col p-0 overflow-y-auto">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b">
-            <DialogTitle className="text-xl">New Message</DialogTitle>
-            <DialogDescription>
-              {friends.length > 0 
-                ? `Start a conversation with ${friends.length} friend${friends.length !== 1 ? 's' : ''}`
-                : "Start a conversation with your friends"
-              }
-            </DialogDescription>
-          </DialogHeader>
-          
-          {friends.length > 0 && (
-            <div className="px-6 py-4 bg-muted/10">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search friends..." 
-                  className="pl-10 bg-muted/50 rounded-xl border-muted-foreground/20 focus:border-primary" 
-                  value={friendSearch} 
-                  onChange={(e) => setFriendSearch(e.target.value)} 
-                />
-              </div>
-            </div>
-          )}
+  <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto max-h-[85vh] flex flex-col p-0">
+    <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+      <DialogTitle className="text-xl">New Message</DialogTitle>
+      <DialogDescription>
+        {friends.length > 0 
+          ? `Start a conversation with ${friends.length} friend${friends.length !== 1 ? 's' : ''}`
+          : "Start a conversation with your friends"
+        }
+      </DialogDescription>
+    </DialogHeader>
+    
+    {friends.length > 0 && (
+      <div className="px-6 py-4 bg-muted/10 shrink-0">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input 
+            placeholder="Search friends..." 
+            className="pl-10 bg-muted/50 rounded-xl border-muted-foreground/20 focus:border-primary" 
+            value={friendSearch} 
+            onChange={(e) => setFriendSearch(e.target.value)} 
+          />
+        </div>
+      </div>
+    )}
 
-          <ScrollArea className="flex-1 px-6"> 
-            <div className="space-y-6 pb-6 pt-2 pr-2">
-              {friends.length === 0 ? (
+    <div className="flex-1 overflow-hidden">
+      <ScrollArea className="h-full px-6">
+        <div className="space-y-6 pb-6 pt-2 pr-2">
+          {friends.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
                     <Users className="w-8 h-8 text-muted-foreground" />
@@ -1433,10 +1436,11 @@ const sendMessage = useMutation({
                   )}
                 </>
               )}
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </ScrollArea>
+    </div>
+  </DialogContent>
+</Dialog>
 
       {/* Create Community Dialog */}
       <Dialog open={isCreateCommunityOpen} onOpenChange={(open) => {
