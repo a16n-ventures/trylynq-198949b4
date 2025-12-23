@@ -14,6 +14,7 @@ const MainLayout = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('discover');
   const [profile, setProfile] = useState<any>(null);
+  const [role, setRole] = useState<any>(null);
   const [notificationCount, setNotificationCount] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
 
@@ -37,13 +38,24 @@ const MainLayout = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Get Profile AND Role
+    // Get Profile
     supabase
       .from('profiles')
-      .select('id, user_id, display_name, avatar_url, role')
+      .select('id, user_id, display_name, avatar_url')
       .eq('user_id', user.id)
       .single()
       .then(({ data }) => setProfile(data));
+
+      useEffect(() => {
+    if (!user) return;
+
+    // Get Role
+    supabase
+      .from('user_roles')
+      .select('id, user_id, role')
+      .eq('user_id', user.id)
+      .single()
+      .then(({ data }) => setRole(data));
 
     // Get Initial Unread Count (friend requests + event invitations)
     const fetchNotifications = async () => {
@@ -167,21 +179,21 @@ const MainLayout = () => {
                 <Avatar className="w-9 h-9 border border-border group-hover:border-primary transition-colors">
                   <AvatarImage src={profile?.avatar_url || undefined} className="object-cover" />
                   <AvatarFallback className="bg-muted text-muted-foreground">
-                    {profile?.display_name?.[0] || user?.email?.[0] || 'U'}
+                    {profile?.display_name?.[0] || user?.username || 'U'}
                   </AvatarFallback>
                 </Avatar>
                 <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-background rounded-full"></span>
               </div>
               <div className="flex flex-col">
                  <span className="text-sm font-bold leading-none group-hover:text-primary transition-colors">
-                   {profile?.display_name || 'Welcome'}
+                   {profile?.display_name || profile?.username || 'Welcome'}
                  </span>
                  <span className="text-[10px] text-muted-foreground">Online</span>
               </div>
             </div>
 
             {/* ADMIN BUTTON (Only visible to Admins) */}
-            {(profile?.role === 'admin' || profile?.role === 'super_admin') && (
+            {(user_roles?.role === 'admin' || user_roles?.role === 'super_admin') && (
               <Button 
                 size="sm" 
                 variant="destructive" 
