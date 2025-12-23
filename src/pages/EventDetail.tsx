@@ -33,7 +33,8 @@ import {
   AlertCircle,
   Megaphone,
   Search,
-  Copy
+  Copy,
+  Pencil
 } from 'lucide-react';
 import {
   Dialog,
@@ -54,6 +55,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from '@/components/ui/textarea';
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -129,6 +131,14 @@ const EventDetail = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editTicketPrice, setEditTicketPrice] = useState('');
+  const [editMaxAttendees, setEditMaxAttendees] = useState('');
 
   // Fetch event details (Robust Version)
   const { data: event, isPending: loadingEvent } = useQuery({
@@ -298,7 +308,7 @@ const filteredFriends = friends.filter(f =>
   };
 
   const getShareLink = () => {
-    return `${window.location.origin}/events/${eventId}`;
+    return `${window.location.origin}/app/events/${eventId}`;
   };
 
   const copyToClipboard = async () => {
@@ -393,6 +403,58 @@ const filteredFriends = friends.filter(f =>
       toast.error('Failed to delete event: ' + error.message);
     }
   });
+  
+  const editEventMutation = useMutation({
+      mutationFn: async () => {
+        if (!eventId || !user?.id) throw new Error('Missing data');
+        
+        const updates = {
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          location: editLocation.trim(),
+          start_date: new Date(editStartDate).toISOString(),
+          ticket_price: parseFloat(editTicketPrice) || 0,
+          max_attendees: editMaxAttendees ? parseInt(editMaxAttendees) : null,
+        };
+        
+        const { error } = await supabase
+          .from('events')
+          .update(updates)
+          .eq('id', eventId)
+          .eq('creator_id', user.id); // Security: Only creator can edit
+        
+        if (error) throw error;
+      },
+      onSuccess: () => {
+        toast.success('Event updated successfully!');
+        setShowEditDialog(false);
+        queryClient.invalidateQueries({ queryKey: ['event', eventId] });
+      },
+      onError: (error: any) => {
+        toast.error('Failed to update event: ' + error.message);
+      }
+    });
+    
+    const toggleFriendSelection = (friendId: string) => {
+      setSelectedFriends(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(friendId)) {
+          newSet.delete(friendId);
+        } else {
+          newSet.add(friendId);
+        }
+        return newSet;
+      });
+    };
+    
+    const selectAll = () => {
+      const availableFriends = filteredFriends.filter(f => !invitedFriendIds.includes(f.id));
+      setSelectedFriends(new Set(availableFriends.map(f => f.id)));
+    };
+    
+    const deselectAll = () => {
+      setSelectedFriends(new Set());
+    };
 
     // [MODIFIED: Invite Friends Mutation]
     const inviteFriendsMutation = useMutation({
@@ -588,6 +650,17 @@ const filteredFriends = friends.filter(f =>
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
+  
+  useEffect(() => {
+    if (showEditDialog && event) {
+      setEditTitle(event.title);
+      setEditDescription(event.description);
+      setEditLocation(event.location);
+      setEditStartDate(event.start_date.slice(0, 16)); // Format for datetime-local input
+      setEditTicketPrice(event.ticket_price.toString());
+      setEditMaxAttendees(event.max_attendees?.toString() || '');
+    }
+  }, [showEditDialog, event]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -778,6 +851,16 @@ const filteredFriends = friends.filter(f =>
                 <CardContent className="p-4 space-y-3">
                   <h3 className="font-semibold mb-2">Host Controls</h3>
                   
+                  {/* Edit Event Button - NEW */}
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowEditDialog(true)}
+                  >
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit Event
+                  </Button>
+                  
                   {event.event_type === 'virtual' ? (
                     <Button
                       className="w-full"
@@ -797,21 +880,19 @@ const filteredFriends = friends.filter(f =>
                       {isRecording ? 'Recording...' : 'Start Recording Event'}
                     </Button>
                   )}
-
+            
                   <Button
                     variant="outline"
                     className="w-full"
-                    // [MODIFIED: Changed to open local dialog]
                     onClick={() => setShowInviteDialog(true)}
                   >
                     <UserPlus className="w-4 h-4 mr-2" />
                     Invite Friends
                   </Button>
-
-                  {/* NEW: Delete Button */}
+            
                   <Button
                     variant="destructive"
-                    className="w-full mt-2"
+                    className="w-full"
                     onClick={() => setShowDeleteDialog(true)}
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
@@ -1034,12 +1115,13 @@ const filteredFriends = friends.filter(f =>
       
       {/* [MODIFIED: Invite Friends Dialog] */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto">
-          <DialogHeader>
-            <DialogTitle>
+        <DialogContent className="sm:max-w-[500px] max-w-[calc(100vw-2rem)] h-[80vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
+            <DialogTitle className="space-y-4">
+              {/* Share Link Section */}
               <Card className="gradient-card shadow-card border-0">
                 <CardContent className="p-4 space-y-3">
-                  <h3 className="font-semibold flex items-center gap-2">
+                  <h3 className="font-semibold flex items-center gap-2 text-base">
                     <Share2 className="w-4 h-4" />
                     Share Event Link
                   </h3>
@@ -1047,7 +1129,7 @@ const filteredFriends = friends.filter(f =>
                     <Input
                       value={getShareLink()}
                       readOnly
-                      className="flex-1 bg-background/50"
+                      className="flex-1 bg-background/50 text-sm"
                     />
                     <Button
                       variant="outline"
@@ -1072,11 +1154,11 @@ const filteredFriends = friends.filter(f =>
                 </CardContent>
               </Card>
       
-              {/* Friend Selection */}
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold flex items-center gap-2">
+              {/* Friend Selection Header */}
+              <div className="flex items-center justify-between pt-2">
+                <h3 className="font-semibold flex items-center gap-2 text-base">
                   <Users className="w-5 h-5" />
-                  Select Friends ({selectedFriends.size})
+                  Invite Friends ({selectedFriends.size} selected)
                 </h3>
                 <div className="flex gap-2">
                   {selectedFriends.size > 0 && (
@@ -1092,7 +1174,7 @@ const filteredFriends = friends.filter(f =>
                     variant="ghost"
                     size="sm"
                     onClick={selectAll}
-                    disabled={filteredFriends.length === 0}
+                    disabled={filteredFriends.filter(f => !invitedFriendIds.includes(f.id)).length === 0}
                   >
                     Select All
                   </Button>
@@ -1100,84 +1182,231 @@ const filteredFriends = friends.filter(f =>
               </div>
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-             <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search friends..." 
-                  className="pl-8" 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-             </div>
-             <ScrollArea className="h-[200px] pr-4">
-                <div className="space-y-2">
-                  {filteredFriends.filter(f => !invitedFriendIds.includes(f.id))
-                    .map((friend) => (
-                      <div key={friend.id} className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50">
-                        <Checkbox 
-                            id={`friend-${friend.id}`}
-                            checked={selectedFriends.has(friend.id)} // Use .has() for Set
-                            onCheckedChange={(checked) => {
-                              const newSelected = new Set(selectedFriends);
-                              if (checked) {
-                                newSelected.add(friend.id);
-                              } else {
-                                newSelected.delete(friend.id);
-                              }
-                              setSelectedFriends(newSelected);
-                            }}
-                          />
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={friend.avatar_url || ''} />
-                          <AvatarFallback>{friend.display_name?.[0]}</AvatarFallback>
-                        </Avatar>
-                        <label 
-                          htmlFor={`friend-${friend.id}`}
-                          className="flex-1 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          {friend.display_name}
-                        </label>
-                      </div>
-                  ))}
-                  {friends.length === 0 && <p className="text-sm text-center text-muted-foreground py-4">No friends found.</p>}
-                </div>
-             </ScrollArea>
-          </div>
-          
-          {invitedFriendIds.length > 0 && (
-            <div className="bg-muted/30 p-3 rounded-lg text-sm text-muted-foreground">
-              {invitedFriendIds.length} friend{invitedFriendIds.length !== 1 ? 's' : ''} already invited
+      
+          {/* Search Bar */}
+          <div className="px-6 py-4 border-b flex-shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search friends..." 
+                className="pl-9 bg-muted/50" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
-          )}
-          
-          <DialogFooter>
-             <Button variant="outline" onClick={() => setShowInviteDialog(false)}>Cancel
-             </Button>
-             
-              {/* Send Button */}
-              {selectedFriends.size > 0 && (
-                <div className="fixed bottom-4 left-0 right-0 px-4 z-10">
-                  <Button
-                    className="w-full gradient-primary text-white shadow-lg"
-                    size="lg"
-                    onClick={handleSendInvites}
-                    disabled={sendInvitations.isPending}
-                  >
-                    {sendInvitations.isPending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="w-4 h-4 mr-2" />
-                        Send {selectedFriends.size} Invitation{selectedFriends.size !== 1 ? 's' : ''}
-                      </>
-                    )}
-                  </Button>
+          </div>
+      
+          {/* Scrollable Friends List */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-2">
+            <div className="space-y-2 pb-4">
+              {filteredFriends.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-sm text-muted-foreground">
+                    {friends.length === 0 ? 'No friends to invite' : 'No friends match your search'}
+                  </p>
                 </div>
+              ) : (
+                filteredFriends.map((friend) => {
+                  const isInvited = invitedFriendIds.includes(friend.id);
+                  const isSelected = selectedFriends.has(friend.id);
+                  
+                  return (
+                    <div 
+                      key={friend.id} 
+                      className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                        isInvited 
+                          ? 'bg-muted/30 opacity-60 cursor-not-allowed' 
+                          : isSelected
+                          ? 'bg-primary/10 border-2 border-primary'
+                          : 'hover:bg-muted/50 border-2 border-transparent cursor-pointer'
+                      }`}
+                      onClick={() => !isInvited && toggleFriendSelection(friend.id)}
+                    >
+                      <Checkbox 
+                        id={`friend-${friend.id}`}
+                        checked={isSelected}
+                        disabled={isInvited}
+                        onCheckedChange={() => !isInvited && toggleFriendSelection(friend.id)}
+                        className="pointer-events-none"
+                      />
+                      <Avatar className="h-10 w-10 ring-2 ring-background">
+                        <AvatarImage src={friend.avatar_url || ''} />
+                        <AvatarFallback className="text-sm">
+                          {friend.display_name?.[0]?.toUpperCase() || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {friend.display_name || 'Unknown User'}
+                        </p>
+                        {isInvited && (
+                          <p className="text-xs text-muted-foreground">Already invited</p>
+                        )}
+                      </div>
+                      {isSelected && !isInvited && (
+                        <Check className="w-5 h-5 text-primary flex-shrink-0" />
+                      )}
+                    </div>
+                  );
+                })
               )}
+            </div>
+          </div>
+      
+          {/* Footer with info and buttons */}
+          <div className="border-t flex-shrink-0">
+            {invitedFriendIds.length > 0 && (
+              <div className="px-6 py-3 bg-muted/30">
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  {invitedFriendIds.length} friend{invitedFriendIds.length !== 1 ? 's' : ''} already invited
+                </p>
+              </div>
+            )}
+            
+            <DialogFooter className="px-6 py-4">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowInviteDialog(false);
+                  setSelectedFriends(new Set());
+                  setSearchQuery('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendInvites}
+                disabled={sendInvitations.isPending || selectedFriends.size === 0}
+                className="min-w-[140px]"
+              >
+                {sendInvitations.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Send {selectedFriends.size > 0 ? `(${selectedFriends.size})` : ''}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-[600px] max-w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5" />
+              Edit Event
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Title */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Event Title *</label>
+              <Input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Enter event title"
+                maxLength={100}
+              />
+            </div>
+      
+            {/* Description */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Description *</label>
+              <Textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Describe your event..."
+                rows={4}
+                maxLength={500}
+              />
+            </div>
+      
+            {/* Location */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Location *</label>
+              <Input
+                value={editLocation}
+                onChange={(e) => setEditLocation(e.target.value)}
+                placeholder="Event location or address"
+              />
+            </div>
+      
+            {/* Date & Time */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Start Date & Time *</label>
+              <Input
+                type="datetime-local"
+                value={editStartDate}
+                onChange={(e) => setEditStartDate(e.target.value)}
+              />
+            </div>
+      
+            {/* Ticket Price */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Ticket Price (₦)</label>
+              <Input
+                type="number"
+                value={editTicketPrice}
+                onChange={(e) => setEditTicketPrice(e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
+            </div>
+      
+            {/* Max Attendees */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Max Attendees (Optional)</label>
+              <Input
+                type="number"
+                value={editMaxAttendees}
+                onChange={(e) => setEditMaxAttendees(e.target.value)}
+                placeholder="Unlimited"
+                min="1"
+              />
+            </div>
+          </div>
+      
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowEditDialog(false)}
+              disabled={editEventMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => editEventMutation.mutate()}
+              disabled={
+                editEventMutation.isPending || 
+                !editTitle.trim() || 
+                !editDescription.trim() || 
+                !editLocation.trim() ||
+                !editStartDate
+              }
+            >
+              {editEventMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
