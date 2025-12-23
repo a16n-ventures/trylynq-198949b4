@@ -922,34 +922,64 @@ const sendMessage = useMutation({
       <div className="fixed inset-0 z-[100] bg-background flex flex-col h-[100dvh]">
         {/* Header */}
         <div className="px-4 py-3 border-b flex items-center gap-3 bg-gradient-to-r from-background to-muted/20 backdrop-blur-xl shadow-sm shrink-0 z-10">
-          <Button variant="ghost" size="icon" className="-ml-2 rounded-full hover:bg-muted" onClick={() => setSelectedChat(null)}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          
-          <Avatar className="h-11 w-11 border-2 border-background ring-2 ring-primary/10 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
-            <AvatarImage src={selectedChat.avatar} />
-            <AvatarFallback>{selectedChat.name?.[0]?.toUpperCase() ?? 'C'}</AvatarFallback>
-          </Avatar>
-          
-          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
-            <h3 className="font-bold text-base truncate">{selectedChat.name}</h3>
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-              {isComm ? (
-                <>
-                  <Users className="w-3 h-3" /> {selectedChat.member_count} members
-                  {selectedChat.my_role === 'admin' && <Badge variant="secondary" className="ml-1 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Admin</Badge>}
-                </>
-              ) : (
-                selectedChat.is_online ? (
-                  <span className="flex items-center gap-1.5 text-green-600">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/> Active now
-                  </span>
-                ) : (
-                  <span>Tap to view profile</span>
-                )
-              )}
-            </p>
-          </div>
+  <Button variant="ghost" size="icon" className="-ml-2 rounded-full hover:bg-muted" onClick={() => setSelectedChat(null)}>
+    <ArrowLeft className="h-5 w-5" />
+  </Button>
+  
+  <Avatar className="h-11 w-11 border-2 border-background ring-2 ring-primary/10 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
+    <AvatarImage src={selectedChat.avatar} />
+    <AvatarFallback>{selectedChat.name?.[0]?.toUpperCase() ?? 'C'}</AvatarFallback>
+  </Avatar>
+  
+  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
+    <h3 className="font-bold text-base truncate">{selectedChat.name}</h3>
+    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+      {isComm ? (
+        <>
+          <Users className="w-3 h-3" /> {selectedChat.member_count} members
+          {selectedChat.my_role === 'admin' && <Badge variant="secondary" className="ml-1 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Admin</Badge>}
+        </>
+      ) : (
+        selectedChat.is_online ? (
+          <span className="flex items-center gap-1.5 text-green-600">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/> Active now
+          </span>
+        ) : (
+          <span>Tap to view profile</span>
+        )
+      )}
+    </p>
+  </div>
+  
+  <div className="flex items-center gap-1">
+    {chatImages.length > 0 && (
+      <Button variant="ghost" size="icon" className="rounded-full h-9 w-9" onClick={() => setIsGalleryOpen(true)}>
+        <Grid className="w-4 h-4" />
+      </Button>
+    )}
+    
+    {/* FIX: Proper DropdownMenu implementation */}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="rounded-full h-9 w-9">
+          <MoreVertical className="w-4 h-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onClick={() => setIsInfoOpen(true)}>
+          <Info className="w-4 h-4 mr-2" />
+          {isComm ? 'Community Info' : 'View Profile'}
+        </DropdownMenuItem>
+        {isComm && selectedChat.my_role === 'admin' && (
+          <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
+            <Settings className="w-4 h-4 mr-2" />
+            Community Settings
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </div>
+</div>
           
           <div className="flex items-center gap-0.5">
   {chatImages.length > 0 && (
@@ -1339,106 +1369,105 @@ const sendMessage = useMutation({
       </div>
     )}
 
-    <div className="flex-1 overflow-hidden">
-      <ScrollArea className="h-full px-6">
-        <div className="space-y-6 pb-6 pt-2 pr-2">
-          {friends.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                    <Users className="w-8 h-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="font-semibold text-lg mb-2">No friends yet</h3>
-                  <p className="text-sm text-muted-foreground max-w-xs">
-                    Add friends to start messaging them directly
-                  </p>
-                </div>
-              ) : filteredFriends.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Search className="w-12 h-12 text-muted-foreground mb-4" />
-                  <h3 className="font-semibold text-lg mb-2">No results found</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Try searching with a different name
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {onlineFriends.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3 px-1">
-                        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          Online • {onlineFriends.length}
-                        </h3>
-                      </div>
-                      <div className="space-y-1">
-                        {onlineFriends.map((f: any) => (
-                          <div 
-                            key={f.id} 
-                            onClick={() => { 
-                              setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar, is_online: f.is_online }); 
-                              setIsNewChatOpen(false); 
-                            }} 
-                            className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
-                          >
-                            <div className="relative">
-                              <Avatar className="h-12 w-12 ring-2 ring-background">
-                                <AvatarImage src={f.avatar} />
-                                <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
-                              </Avatar>
-                              <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-[15px] truncate">{f.name}</p>
-                              <p className="text-xs text-green-600 font-medium">Active now</p>
-                            </div>
-                            <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {offlineFriends.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3 px-1">
-                        <Users className="w-3.5 h-3.5 text-muted-foreground" />
-                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          All Friends • {offlineFriends.length}
-                        </h3>
-                      </div>
-                      <div className="space-y-1">
-                        {offlineFriends.map((f: any) => (
-                          <div 
-                            key={f.id} 
-                            onClick={() => { 
-                              setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar, is_online: f.is_online }); 
-                              setIsNewChatOpen(false); 
-                            }} 
-                            className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
-                          >
-                            <Avatar className="h-12 w-12 ring-2 ring-background opacity-90 group-hover:opacity-100 transition-opacity">
-                              <AvatarImage src={f.avatar} />
-                              <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-[15px] truncate">{f.name}</p>
-                              {f.last_seen && (
-                                <p className="text-xs text-muted-foreground">
-                                  Active {formatDistanceToNow(new Date(f.last_seen), { addSuffix: true })}
-                                </p>
-                              )}
-                            </div>
-                            <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+    <div className="flex-1 overflow-y-auto px-6">
+  <div className="space-y-6 pb-6 pt-2">
+    {friends.length === 0 ? (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+          <Users className="w-8 h-8 text-muted-foreground" />
         </div>
-      </ScrollArea>
-    </div>
+        <h3 className="font-semibold text-lg mb-2">No friends yet</h3>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          Add friends to start messaging them directly
+        </p>
+      </div>
+    ) : filteredFriends.length === 0 ? (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <Search className="w-12 h-12 text-muted-foreground mb-4" />
+        <h3 className="font-semibold text-lg mb-2">No results found</h3>
+        <p className="text-sm text-muted-foreground">
+          Try searching with a different name
+        </p>
+      </div>
+    ) : (
+      <>
+        {onlineFriends.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Online • {onlineFriends.length}
+              </h3>
+            </div>
+            <div className="space-y-1">
+              {onlineFriends.map((f: any) => (
+                <div 
+                  key={f.id} 
+                  onClick={() => { 
+                    setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar, is_online: f.is_online }); 
+                    setIsNewChatOpen(false); 
+                  }} 
+                  className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
+                >
+                  <div className="relative">
+                    <Avatar className="h-12 w-12 ring-2 ring-background">
+                      <AvatarImage src={f.avatar} />
+                      <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                    </Avatar>
+                    <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                    <p className="text-xs text-green-600 font-medium">Active now</p>
+                  </div>
+                  <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {offlineFriends.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <Users className="w-3.5 h-3.5 text-muted-foreground" />
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                All Friends • {offlineFriends.length}
+              </h3>
+            </div>
+            <div className="space-y-1">
+              {offlineFriends.map((f: any) => (
+                <div 
+                  key={f.id} 
+                  onClick={() => { 
+                    setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar, is_online: f.is_online }); 
+                    setIsNewChatOpen(false); 
+                  }} 
+                  className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
+                >
+                  <Avatar className="h-12 w-12 ring-2 ring-background opacity-90 group-hover:opacity-100 transition-opacity">
+                    <AvatarImage src={f.avatar} />
+                    <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                    {f.last_seen && (
+                      <p className="text-xs text-muted-foreground">
+                        Active {formatDistanceToNow(new Date(f.last_seen), { addSuffix: true })}
+                      </p>
+                    )}
+                  </div>
+                  <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </>
+    )}
+  </div>
+</div>
+ 
   </DialogContent>
 </Dialog>
 
