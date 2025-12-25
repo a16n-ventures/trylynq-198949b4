@@ -86,8 +86,8 @@ const Premium = () => {
   const pricing = useMemo(() => {
     const remotePrice = settings?.find(s => s.key === 'premium_prices')?.value as { monthly?: number; yearly?: number } | undefined;
     return {
-      monthly: remotePrice?.monthly || 2499, 
-      yearly: remotePrice?.yearly || 24999   
+      monthly: remotePrice?.monthly || 7499, 
+      yearly: remotePrice?.yearly || 49999   
     };
   }, [settings]);
 
