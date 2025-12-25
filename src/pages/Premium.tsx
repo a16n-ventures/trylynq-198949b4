@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Crown, Zap, Star, TrendingUp, ArrowLeft, Check, Loader2, AlertCircle } from 'lucide-react';
+import { Crown, Zap, Star, TrendingUp, ArrowLeft, Check, Loader2, AlertCircle, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext'; 
@@ -73,7 +73,7 @@ const Premium = () => {
     return subscription.status === 'active' && endDate > now;
   }, [subscription]);
 
-  // --- 2. FETCH DYNAMIC PRICING (For Bundle) ---
+  // ✅ ENHANCED: Fetch pricing from app_settings with complete structure
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
     queryKey: ['app_settings'],
     queryFn: async () => {
@@ -83,11 +83,48 @@ const Premium = () => {
     }
   });
 
+  // ✅ ENHANCED: Parse complete pricing structure from database
   const pricing = useMemo(() => {
-    const remotePrice = settings?.find(s => s.key === 'premium_prices')?.value as { monthly?: number; yearly?: number } | undefined;
+    const priceData = settings?.find(s => s.key === 'premium_prices')?.value as any;
+    
+    if (!priceData) {
+      // Fallback to defaults if not found
+      return {
+        full_package: {
+          monthly: 7499,
+          yearly: 49999
+        },
+        event_boost: {
+          weekly: 4499
+        },
+        profile_boost: {
+          monthly: 2499,
+          yearly: 24999
+        },
+        profile_badge: {
+          monthly: 1499,
+          yearly: 14999
+        }
+      };
+    }
+
+    // Return parsed structure from database
     return {
-      monthly: remotePrice?.monthly || 7499, 
-      yearly: remotePrice?.yearly || 49999   
+      full_package: {
+        monthly: priceData.full_package?.monthly || 7499,
+        yearly: priceData.full_package?.yearly || 49999
+      },
+      event_boost: {
+        weekly: priceData.event_boost?.weekly || 4499
+      },
+      profile_boost: {
+        monthly: priceData.profile_boost?.monthly || 2499,
+        yearly: priceData.profile_boost?.yearly || 24999
+      },
+      profile_badge: {
+        monthly: priceData.profile_badge?.monthly || 1499,
+        yearly: priceData.profile_badge?.yearly || 14999
+      }
     };
   }, [settings]);
 
@@ -138,9 +175,8 @@ const Premium = () => {
       }
     );
   };
-  // FIX #1: Removed stray 'window.FlutterwaveCheckout' code that was here causing syntax errors
 
-  // --- 4. FEATURES LIST (Bundle vs Single) ---
+  // --- 4. FEATURES LIST ---
   const fullPremiumFeatures = [
     'Unlimited friend requests',
     'Advanced search filters',
@@ -150,33 +186,35 @@ const Premium = () => {
     'Ad-free experience',
   ];
 
-  // The "A La Carte" menu
+  // ✅ ENHANCED: A La Carte features with dynamic pricing from database
   const singleFeatures = [
     {
-      // FIX #2: Added 'type' property so we can identify features in the loop
-      type: 'profile_boost' as const, 
+      type: 'profile_boost' as const,
       icon: <Crown className="w-5 h-5" />,
       title: 'Profile Visibility Boost',
       description: 'Get 20x more profile views and friend suggestions',
-      price: { monthly: 2499, yearly: 24999 }
+      monthlyPrice: pricing.profile_boost.monthly,
+      yearlyPrice: pricing.profile_boost.yearly
     },
     {
       type: 'event_boost' as const,
       icon: <TrendingUp className="w-5 h-5" />,
       title: 'Event Promotion',
       description: 'Promote your events to reach more people in your area',
-      price: { monthly: 1499, yearly: 14999 }
+      weeklyPrice: pricing.event_boost.weekly, // ✅ Event boost is weekly only
+      isWeeklyOnly: true
     },
     {
       type: 'profile_badge' as const,
       icon: <Star className="w-5 h-5" />,
       title: 'Premium Badge',
       description: 'Stand out with a special premium badge on your profile',
-      price: { monthly: 999, yearly: 9999 }
+      monthlyPrice: pricing.profile_badge.monthly,
+      yearlyPrice: pricing.profile_badge.yearly
     }
   ];
 
-  const yearlySavings = Math.round((pricing.monthly * 12) - pricing.yearly);
+  const yearlySavings = Math.round((pricing.full_package.monthly * 12) - pricing.full_package.yearly);
 
   if (isLoadingSettings || isLoadingSub) {
     return (
@@ -230,7 +268,7 @@ const Premium = () => {
           </div>
         )}
 
-        {/* 1. MAIN BUNDLE CARD */}
+        {/* 1. MAIN BUNDLE CARD - Full Package */}
         <Card className={`border-primary/50 shadow-lg relative overflow-hidden ${isPremiumActive ? 'bg-primary/5' : 'bg-gradient-to-br from-background to-primary/5'}`}>
            {isPremiumActive && (
              <div className="absolute top-0 right-0 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-bl-xl flex items-center gap-1">
@@ -262,7 +300,10 @@ const Premium = () => {
                <div className="flex items-end justify-between mb-3">
                  <div>
                    <span className="text-3xl font-bold tracking-tight">
-                     ₦{billingPeriod === 'monthly' ? pricing.monthly.toLocaleString() : pricing.yearly.toLocaleString()}
+                     ₦{(billingPeriod === 'monthly' 
+                       ? pricing.full_package.monthly 
+                       : pricing.full_package.yearly
+                     ).toLocaleString()}
                    </span>
                    <span className="text-sm text-muted-foreground">/{billingPeriod === 'monthly' ? 'mo' : 'yr'}</span>
                  </div>
@@ -276,9 +317,9 @@ const Premium = () => {
                <Button 
                   className="w-full gradient-primary text-white h-11 shadow-md"
                   onClick={() => handlePayment(
-                    'full_package', // FIX #3: Added missing 'featureType' argument
-                    billingPeriod === 'monthly' ? pricing.monthly : pricing.yearly,
-                    'Lynq Unlimited'
+                    'full_package',
+                    billingPeriod === 'monthly' ? pricing.full_package.monthly : pricing.full_package.yearly,
+                    'Ahmia Unlimited'
                   )}
                   disabled={isProcessing || isPremiumActive}
                 >
@@ -292,29 +333,78 @@ const Premium = () => {
         {!hasFullPackage && (
           <div className="space-y-3 pt-2">
             <h3 className="font-semibold text-sm text-muted-foreground ml-1 uppercase tracking-wider">Single Upgrades</h3>
-            {singleFeatures.map((feature) => (
-              <FeatureCard
-                key={feature.type}
-                icon={feature.icon}
-                title={feature.title}
-                description={feature.description}
-                // FIX #4: Use the price from the 'feature' object itself, NOT global 'pricing'
-                monthlyPrice={feature.price.monthly} 
-                yearlyPrice={feature.price.yearly}
-                billingPeriod={billingPeriod}
-                isProcessing={isProcessing}
-                isActive={
-                  feature.type === 'profile_boost' ? hasProfileBoost :
-                  feature.type === 'event_boost' ? hasEventBoost :
-                  hasProfileBadge
-                }
-                onPurchase={() => handlePayment(
-                  feature.type,
-                  billingPeriod === 'monthly' ? feature.price.monthly : feature.price.yearly,
-                  feature.title
-                )}
-              />
-            ))}
+            
+            {singleFeatures.map((feature) => {
+              // ✅ Handle weekly-only event boost differently
+              if (feature.isWeeklyOnly) {
+                return (
+                  <Card key={feature.type} className="border-orange-200 dark:border-orange-900">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="bg-orange-100 dark:bg-orange-900/20 p-2 rounded-lg">
+                          {feature.icon}
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-sm mb-1 flex items-center gap-2">
+                            {feature.title}
+                            <Badge variant="outline" className="text-[10px]">
+                              <Calendar className="w-3 h-3 mr-1" /> Weekly
+                            </Badge>
+                          </h4>
+                          <p className="text-xs text-muted-foreground">{feature.description}</p>
+                        </div>
+                        {hasEventBoost && (
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30">
+                            <Check className="w-3 h-3 mr-1" /> Active
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center justify-between pt-3 border-t">
+                        <div>
+                          <span className="text-2xl font-bold">₦{feature.weeklyPrice!.toLocaleString()}</span>
+                          <span className="text-sm text-muted-foreground">/week</span>
+                        </div>
+                        <Button
+                          onClick={() => handlePayment(
+                            feature.type,
+                            feature.weeklyPrice!,
+                            feature.title
+                          )}
+                          disabled={isProcessing || hasEventBoost}
+                        >
+                          {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : hasEventBoost ? "Active" : "Buy Boost"}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              // Regular monthly/yearly features
+              return (
+                <FeatureCard
+                  key={feature.type}
+                  icon={feature.icon}
+                  title={feature.title}
+                  description={feature.description}
+                  monthlyPrice={feature.monthlyPrice!}
+                  yearlyPrice={feature.yearlyPrice!}
+                  billingPeriod={billingPeriod}
+                  isProcessing={isProcessing}
+                  isActive={
+                    feature.type === 'profile_boost' ? hasProfileBoost :
+                    feature.type === 'event_boost' ? hasEventBoost :
+                    hasProfileBadge
+                  }
+                  onPurchase={() => handlePayment(
+                    feature.type,
+                    billingPeriod === 'monthly' ? feature.monthlyPrice! : feature.yearlyPrice!,
+                    feature.title
+                  )}
+                />
+              );
+            })}
           </div>
         )}
 
