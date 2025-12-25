@@ -280,7 +280,7 @@ export default function AdminSettings() {
         </TabsList>
 
         {/* ✅ ENHANCED PRICING TAB - Complete Feature-Based Pricing */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
           
         <TabsContent value="pricing" className="space-y-4">
           {/* 1. FULL PACKAGE - Unlimited Bundle */}
