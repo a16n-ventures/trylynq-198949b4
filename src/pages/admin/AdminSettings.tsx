@@ -158,48 +158,107 @@ export default function AdminSettings() {
 
   // ✅ ENHANCED: Save all settings with proper structure
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Upsert Complete Pricing Structure
-      await supabase
+  mutationFn: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    console.log('💾 Saving settings...', {
+      prices,
+      flags,
+      aiSettings
+    });
+
+    try {
+      // ✅ FIX: Use proper upsert with onConflict
+      // Save Pricing
+      const { data: priceResult, error: priceError } = await supabase
         .from('app_settings')
         .upsert({ 
           key: 'premium_prices',
           value: prices as any, 
-          updated_by: user?.id, 
+          updated_by: user.id, 
           updated_at: new Date().toISOString(),
           description: 'Premium pricing configuration for all features'
-        });
+        }, {
+          onConflict: 'key', // ✅ THIS IS CRITICAL - tells it to match on 'key' column
+          ignoreDuplicates: false // ✅ Update if exists, don't ignore
+        })
+        .select()
+        .single();
 
-      // Upsert Flags
-      await supabase
+      if (priceError) {
+        console.error('❌ Price save error:', priceError);
+        throw new Error(`Failed to save prices: ${priceError.message}`);
+      }
+      
+      console.log('✅ Prices saved:', priceResult);
+
+      // Save System Flags
+      const { data: flagResult, error: flagError } = await supabase
         .from('app_settings')
         .upsert({ 
           key: 'system_flags',
           value: flags as any, 
-          updated_by: user?.id, 
+          updated_by: user.id, 
           updated_at: new Date().toISOString(),
           description: 'System feature flags'
-        });
+        }, {
+          onConflict: 'key',
+          ignoreDuplicates: false
+        })
+        .select()
+        .single();
 
-      // Upsert AI Settings
-      await supabase
+      if (flagError) {
+        console.error('❌ Flags save error:', flagError);
+        throw new Error(`Failed to save flags: ${flagError.message}`);
+      }
+      
+      console.log('✅ Flags saved:', flagResult);
+
+      // Save AI Settings
+      const { data: aiResult, error: aiError } = await supabase
         .from('app_settings')
         .upsert({ 
           key: 'ai_settings',
           value: aiSettings as any, 
-          updated_by: user?.id, 
+          updated_by: user.id, 
           updated_at: new Date().toISOString(),
           description: 'AI recommendation engine settings'
-        });
-    },
-    onSuccess: () => {
-      toast.success("All settings saved successfully");
-      queryClient.invalidateQueries({ queryKey: ['app_settings'] });
-    },
-    onError: () => toast.error("Failed to save changes")
-  });
+        }, {
+          onConflict: 'key',
+          ignoreDuplicates: false
+        })
+        .select()
+        .single();
+
+      if (aiError) {
+        console.error('❌ AI settings save error:', aiError);
+        throw new Error(`Failed to save AI settings: ${aiError.message}`);
+      }
+      
+      console.log('✅ AI settings saved:', aiResult);
+
+      return { priceResult, flagResult, aiResult };
+      
+    } catch (error: any) {
+      console.error('❌ Save mutation error:', error);
+      throw error;
+    }
+  },
+  onSuccess: (data) => {
+    console.log('✅ All settings saved successfully:', data);
+    toast.success("All settings saved successfully");
+    queryClient.invalidateQueries({ queryKey: ['app_settings'] });
+  },
+  onError: (error: any) => {
+    console.error('❌ Save failed:', error);
+    toast.error(error.message || "Failed to save changes");
+  }
+});
 
   if (isLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin w-8 h-8" /></div>;
 
