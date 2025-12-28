@@ -8,8 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, MapPin, Phone, Truck, Clock, Store as StoreIcon, Tag, Loader2 } from 'lucide-react';
+import { Search, MapPin, Phone, Truck, Clock, Store as StoreIcon, Tag, Loader2, Plus } from 'lucide-react';
 import { StoreItem, Store, STORE_CATEGORIES, DELIVERY_MODES } from '@/types/marketplace';
+import StoreFormDialog from '@/components/StoreFormDialog';
+import ItemFormDialog from '@/components/ItemFormDialog';
 
 export default function Marketplace() {
   const [search, setSearch] = useState('');
@@ -60,9 +62,23 @@ export default function Marketplace() {
   return (
     <div className="container-mobile py-4 space-y-4">
       {/* Header */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold">Marketplace</h1>
-        <p className="text-sm text-muted-foreground">Discover amazing deals near you</p>
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold">Marketplace</h1>
+          <p className="text-sm text-muted-foreground">Discover amazing deals near you</p>
+        </div>
+        <div className="flex gap-2">
+          <StoreFormDialog trigger={
+            <Button size="sm" variant="outline">
+              <Plus className="w-4 h-4 mr-1" /> Store
+            </Button>
+          } />
+          <ItemFormDialog trigger={
+            <Button size="sm">
+              <Plus className="w-4 h-4 mr-1" /> Item
+            </Button>
+          } />
+        </div>
       </div>
 
       {/* Search & Filter */}
