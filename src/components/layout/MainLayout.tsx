@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Users, MapPin, MessageSquare, Calendar, Bell, ShieldCheck } from 'lucide-react';
+import { Compass, Users, MapPin, MessageSquare, Calendar, Bell, ShieldCheck, ShoppingBasket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
