@@ -24,6 +24,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
     fullName: '',
     email: '', 
     username: '',
+    phone: '',
     password: '', 
     confirmPassword: '' 
   });
@@ -185,7 +186,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
             full_name: formData.fullName.trim(),
             username: finalUsername
           })
-        : await signIn(formData.email, formData.password);
+        : await signIn(formData.username || formData.phone,  formData.password);
 
       if (error) throw error;
 
