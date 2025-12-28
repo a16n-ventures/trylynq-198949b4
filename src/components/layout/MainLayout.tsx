@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Users, MapPin, MessageSquare, Calendar, Bell, ShieldCheck, Cart } from 'lucide-react';
+import { Compass, Users, MapPin, MessageSquare, Calendar, Bell, ShieldCheck, ShoppingBasket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -14,7 +14,7 @@ const MainLayout = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('discover');
   const [profile, setProfile] = useState<any>(null);
-  const [userRole, setUserRole] = useState<any>(null); // ✅ RENAMED from 'role' to 'userRole'
+  const [userRole, setUserRole] = useState<any>(null); 
   const [notificationCount, setNotificationCount] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
 
@@ -53,7 +53,7 @@ const MainLayout = () => {
       .select('id, user_id, role')
       .eq('user_id', user.id)
       .single()
-      .then(({ data }) => setUserRole(data)); // ✅ FIXED: Use setUserRole
+      .then(({ data }) => setUserRole(data)); 
 
     // Get Initial Unread Count (friend requests + event invitations)
     const fetchNotifications = async () => {
@@ -211,7 +211,7 @@ const MainLayout = () => {
               className="relative hover:bg-muted/50 rounded-full h-10 w-10"
               onClick={() => navigate('/app/marketplace')}
             >
-              <Cart className="w-5 h-5 text-foreground/80" />
+              <ShoppingBasket className="w-5 h-5 text-foreground/80" />
             </Button>
           <Button
             variant="ghost"
