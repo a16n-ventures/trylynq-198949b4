@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Mail, Eye, EyeOff, Chrome, Lock, Loader2, ArrowRight, User, AtSign } from 'lucide-react';
+import { Mail, Eye, EyeOff, Chrome, Lock, Loader2, ArrowRight, User, AtSign, Phone } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -103,6 +103,28 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
     return null;
   };
 
+  const validatePhone = (): string | null => {
+    if (!formData.phone.trim()) {
+      return "Phone number is required";
+    }
+    // Remove all non-digit characters for validation
+    const digitsOnly = formData.phone.replace(/\D/g, '');
+    
+    // Check if it's a valid Nigerian number (starts with +234, 234, or 0)
+    const nigerianRegex = /^(\+?234|0)[789]\d{9}$/;
+    
+    if (nigerianRegex.test(formData.phone.replace(/\s/g, ''))) {
+      return null;
+    }
+    
+    // General international format validation
+    if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
+      return null;
+    }
+    
+    return "Please enter a valid phone number (e.g., 08012345678 or +2348012345678)";
+  };
+
   const validatePassword = (): string | null => {
     if (!formData.password) {
       return "Password is required";
@@ -135,6 +157,14 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
     return null;
   };
 
+  const validateUsernameOrPhone = (): string | null => {
+    const input = formData.username || formData.phone;
+    if (!input.trim()) {
+      return "Username or phone number is required";
+    }
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -155,6 +185,11 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
         return toast({ title: "Invalid Username", description: usernameError, variant: "destructive" });
       }
 
+      const phoneError = validatePhone();
+      if (phoneError) {
+        return toast({ title: "Invalid Phone", description: phoneError, variant: "destructive" });
+      }
+
       const passwordError = validatePassword();
       if (passwordError) {
         return toast({ title: "Invalid Password", description: passwordError, variant: "destructive" });
@@ -166,9 +201,9 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
       }
     } else {
       // Validation for login
-      const emailError = validateEmail();
-      if (emailError) {
-        return toast({ title: "Invalid Email", description: emailError, variant: "destructive" });
+      const usernameOrPhoneError = validateUsernameOrPhone();
+      if (usernameOrPhoneError) {
+        return toast({ title: "Missing Credentials", description: usernameOrPhoneError, variant: "destructive" });
       }
 
       if (!formData.password) {
@@ -184,7 +219,8 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
       const { error } = mode === 'signup' 
         ? await signUp(formData.email, formData.password, {
             full_name: formData.fullName.trim(),
-            username: finalUsername
+            username: finalUsername,
+            phone: formData.phone.trim()
           })
         : await signIn(formData.username || formData.phone,  formData.password);
 
@@ -197,7 +233,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
           className: "bg-green-500 text-white border-0" 
         });
         // Clear form
-        setFormData({ fullName: '', email: '', username: '', password: '', confirmPassword: '' });
+        setFormData({ fullName: '', email: '', username: '', phone: '', password: '', confirmPassword: '' });
       } else {
         toast({ title: "Welcome back!", description: "Signing you in..." });
         onOpenChange(false);
@@ -267,45 +303,75 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
               </div>
             )}
 
-            {/* Email */}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                  id="email"
-                  type="email" 
-                  placeholder="name@example.com" 
-                  className="pl-10 h-11 bg-muted/30" 
-                  value={formData.email}
-                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            {/* Username - Only for Signup */}
+            {/* Email - Only for Signup */}
             {mode === 'signup' && (
               <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="email">Email *</Label>
                 <div className="relative">
-                  <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
-                    id="username"
-                    type="text" 
-                    placeholder={autoGeneratedUsername || "username_1234"} 
+                    id="email"
+                    type="email" 
+                    placeholder="name@example.com" 
                     className="pl-10 h-11 bg-muted/30" 
-                    value={formData.username}
-                    onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') }))}
+                    value={formData.email}
+                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                     disabled={loading}
-                    maxLength={30}
                   />
                 </div>
-                {autoGeneratedUsername && !formData.username && (
-                  <p className="text-xs text-muted-foreground">
-                    Suggested: <span className="font-mono text-primary">{autoGeneratedUsername}</span>
-                  </p>
-                )}
+              </div>
+            )}
+
+            {/* Username - For both Login and Signup */}
+            <div className="space-y-2">
+              <Label htmlFor="username">
+                {mode === 'login' ? 'Username or Phone *' : 'Username'}
+              </Label>
+              <div className="relative">
+                <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input 
+                  id="username"
+                  type="text" 
+                  placeholder={mode === 'login' ? 'username or phone' : (autoGeneratedUsername || "username_1234")}
+                  className="pl-10 h-11 bg-muted/30" 
+                  value={formData.username}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    username: mode === 'signup' 
+                      ? e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') 
+                      : e.target.value
+                  }))}
+                  disabled={loading}
+                  maxLength={30}
+                />
+              </div>
+              {mode === 'signup' && autoGeneratedUsername && !formData.username && (
+                <p className="text-xs text-muted-foreground">
+                  Suggested: <span className="font-mono text-primary">{autoGeneratedUsername}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Phone - Only for Signup */}
+            {mode === 'signup' && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                <Label htmlFor="phone">Phone Number *</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    id="phone"
+                    type="tel" 
+                    placeholder="08012345678 or +2348012345678" 
+                    className="pl-10 h-11 bg-muted/30" 
+                    value={formData.phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                    disabled={loading}
+                    maxLength={20}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Nigerian format: 080XXXXXXXX or +234XXXXXXXXXX
+                </p>
               </div>
             )}
 
@@ -403,7 +469,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
               onClick={() => {
                 onModeChange(mode === 'login' ? 'signup' : 'login');
                 // Clear form when switching modes
-                setFormData({ fullName: '', email: '', username: '', password: '', confirmPassword: '' });
+                setFormData({ fullName: '', email: '', username: '', phone: '', password: '', confirmPassword: '' });
               }}
               className="ml-2 font-semibold text-primary hover:underline"
               disabled={loading}
