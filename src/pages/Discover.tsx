@@ -862,6 +862,10 @@ if (prem) {
 } else {
   setLoading(false);
 }
+  }; // End of init function
+  
+  init(); // Invoke init
+}, [user]); // End of useEffect
 
   const handleUpload = async () => {
   if (!preview || !user) return;
