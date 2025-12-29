@@ -863,9 +863,6 @@ if (prem) {
   setLoading(false);
 }
 
-    init();
-  }, [user]);
-
   const handleUpload = async () => {
   if (!preview || !user) return;
   setUploading(true);
