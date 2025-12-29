@@ -582,7 +582,6 @@ const Profile = () => {
   const handleReferralCopy = useCallback(() => {
     const refCode = `AHM-${user?.id.slice(0, 6).toUpperCase()}`;
     const refLink = `${window.location.origin}/ahmia?ref=${refCode}`;
-    
     navigator.clipboard.writeText(refLink).then(() => {
       toast.success("Referral link copied!");
     }).catch(() => {
@@ -1059,6 +1058,8 @@ const Profile = () => {
     <ChevronRight className="w-5 h-5 text-amber-500 group-hover:translate-x-1 transition-transform" />
   </div>
 )}
+          </Card>
+        </div>
             
         {/* DANGER ZONE */}
         <div className="space-y-3 pb-8">
