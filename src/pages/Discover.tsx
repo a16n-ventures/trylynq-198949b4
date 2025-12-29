@@ -785,87 +785,70 @@ const { data: storyData, error: storyError } = await supabase
         setEvents(mappedEvents);
       }
 
-      // 4. Premium & AI (Enhanced)
-      // 1. Fetch Subscription
-      // 4. Premium & AI (Enhanced)
-// 1. Fetch Subscription
-const { data: sub } = await supabase
-  .from('subscriptions')
-  .select('status, current_period_end')
-  .eq('user_id', user.id)
-  .maybeSingle(); // ✅ Use maybeSingle() instead of single() to avoid errors if no subscription exists
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('status')
+        .eq('user_id', user.id)
+        .single();
 
-// ✅ Check both status and expiration date
-const now = new Date();
-const isSubActive = sub?.status === 'active' && 
-  sub?.current_period_end && 
-  new Date(sub.current_period_end) > now;
+      const prem = sub?.status === 'active';
+      setIsPremium(prem);
 
-// ✅ Also check for premium features (in case admin granted without subscription)
-const { data: premiumFeatures } = await supabase
-  .from('premium_features')
-  .select('feature_type, is_active, expires_at')
-  .eq('user_id', user.id)
-  .eq('feature_type', 'full_package')
-  .eq('is_active', true)
-  .maybeSingle();
+      if (prem) {
+        // 2. Get Location & Fetch AI Feed
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const { latitude, longitude } = position.coords;
 
-const hasActivePremium = premiumFeatures && 
-  (!premiumFeatures.expires_at || new Date(premiumFeatures.expires_at) > now);
+            try {
+              const { data: ai, error } = await supabase.functions.invoke('generate-smart-feed', {
+                body: {
+                  user_id: user.id,
+                  user_lat: latitude,
+                  user_long: longitude,
+                },
+              });
 
-const prem = isSubActive || hasActivePremium;
-setIsPremium(prem);
+              if (error) throw error;
 
-if (prem) {
-  // 2. Get Location & Fetch AI Feed
-  navigator.geolocation.getCurrentPosition(
-    async (position) => {
-      const { latitude, longitude } = position.coords;
-
-      try {
-        const { data: ai, error } = await supabase.functions.invoke('generate-smart-feed', {
-          body: {
-            user_id: user.id,
-            user_lat: latitude,
-            user_long: longitude,
+              if (ai) {
+                // FIX: Removed 'Event[]' type to avoid collision with global DOM Event
+                // You can use 'any[]' or import your specific type (e.g., AppEvent[])
+                const formatted = ai.map((item: any) => ({
+                  id: item.id,
+                  title: item.title,
+                  start_date: item.start_date || new Date().toISOString(),
+                  location: item.location || 'Online',
+                  image_url: item.image_url,
+                  match_score: (item.final_score || item.similarity || 0) * 100,
+                  is_sponsored: item.is_sponsored,
+                  attendee_count: item.attendee_count || 0,
+                  is_attending: item.is_attending || false,
+                }));
+                
+                setSmartFeed(formatted);
+              }
+            } catch (err) {
+              console.error('AI Feed Error:', err);
+            } finally {
+              // FIX: Stop loading ONLY after the async AI work is done
+              setLoading(false);
+            }
           },
-        });
-
-        if (error) throw error;
-
-        if (ai) {
-          const formatted = ai.map((item: any) => ({
-            id: item.id,
-            title: item.title,
-            start_date: item.start_date || new Date().toISOString(),
-            location: item.location || 'Online',
-            image_url: item.image_url,
-            match_score: (item.final_score || item.similarity || 0) * 100,
-            is_sponsored: item.is_sponsored || false,
-            attendee_count: item.attendee_count || 0,
-            is_attending: item.is_attending || false,
-          }));
-          
-          setSmartFeed(formatted);
-        }
-      } catch (err) {
-        console.error('AI Feed Error:', err);
-      } finally {
+          (err) => {
+            console.warn('Location denied, falling back to basic AI', err);
+            // FIX: Ensure loading stops even if location is denied
+            setLoading(false);
+          }
+        );
+      } else {
+        // FIX: If not premium, stop loading immediately
         setLoading(false);
       }
-    },
-    (err) => {
-      console.warn('Location denied, falling back to basic AI', err);
-      setLoading(false);
-    }
-  );
-} else {
-  setLoading(false);
-}
-  }; // End of init function
-  
-  init(); // Invoke init
-}, [user]); // End of useEffect
+    };
+
+    init();
+  }, [user]);
 
   const handleUpload = async () => {
   if (!preview || !user) return;
