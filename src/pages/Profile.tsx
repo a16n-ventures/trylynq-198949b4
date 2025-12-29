@@ -1133,7 +1133,7 @@ const Profile = () => {
             <button className="hover:text-primary transition-colors font-medium">Help</button>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Profile Settings Dialog - NEW */}
       <Dialog open={showProfileSettings} onOpenChange={setShowProfileSettings}>
