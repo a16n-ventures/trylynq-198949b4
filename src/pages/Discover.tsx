@@ -591,7 +591,7 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
 export default function Discover() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [storyUsers, setStoryUsers] = useState<Profile[]>([]);
+  const [storyUsers, setStoryUsers] = useState<ProfileWithStoryInner[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [smartFeed, setSmartFeed] = useState<Event[]>([]);
