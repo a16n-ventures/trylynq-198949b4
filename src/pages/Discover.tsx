@@ -676,6 +676,7 @@ const { data: storyData, error: storyError } = await supabase
       setStoryUsers(usersWithStories);
       console.log(`✅ Found ${usersWithStories.length} users with active stories`);
     }
+  }
 
       // 2. Communities with membership status (use left join instead of inner)
       const { data: comms, error: commsError } = await supabase
