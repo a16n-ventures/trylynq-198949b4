@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
+import { AdvertBanner } from '@/components/AdvertBanner';
 
 const MainLayout = () => {
   const navigate = useNavigate();
@@ -268,6 +269,7 @@ const MainLayout = () => {
           </div>
         </div>
       </div>
+    <AdvertBanner />
     </div>
   );
 };
