@@ -746,7 +746,7 @@ const sendMessage = useMutation({
       sender_id: user.id,
       is_me: true,
       pending: true,
-      sender_name: 'You',  // ✅ ADD THIS
+      sender_name: 'You', 
       sender_avatar: undefined
     };
     
@@ -1243,13 +1243,12 @@ const sendMessage = useMutation({
               </div>
             </div>
           ) : (
-          {!canType && (
             <div className="text-center py-4">
               {isMuted ? (
                 <>
                   <p className="text-sm text-muted-foreground">You are muted in this community</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Until {new Date(myMembership.muted_until).toLocaleString()}
+                    Until {myMembership?.muted_until && new Date(myMembership.muted_until).toLocaleString()}
                   </p>
                 </>
               ) : (
@@ -1262,10 +1261,10 @@ const sendMessage = useMutation({
               )}
             </div>
           )}
-        );
+        </div>
       </div>
-    }
-  </div>
+    );
+  }
 
   // Chat list view
   return (
