@@ -78,60 +78,6 @@ export default function PremiumFeaturesManager() {
     enabled: !!selectedUser
   });
 
-  // Grant premium feature mutation
-  const grantFeatureMutation = useMutation({
-    mutationFn: async ({ userId, featureType, durationDays }: { 
-      userId: string; 
-      featureType: string; 
-      durationDays: number;
-    }) => {
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + durationDays);
-
-      // Check if feature already exists
-      const { data: existing } = await supabase
-        .from('premium_features')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('feature_type', featureType)
-        .maybeSingle();
-
-      if (existing) {
-        // Update existing
-        const { error } = await supabase
-          .from('premium_features')
-          .update({
-            is_active: true,
-            expires_at: expiresAt.toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existing.id);
-        
-        if (error) throw error;
-      } else {
-        // Create new
-        const { error } = await supabase
-          .from('premium_features')
-          .insert({
-            user_id: userId,
-            feature_type: featureType,
-            is_active: true,
-            expires_at: expiresAt.toISOString()
-          });
-        
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      toast.success('Premium feature granted successfully');
-      queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
-      setDialogOpen(false);
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to grant feature');
-    }
-  });
-
   // Toggle feature status mutation
 const toggleFeatureMutation = useMutation({
   mutationFn: async ({ featureId, isActive }: { featureId: string; isActive: boolean }) => {
