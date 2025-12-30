@@ -1,5 +1,3 @@
-// Create new file: src/components/admin/PremiumFeaturesManager.tsx
-
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -135,55 +133,280 @@ export default function PremiumFeaturesManager() {
   });
 
   // Toggle feature status mutation
-  const toggleFeatureMutation = useMutation({
-    mutationFn: async ({ featureId, isActive }: { featureId: string; isActive: boolean }) => {
-      const { error } = await supabase
-        .from('premium_features')
+const toggleFeatureMutation = useMutation({
+  mutationFn: async ({ featureId, isActive }: { featureId: string; isActive: boolean }) => {
+    console.log('🔄 Toggling feature:', featureId, 'to', isActive);
+    
+    // 1. Update premium_features table
+    const { error: featureError } = await supabase
+      .from('premium_features')
+      .update({ 
+        is_active: isActive,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', featureId);
+    
+    if (featureError) {
+      console.error('❌ Feature update error:', featureError);
+      throw featureError;
+    }
+
+    // 2. Get the feature to find user_id and type
+    const { data: feature } = await supabase
+      .from('premium_features')
+      .select('user_id, feature_type')
+      .eq('id', featureId)
+      .single();
+
+    if (!feature) throw new Error('Feature not found');
+
+    // 3. If toggling full_package, update subscription status
+    if (feature.feature_type === 'full_package') {
+      console.log('💎 Updating subscription status for full_package');
+      
+      const { error: subError } = await supabase
+        .from('subscriptions')
+        .upsert({
+          user_id: feature.user_id,
+          status: isActive ? 'active' : 'inactive',
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (subError) {
+        console.error('❌ Subscription update error:', subError);
+        throw subError;
+      }
+    }
+
+    // 4. Update profile verification badge if profile_badge type
+    if (feature.feature_type === 'profile_badge') {
+      console.log('✅ Updating verification badge');
+      
+      const { error: profileError } = await supabase
+        .from('profiles')
         .update({ 
-          is_active: isActive,
+          is_verified: isActive,
           updated_at: new Date().toISOString()
         })
-        .eq('id', featureId);
-      
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success('Feature status updated');
-      queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to update feature');
-    }
-  });
+        .eq('user_id', feature.user_id);
 
-  // Delete feature mutation
-  const deleteFeatureMutation = useMutation({
-    mutationFn: async (featureId: string) => {
+      if (profileError) {
+        console.error('❌ Profile update error:', profileError);
+        throw profileError;
+      }
+    }
+
+    console.log('✅ Feature toggle completed successfully');
+  },
+  onSuccess: () => {
+    toast.success('Feature status updated successfully');
+    queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
+    queryClient.invalidateQueries({ queryKey: ['admin_premium_users'] });
+  },
+  onError: (error: any) => {
+    console.error('❌ Toggle mutation error:', error);
+    toast.error(error.message || 'Failed to update feature');
+  }
+});
+
+// Delete feature mutation
+const deleteFeatureMutation = useMutation({
+  mutationFn: async (featureId: string) => {
+    console.log('🗑️ Deleting feature:', featureId);
+    
+    // 1. Get the feature details before deleting
+    const { data: feature, error: fetchError } = await supabase
+      .from('premium_features')
+      .select('user_id, feature_type')
+      .eq('id', featureId)
+      .single();
+
+    if (fetchError || !feature) {
+      console.error('❌ Feature fetch error:', fetchError);
+      throw fetchError || new Error('Feature not found');
+    }
+
+    console.log('📋 Feature details:', feature);
+
+    // 2. If it's full_package, check if user has any other active full_package features
+    if (feature.feature_type === 'full_package') {
+      const { data: otherFeatures } = await supabase
+        .from('premium_features')
+        .select('id')
+        .eq('user_id', feature.user_id)
+        .eq('feature_type', 'full_package')
+        .eq('is_active', true)
+        .neq('id', featureId);
+
+      // If this is the last active full_package, deactivate subscription
+      if (!otherFeatures || otherFeatures.length === 0) {
+        console.log('💎 Deactivating subscription (last full_package)');
+        
+        const { error: subError } = await supabase
+          .from('subscriptions')
+          .update({
+            status: 'inactive',
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', feature.user_id);
+
+        if (subError) {
+          console.error('❌ Subscription deactivation error:', subError);
+        }
+      }
+    }
+
+    // 3. If it's profile_badge, remove verification
+    if (feature.feature_type === 'profile_badge') {
+      console.log('✅ Removing verification badge');
+      
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ 
+          is_verified: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', feature.user_id);
+
+      if (profileError) {
+        console.error('❌ Profile update error:', profileError);
+      }
+    }
+
+    // 4. Delete the feature
+    const { error: deleteError } = await supabase
+      .from('premium_features')
+      .delete()
+      .eq('id', featureId);
+    
+    if (deleteError) {
+      console.error('❌ Delete error:', deleteError);
+      throw deleteError;
+    }
+
+    console.log('✅ Feature deleted successfully');
+  },
+  onSuccess: () => {
+    toast.success('Feature removed successfully');
+    queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
+    queryClient.invalidateQueries({ queryKey: ['admin_premium_users'] });
+  },
+  onError: (error: any) => {
+    console.error('❌ Delete mutation error:', error);
+    toast.error(error.message || 'Failed to remove feature');
+  }
+});
+
+// Grant premium feature mutation
+const grantFeatureMutation = useMutation({
+  mutationFn: async ({ userId, featureType, durationDays }: { 
+    userId: string; 
+    featureType: string; 
+    durationDays: number;
+  }) => {
+    console.log('🎁 Granting feature:', { userId, featureType, durationDays });
+    
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + durationDays);
+
+    // 1. Check if feature already exists
+    const { data: existing } = await supabase
+      .from('premium_features')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('feature_type', featureType)
+      .maybeSingle();
+
+    if (existing) {
+      console.log('📝 Updating existing feature');
+      
+      // Update existing
       const { error } = await supabase
         .from('premium_features')
-        .delete()
-        .eq('id', featureId);
+        .update({
+          is_active: true,
+          expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id);
       
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success('Feature removed');
-      queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to remove feature');
+      if (error) {
+        console.error('❌ Update error:', error);
+        throw error;
+      }
+    } else {
+      console.log('➕ Creating new feature');
+      
+      // Create new
+      const { error } = await supabase
+        .from('premium_features')
+        .insert({
+          user_id: userId,
+          feature_type: featureType,
+          is_active: true,
+          expires_at: expiresAt.toISOString()
+        });
+      
+      if (error) {
+        console.error('❌ Insert error:', error);
+        throw error;
+      }
     }
-  });
 
-  const handleGrantFeature = () => {
-    if (!selectedUser) return;
-    
-    grantFeatureMutation.mutate({
-      userId: selectedUser.user_id,
-      featureType: featureForm.feature_type,
-      durationDays: featureForm.duration_days
-    });
-  };
+    // 2. If granting full_package, activate subscription
+    if (featureType === 'full_package') {
+      console.log('💎 Activating subscription');
+      
+      const { error: subError } = await supabase
+        .from('subscriptions')
+        .upsert({
+          user_id: userId,
+          status: 'active',
+          plan: 'premium',
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (subError) {
+        console.error('❌ Subscription error:', subError);
+        throw subError;
+      }
+    }
+
+    // 3. If granting profile_badge, add verification
+    if (featureType === 'profile_badge') {
+      console.log('✅ Adding verification badge');
+      
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ 
+          is_verified: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+      if (profileError) {
+        console.error('❌ Profile update error:', profileError);
+        throw profileError;
+      }
+    }
+
+    console.log('✅ Feature granted successfully');
+  },
+  onSuccess: () => {
+    toast.success('Premium feature granted successfully');
+    queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
+    queryClient.invalidateQueries({ queryKey: ['admin_premium_users'] });
+    setDialogOpen(false);
+  },
+  onError: (error: any) => {
+    console.error('❌ Grant mutation error:', error);
+    toast.error(error.message || 'Failed to grant feature');
+  }
+});
 
   const getFeatureBadge = (featureType: string) => {
     const badges = {
