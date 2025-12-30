@@ -745,11 +745,12 @@ const Profile = () => {
                 />
               ) : (
                 <>
-                {/* ✅ ADDED: Premium Badge beside name */}
+                {/* Premium Badge beside name */}
                 <div className="flex items-center gap-2">
                   <h2 className="text-2xl font-bold truncate tracking-tight">
                     {profile?.display_name || 'User'}
                   </h2>
+                  {/*
                   {hasPremiumBadge && (
                     <div className="relative group">
                       <svg 
@@ -760,13 +761,13 @@ const Profile = () => {
                         <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
                         <circle cx="12" cy="12" r="3" fill="white" />
                       </svg>
-                      {/* Tooltip */}
+                      {/* Tooltip /}
                       <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 bg-black/90 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                         Verified Premium
                       </div>
-                    </div>
+                    </div> 
                   )}
-                </div>
+                </div> */}
                 </>
               )}
               <p className="text-white/90 text-sm truncate font-medium flex items-center gap-2">
@@ -910,6 +911,7 @@ const Profile = () => {
         </Card>
 
         {/* REFERRAL CARD */}
+        {/*
         <Card className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white border-0 shadow-xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl" />
           <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/10 rounded-full -ml-16 -mb-16 blur-2xl" />
@@ -925,7 +927,7 @@ const Profile = () => {
                   Share your referral link. When friends join, you both get 7 days of Premium access!
                 </p>
               </div>
-            </div>
+            </div> 
             
             <div className="flex gap-2">
               <div className="bg-white/15 border border-white/30 backdrop-blur-sm rounded-xl px-4 py-3 flex-1 flex items-center justify-between">
@@ -943,7 +945,7 @@ const Profile = () => {
               </Button>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
 
         {/* SETTINGS SECTION */}
         <div className="space-y-3">
@@ -1010,7 +1012,7 @@ const Profile = () => {
               <Switch 
                 checked={!!location?.is_sharing_location}
                 onCheckedChange={handleLocationToggle}
-                disabled={toggleLocationMutation.isPending || locationLoading}
+                enabled={toggleLocationMutation.isPending || locationLoading}
                 aria-label="Toggle location sharing"
               />
             </div>
