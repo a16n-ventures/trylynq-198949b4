@@ -701,37 +701,37 @@ const { data: storyData, error: storyError } = await supabase
         const membershipMap = new Map(memberships?.map(m => [m.community_id, m.role]) || []); 
 
         const communityIds = comms.map(c => c.id);
-  const { data: memberCounts } = await supabase
-    .from('community_members')
-    .select('community_id')
-    .in('community_id', communityIds);
-  
-  const memberCountMap = new Map<string, number>();
-  memberCounts?.forEach((m: any) => {
-    memberCountMap.set(m.community_id, (memberCountMap.get(m.community_id) || 0) + 1);
-  });
+        const { data: memberCounts } = await supabase
+          .from('community_members')
+          .select('community_id')
+          .in('community_id', communityIds);
         
-        const enrichedComms: Community[] = comms.map((c: any) => {
-    const isMember = membershipMap.has(c.id);
-    const role = membershipMap.get(c.id) as 'admin' | 'member' | undefined;
-    const actualMemberCount = memberCountMap.get(c.id) || 0;  // ✅ Always accurate
-    
-    console.log(`✅ Community: "${c.name}" - Actual: ${actualMemberCount} - DB: ${c.member_count} - Joined: ${isMember}`);
-    
-    return {
-      id: c.id,
-      name: c.name,
-      member_count: actualMemberCount,  // ✅ Use calculated count
-      description: c.description,
-      avatar_url: c.cover_url || c.avatar_url,
-      cover_url: c.cover_url,
-      is_member: isMember,
-      my_role: role || null
-    };
-  });
-  
-  setCommunities(enrichedComms);
-}
+        const memberCountMap = new Map<string, number>();
+        memberCounts?.forEach((m: any) => {
+          memberCountMap.set(m.community_id, (memberCountMap.get(m.community_id) || 0) + 1);
+        });
+              
+              const enrichedComms: Community[] = comms.map((c: any) => {
+          const isMember = membershipMap.has(c.id);
+          const role = membershipMap.get(c.id) as 'admin' | 'member' | undefined;
+          const actualMemberCount = memberCountMap.get(c.id) || 0;  // ✅ Always accurate
+          
+          console.log(`✅ Community: "${c.name}" - Actual: ${actualMemberCount} - DB: ${c.member_count} - Joined: ${isMember}`);
+          
+          return {
+            id: c.id,
+            name: c.name,
+            member_count: actualMemberCount,  // ✅ Use calculated count
+            description: c.description,
+            avatar_url: c.cover_url || c.avatar_url,
+            cover_url: c.cover_url,
+            is_member: isMember,
+            my_role: role || null
+          };
+        });
+        
+        setCommunities(enrichedComms);
+      }
       
       // 3. Events with RSVP status
       const { data: evts } = await supabase
@@ -794,62 +794,61 @@ const { data: storyData, error: storyError } = await supabase
 
       const prem = sub?.status === 'active';
       setIsPremium(prem);
-
-      if (prem) {
-        // 2. Get Location & Fetch AI Feed
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const { latitude, longitude } = position.coords;
-
-            try {
-              const { data: ai, error } = await supabase.functions.invoke('generate-smart-feed', {
-                body: {
-                  user_id: user.id,
-                  user_lat: latitude,
-                  user_long: longitude,
-                },
-              });
-
-              if (error) throw error;
-
-              if (ai) {
-                // FIX: Removed 'Event[]' type to avoid collision with global DOM Event
-                // You can use 'any[]' or import your specific type (e.g., AppEvent[])
-                const formatted = ai.map((item: any) => ({
-                  id: item.id,
-                  title: item.title,
-                  start_date: item.start_date || new Date().toISOString(),
-                  location: item.location || 'Online',
-                  image_url: item.image_url,
-                  match_score: (item.final_score || item.similarity || 0) * 100,
-                  is_sponsored: item.is_sponsored,
-                  attendee_count: item.attendee_count || 0,
-                  is_attending: item.is_attending || false,
-                }));
-                
-                setSmartFeed(formatted);
-              }
-            } catch (err) {
-              console.error('AI Feed Error:', err);
-            } finally {
-              // FIX: Stop loading ONLY after the async AI work is done
-              setLoading(false);
-            }
-          },
-          (err) => {
-            console.warn('Location denied, falling back to basic AI', err);
-            // FIX: Ensure loading stops even if location is denied
-            setLoading(false);
-          }
-        );
-      } else {
-        // FIX: If not premium, stop loading immediately
-        setLoading(false);
-      }
+      
+      setLoading(false);
     };
 
     init();
   }, [user]);
+
+  // ✅ ADD NEW: Separate effect for Smart Feed location
+  useEffect(() => {
+    // Only fetch AI feed when user is on "For You" tab AND is premium
+    const urlParams = new URLSearchParams(window.location.search);
+    const isOnSmartFeedTab = urlParams.get('tab') === 'foryou';
+    
+    if (!isPremium || !isOnSmartFeedTab || smartFeed.length > 0) return;
+    
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+  
+        try {
+          const { data: ai, error } = await supabase.functions.invoke('generate-smart-feed', {
+            body: {
+              user_id: user?.id,
+              user_lat: latitude,
+              user_long: longitude,
+            },
+          });
+  
+          if (error) throw error;
+  
+          if (ai) {
+            const formatted = ai.map((item: any) => ({
+              id: item.id,
+              title: item.title,
+              start_date: item.start_date || new Date().toISOString(),
+              location: item.location || 'Online',
+              image_url: item.image_url,
+              match_score: (item.final_score || item.similarity || 0) * 100,
+              is_sponsored: item.is_sponsored,
+              attendee_count: item.attendee_count || 0,
+              is_attending: item.is_attending || false,
+            }));
+            
+            setSmartFeed(formatted);
+          }
+        } catch (err) {
+          console.error('AI Feed Error:', err);
+        }
+      },
+      (err) => {
+        console.warn('Location denied for Smart Feed', err);
+        // Don't show error toast - user can still use other features
+      }
+    );
+  }, [isPremium, user?.id]); // Only run when premium status changes
 
   const handleUpload = async () => {
   if (!preview || !user) return;
@@ -861,14 +860,14 @@ const { data: storyData, error: storyError } = await supabase
     const path = `${user.id}/${Date.now()}.${ext}`;
     
     const { error: uploadError } = await supabase.storage
-      .from('stories')
+      .from('chat-attachments')
       .upload(path, preview.file);
     
     if (uploadError) throw uploadError;
     
     // 2. Get public URL
     const { data: { publicUrl } } = supabase.storage
-      .from('stories')
+      .from('chat-attachments')
       .getPublicUrl(path);
     
     // 3. Get current user profile
@@ -1487,57 +1486,57 @@ const { data: storyData, error: storyError } = await supabase
 
           {/* Communities */}
           <TabsContent value="communities" className="mt-6 space-y-3 animate-in fade-in-50">
-  {loading ? <FeedSkeleton /> : communities.length === 0 ? (
-    <EmptyState 
-      icon={Users} 
-      title="No Communities Yet" 
-      desc="Be the first to start a tribe in your area." 
-      action="Create Community" 
-      onAction={() => navigate('/app/messages?tab=community')} 
-    />
-  ) : (
-    communities.map(c => (
-      <Card 
-        key={c.id} 
-        className="hover:shadow-md transition-all border-border/50 cursor-pointer"
-        onClick={() => setSelectedCommunity(c)}
-      >
-        <CardContent className="p-4 flex gap-4 items-center">
-          <img 
-            src={c.cover_url || c.avatar_url || '/default-avatar.png'} 
-            className="w-14 h-14 rounded-2xl bg-muted object-cover" 
-            alt={c.name}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold truncate text-lg">{c.name}</h3>
-              {c.is_member && (
-                <Badge variant="secondary" className="text-xs">
-                  {c.my_role === 'admin' ? 'Admin' : 'Joined'}
-                </Badge>
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground line-clamp-1">{c.description}</p>
-            <div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium">
-              <Users className="w-3 h-3" /> {c.member_count} members
-            </div>
-          </div>
-          <Button 
-            size="sm" 
-            variant={c.is_member ? "outline" : "secondary"}
-            className="rounded-full px-4"
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedCommunity(c);
-            }}
-          >
-            View
-          </Button>
-        </CardContent>
-      </Card>
-    ))
-  )}
-</TabsContent>
+            {loading ? <FeedSkeleton /> : communities.length === 0 ? (
+              <EmptyState 
+                icon={Users} 
+                title="No Communities Yet" 
+                desc="Be the first to start a tribe in your area." 
+                action="Create Community" 
+                onAction={() => navigate('/app/messages?tab=community')} 
+              />
+            ) : (
+              communities.map(c => (
+                <Card 
+                  key={c.id} 
+                  className="hover:shadow-md transition-all border-border/50 cursor-pointer"
+                  onClick={() => setSelectedCommunity(c)}
+                >
+                  <CardContent className="p-4 flex gap-4 items-center">
+                    <img 
+                      src={c.cover_url || c.avatar_url || '/default-avatar.png'} 
+                      className="w-14 h-14 rounded-2xl bg-muted object-cover" 
+                      alt={c.name}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold truncate text-lg">{c.name}</h3>
+                        {c.is_member && (
+                          <Badge variant="secondary" className="text-xs">
+                            {c.my_role === 'admin' ? 'Admin' : 'Joined'}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-1">{c.description}</p>
+                      <div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium">
+                        <Users className="w-3 h-3" /> {c.member_count} members
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant={c.is_member ? "outline" : "secondary"}
+                      className="rounded-full px-4"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCommunity(c);
+                      }}
+                    >
+                      View
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
 
           {/* Events */}
           <TabsContent value="events" className="mt-6 space-y-3 animate-in fade-in-50">
@@ -1568,7 +1567,6 @@ const { data: storyData, error: storyError } = await supabase
                             Going
                           </Badge>
                         )}
-                         {/* [MODIFIED: Added Sponsored Badge] */}
                         {e.is_sponsored && (
                           <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">
                             Sponsored
@@ -1579,10 +1577,19 @@ const { data: storyData, error: storyError } = await supabase
                         <MapPin className="w-3.5 h-3.5" /> 
                         <span className="truncate">{e.location}</span>
                       </div>
-                      {/* [MODIFIED: Ensure attendee count is always visible] */}
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                        <Users className="w-3 h-3" />
-                        {e.attendee_count || 0} attending
+                      
+                      {/* ✅ ADD THIS: Price Display */}
+                      <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Users className="w-3 h-3" />
+                          {e.attendee_count || 0} attending
+                        </div>
+                        {e.price !== undefined && (
+                          <div className="flex items-center gap-1 text-xs font-semibold text-primary">
+                            <Ticket className="w-3 h-3" />
+                            {e.price === 0 ? 'Free' : `₦${e.price.toLocaleString()}`}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <Button 
