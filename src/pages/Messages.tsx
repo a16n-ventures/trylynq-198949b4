@@ -913,7 +913,26 @@ const sendMessage = useMutation({
   // Chat view
   if (selectedChat) {
     const isComm = selectedChat.type === 'community';
-    const canType = !isComm || (isComm && selectedChat.my_role !== 'none');
+
+    // With this:
+    const { data: myMembership } = useQuery({
+      queryKey: ['my_membership', selectedChat?.id, user?.id],
+      queryFn: async () => {
+        if (!user?.id || !selectedChat || selectedChat.type !== 'community') return null;
+        const { data } = await supabase
+          .from('community_members')
+          .select('role, muted_until')
+          .eq('community_id', selectedChat.id)
+          .eq('user_id', user.id)
+          .single();
+        return data;
+      },
+      enabled: !!selectedChat && selectedChat.type === 'community' && !!user?.id
+    });
+    
+    const isMuted = myMembership?.muted_until && new Date(myMembership.muted_until) > new Date();
+    const canType = !isComm || (isComm && selectedChat.my_role !== 'none' && !isMuted);
+
     const canModerate = isComm && (selectedChat.my_role === 'admin' || selectedChat.my_role === 'moderator');
     const chatImages = messages.filter(m => m.image_url && !m.is_deleted).map(m => ({ url: m.image_url!, id: m.id }));
     const pinnedMessages = isComm ? messages.filter(m => m.is_pinned && !m.is_deleted) : [];
@@ -921,7 +940,7 @@ const sendMessage = useMutation({
     return (
       <div className="fixed inset-0 z-[100] bg-background flex flex-col h-[100dvh]">
         {/* Header */}
-         <div className="px-4 py-3 border-b flex items-center gap-3 bg-gradient-to-r from-background to-muted/20 backdrop-blur-xl shadow-sm shrink-0 z-10">
+        <div className="px-4 py-3 border-b flex items-center gap-3 bg-gradient-to-r from-background to-muted/20 backdrop-blur-xl shadow-sm shrink-0 z-10">
           <Button variant="ghost" size="icon" className="-ml-2 rounded-full hover:bg-muted" onClick={() => setSelectedChat(null)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -951,27 +970,50 @@ const sendMessage = useMutation({
             </p>
           </div>
           
-          {/* ✅ ADD THIS - The buttons section */}
+          {/* Buttons Section - FIXED */}
           <div className="flex items-center gap-1">
             {chatImages.length > 0 && (
-              <Button variant="ghost" size="icon" className="rounded-full h-9 w-9" onClick={() => setIsGalleryOpen(true)}>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="rounded-full h-9 w-9" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsGalleryOpen(true);
+                }}
+              >
                 <Grid className="w-4 h-4" />
               </Button>
             )}
             
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full h-9 w-9">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="rounded-full h-9 w-9"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <MoreVertical className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => setIsInfoOpen(true)}>
+                <DropdownMenuItem 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsInfoOpen(true);
+                  }}
+                >
                   <Info className="w-4 h-4 mr-2" />
                   {isComm ? 'Community Info' : 'View Profile'}
                 </DropdownMenuItem>
                 {isComm && selectedChat.my_role === 'admin' && (
-                  <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsSettingsOpen(true);
+                    }}
+                  >
                     <Settings className="w-4 h-4 mr-2" />
                     Community Settings
                   </DropdownMenuItem>
@@ -982,14 +1024,49 @@ const sendMessage = useMutation({
         </div>
 
         {/* Dialogs */}
-        <MediaGallery isOpen={isGalleryOpen} onClose={() => setIsGalleryOpen(false)} images={chatImages} />
-          {isComm && (
+        <MediaGallery 
+          isOpen={isGalleryOpen} 
+          onClose={() => setIsGalleryOpen(false)} 
+          images={chatImages} 
+        />
+        
+        {/* DM Profile Dialog */}
+        {!isComm && (
+          <Dialog open={isInfoOpen} onOpenChange={setIsInfoOpen}>
+            <DialogContent className="sm:max-w-[420px]">
+              <DialogHeader>
+                <DialogTitle>Profile</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col items-center gap-4 py-6">
+                <Avatar className="w-24 h-24 ring-4 ring-primary/10">
+                  <AvatarImage src={selectedChat.avatar} />
+                  <AvatarFallback className="text-2xl">{selectedChat.name?.[0]?.toUpperCase() ?? '?'}</AvatarFallback>
+                </Avatar>
+                <div className="text-center">
+                  <h2 className="text-xl font-bold mb-1">{selectedChat.name}</h2>
+                  <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5">
+                    {selectedChat.is_online ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/> Active now
+                      </>
+                    ) : (
+                      'Offline'
+                    )}
+                  </p>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+        
+        {/* Community Dialogs */}
+        {isComm && (
           <>
             <CommunityInfoDialog 
               isOpen={isInfoOpen} 
               onClose={() => setIsInfoOpen(false)} 
               community={selectedChat}
-              coverUrl={selectedChat.avatar}
+              coverUrl={selectedChat.cover || selectedChat.cover_url || selectedChat.avatar}
             />
             {selectedChat.my_role === 'admin' && (
               <CommunitySettingsDialog 
@@ -998,7 +1075,7 @@ const sendMessage = useMutation({
                 communityId={selectedChat.id} 
                 currentName={selectedChat.name} 
                 currentDesc={selectedChat.description || ''} 
-                currentCoverUrl={selectedChat.cover || selectedChat.cover_url || selectedChat.avatar}  // Add this
+                currentCoverUrl={selectedChat.cover || selectedChat.cover_url || selectedChat.avatar}
               />
             )}
           </>
@@ -1166,17 +1243,29 @@ const sendMessage = useMutation({
               </div>
             </div>
           ) : (
+          {!canType && (
             <div className="text-center py-4">
-              <p className="text-sm text-muted-foreground">Join this community to send messages</p>
-              <Button className="mt-2" onClick={() => joinCommunity.mutate(selectedChat.id)}>
-                Join Community
-              </Button>
+              {isMuted ? (
+                <>
+                  <p className="text-sm text-muted-foreground">You are muted in this community</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Until {new Date(myMembership.muted_until).toLocaleString()}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">Join this community to send messages</p>
+                  <Button className="mt-2" onClick={() => joinCommunity.mutate(selectedChat.id)}>
+                    Join Community
+                  </Button>
+                </>
+              )}
             </div>
           )}
-        </div>
+        );
       </div>
-    );
-  }
+    }
+  </div>
 
   // Chat list view
   return (
