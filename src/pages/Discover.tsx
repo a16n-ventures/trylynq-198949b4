@@ -851,95 +851,97 @@ const { data: storyData, error: storyError } = await supabase
   }, [isPremium, user?.id, window.location.search]); // Watch URL changes
 
   const handleUpload = async () => {
-  if (!preview || !user) return;
-  setUploading(true);
+    if (!preview || !user) return;
+    setUploading(true);
+    
+    try {
+      // 1. Check if profile exists first to avoid FK error
+      const { data: currentProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, display_name, avatar_url')
+        .eq('user_id', user.id)
+        .single();
+      
+      // If profile is missing, we cannot proceed because of the Foreign Key constraint
+      if (!currentProfile) {
+        throw new Error("User profile not found. Please complete your profile setup.");
+      }
   
-  try {
-    // 1. Upload media to storage
-    const ext = preview.file.name.split('.').pop();
-    const path = `${user.id}/${Date.now()}.${ext}`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('stories')
-      .upload(path, preview.file);
-    
-    if (uploadError) throw uploadError;
-    
-    // 2. Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('stories')
-      .getPublicUrl(path);
-    
-    // 3. Get current user profile
-    const { data: currentProfile } = await supabase
-      .from('profiles')
-      .select('id, display_name, avatar_url')
-      .eq('user_id', user.id)
-      .single();
-    
-    // 4. Create story record with media URL
-    const { data: newStory, error: insertError } = await supabase
-      .from('stories')
-      .insert({ 
-        author_id: currentProfile?.id || user.id,
-        content: caption || null,
-        media_url: publicUrl,
-        media_type: preview.file.type.startsWith('video') ? 'video' : 'image'
-      })
-      .select()
-      .single();
-    
-    if (insertError) throw insertError;
-    
-    toast.success("Story posted! 📸");
-    setPreview(null);
-    setCaption("");
-    
-    // ✅ FIXED: Update storyUsers immediately with optimistic update
-    if (currentProfile && newStory) {
-      setStoryUsers(prev => {
-        // Check if user already has stories
-        const existingUserIndex = prev.findIndex(u => u.id === currentProfile.id);
-        
-        if (existingUserIndex >= 0) {
-          // User exists, add story to their array
-          const updated = [...prev];
-          updated[existingUserIndex] = {
-            ...updated[existingUserIndex],
-            stories: [...updated[existingUserIndex].stories, {
-              id: newStory.id,
-              created_at: newStory.created_at,
-              content: newStory.content,
-              media_url: newStory.media_url,
-              media_type: newStory.media_type
-            }]
-          };
-          return updated;
-        } else {
-          // New user, add to beginning
-          return [{
-            id: currentProfile.id,
-            display_name: currentProfile.display_name,
-            avatar_url: currentProfile.avatar_url,
-            stories: [{
-              id: newStory.id,
-              created_at: newStory.created_at,
-              content: newStory.content,
-              media_url: newStory.media_url,
-              media_type: newStory.media_type
-            }]
-          }, ...prev];
-        }
-      });
+      // 2. Upload media to storage
+      const ext = preview.file.name.split('.').pop();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('stories')
+        .upload(path, preview.file);
+      
+      if (uploadError) throw uploadError;
+      
+      // 3. Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('stories')
+        .getPublicUrl(path);
+      
+      // 4. Create story record with CONFIRMED profile ID
+      const { data: newStory, error: insertError } = await supabase
+        .from('stories')
+        .insert({ 
+          author_id: currentProfile.id, // Use the profile ID, not user.id (unless they are the same in your schema)
+          content: caption || null,
+          media_url: publicUrl,
+          media_type: preview.file.type.startsWith('video') ? 'video' : 'image'
+        })
+        .select()
+        .single();
+      
+      if (insertError) throw insertError;
+      
+      toast.success("Story posted! 📸");
+      setPreview(null);
+      setCaption("");
+      
+      // 5. Optimistic UI Update
+      if (newStory) {
+        setStoryUsers(prev => {
+          const existingUserIndex = prev.findIndex(u => u.id === currentProfile.id);
+          
+          if (existingUserIndex >= 0) {
+            const updated = [...prev];
+            updated[existingUserIndex] = {
+              ...updated[existingUserIndex],
+              stories: [...updated[existingUserIndex].stories, {
+                id: newStory.id,
+                created_at: newStory.created_at,
+                content: newStory.content,
+                media_url: newStory.media_url,
+                media_type: newStory.media_type
+              }]
+            };
+            return updated;
+          } else {
+            return [{
+              id: currentProfile.id,
+              display_name: currentProfile.display_name,
+              avatar_url: currentProfile.avatar_url,
+              stories: [{
+                id: newStory.id,
+                created_at: newStory.created_at,
+                content: newStory.content,
+                media_url: newStory.media_url,
+                media_type: newStory.media_type
+              }]
+            }, ...prev];
+          }
+        });
+      }
+      
+    } catch (e: any) {
+      console.error("Story upload error:", e);
+      toast.error(e.message || "Upload failed");
+    } finally {
+      setUploading(false);
     }
-    
-  } catch (e: any) {
-    console.error("Story upload error:", e);
-    toast.error(e.message || "Upload failed");
-  } finally {
-    setUploading(false);
-  }
-};
+  };
 
   const handleJoinCommunity = async (communityId: string) => {
   if (!user) return;
