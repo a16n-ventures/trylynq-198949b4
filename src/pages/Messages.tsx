@@ -1169,7 +1169,7 @@ const sendMessage = useMutation({
           </div>
         </div>
 
-{/* Input area */}
+        {/* Input area */}
         <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t bg-background/95 backdrop-blur-xl shrink-0">
           {canType ? (
             <div className="flex flex-col gap-3">
@@ -1247,11 +1247,9 @@ const sendMessage = useMutation({
               {isMuted ? (
                 <>
                   <p className="text-sm text-muted-foreground">You are muted in this community</p>
-                  {myMembership?.muted_until && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Until {new Date(myMembership.muted_until).toLocaleString()}
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Until {myMembership?.muted_until && new Date(myMembership.muted_until).toLocaleString()}
+                  </p>
                 </>
               ) : (
                 <>
