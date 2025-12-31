@@ -886,7 +886,7 @@ const { data: storyData, error: storyError } = await supabase
       const { data: newStory, error: insertError } = await supabase
         .from('stories')
         .insert({ 
-          author_id: user.id, // Use the profile ID, not user.id (unless they are the same in your schema)
+          author_id: user.id,
           content: caption || null,
           media_url: publicUrl,
           media_type: preview.file.type.startsWith('video') ? 'video' : 'image'
@@ -903,7 +903,7 @@ const { data: storyData, error: storyError } = await supabase
       // 5. Optimistic UI Update
       if (newStory) {
         setStoryUsers(prev => {
-          const existingUserIndex = prev.findIndex(u => u.id === currentProfile.id);
+          const existingUserIndex = prev.findIndex(u => u.id === user.id);
           
           if (existingUserIndex >= 0) {
             const updated = [...prev];
@@ -920,7 +920,7 @@ const { data: storyData, error: storyError } = await supabase
             return updated;
           } else {
             return [{
-              id: currentProfile.id,
+              id: user.id,
               display_name: currentProfile.display_name,
               avatar_url: currentProfile.avatar_url,
               stories: [{
