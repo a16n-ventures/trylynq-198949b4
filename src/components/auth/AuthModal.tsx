@@ -259,7 +259,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto border-0 shadow-2xl bg-background/95 backdrop-blur-xl p-8">
+      <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto overflow-y-auto border-0 shadow-2xl bg-background/95 backdrop-blur-xl p-8">
         <DialogHeader className="text-center space-y-2">
           <DialogTitle className="text-2xl font-bold tracking-tight">
             {mode === 'login' ? 'Welcome Back' : 'Create Account'}
@@ -369,9 +369,9 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                     maxLength={20}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
+                {/* <p className="text-xs text-muted-foreground">
                   Nigerian format: 080XXXXXXXX or +234XXXXXXXXXX
-                </p>
+                </p> */}
               </div>
             )}
 
