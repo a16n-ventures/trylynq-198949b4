@@ -53,571 +53,1309 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from '@/components/ui/textarea';
 import { Input } from "@/components/ui/input";
-import { useFriends } from "@/hooks/useFriends";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Badge Component Helper
-const PremiumBadge = () => (
-  <svg 
-    className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 ml-1 inline-block align-middle" 
-    viewBox="0 0 22 22" 
-    fill="currentColor"
-    aria-label="Verified Premium"
-  >
-    <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
-  </svg>
-);
+type Event = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  location: string;
+  start_date: string;
+  end_date?: string | null;
+  max_attendees?: number | null;
+  ticket_price: number;
+  is_public: boolean;
+  requires_approval: boolean;
+  creator_id: string;
+  image_url?: string | null;
+  event_type: 'physical' | 'virtual';
+  meeting_link?: string | null;
+  is_sponsored?: boolean; // [MODIFIED: Added is_sponsored]
+  creator: {
+    user_id: string;
+    display_name: string;
+    avatar_url?: string;
+  };
+};
+
+type Attendee = {
+  user_id: string;
+  display_name: string;
+  avatar_url?: string;
+};
+
+// [MODIFIED: Added Friend Type]
+type Friend = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
 
 const EventDetail = () => {
-  const { id } = useParams();
+  // FIXED: Handle both 'id' (standard) and 'eventId' (custom) parameter names
+  const params = useParams();
+  const eventId = params.eventId || params.id;
+  
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
+
+  // Video Call States
+  const [isInCall, setIsInCall] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [showVideoDialog, setShowVideoDialog] = useState(false);
+
+  // Recording States
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showRecordingDialog, setShowRecordingDialog] = useState(false);
   
-  // Edit form state
+  // NEW: Delete Dialog State
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // [MODIFIED: Invite Dialog States]
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editLocation, setEditLocation] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
-  const [editPrice, setEditPrice] = useState('');
+  const [editTicketPrice, setEditTicketPrice] = useState('');
   const [editMaxAttendees, setEditMaxAttendees] = useState('');
 
-  // Invite modal state
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteSearch, setInviteSearch] = useState('');
-  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
-  const { friends } = useFriends(user?.id);
+  // Fetch event details (Robust Version)
+  const { data: event, isPending: loadingEvent } = useQuery({
+    queryKey: ['event', eventId],
+    queryFn: async (): Promise<Event> => {
+      if (!eventId) throw new Error("No event ID");
 
-  // Invite friends logic - Refactored for proper selection
-  const handleInviteFriends = async () => {
-    if (selectedFriends.length === 0) return;
-    
-    try {
-      const invitations = selectedFriends.map(friendId => ({
-        event_id: id,
-        inviter_id: user?.id,
-        invitee_id: friendId,
-        status: 'pending'
-      }));
-
-      const { error } = await supabase
-        .from('event_invitations')
-        .insert(invitations);
-
-      if (error) throw error;
-
-      toast.success(`Sent invitations to ${selectedFriends.length} friends`);
-      setShowInviteModal(false);
-      setSelectedFriends([]);
-    } catch (error: any) {
-      toast.error("Failed to send invitations");
-    }
-  };
-
-  const toggleFriendSelection = (friendId: string) => {
-    setSelectedFriends(prev => 
-      prev.includes(friendId)
-        ? prev.filter(id => id !== friendId)
-        : [...prev, friendId]
-    );
-  };
-
-  // Select/Deselect All
-  const handleSelectAll = () => {
-    if (selectedFriends.length === filteredFriends.length) {
-      setSelectedFriends([]);
-    } else {
-      setSelectedFriends(filteredFriends.map(f => f.id));
-    }
-  };
-
-  const { data: event, isLoading, error } = useQuery({
-    queryKey: ['event', id],
-    queryFn: async () => {
-      const { data, error } = await supabase
+      // 1. Fetch Event first (No Joins to avoid FK errors)
+      const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select(`
-          *,
-          creator:profiles!creator_id(*)
-        `)
-        .eq('id', id)
+        .select('*')
+        .eq('id', eventId)
         .single();
 
-      if (error) throw error;
-      
-      // ✅ Check Creator Premium Status
-      if (data?.creator) {
-        const { data: premiumFeature } = await supabase
-          .from('premium_features')
-          .select('is_active')
-          .eq('user_id', data.creator.user_id)
-          .eq('is_active', true)
-          .gt('expires_at', new Date().toISOString())
-          .maybeSingle();
+      if (eventError) throw eventError;
 
-        const { data: sub } = await supabase
-          .from('subscriptions')
-          .select('status')
-          .eq('user_id', data.creator.user_id)
-          .maybeSingle();
+      // 2. Fetch Creator Profile Separately
+      let creatorProfile = { 
+        user_id: eventData.creator_id, 
+        display_name: 'Unknown Host', 
+        avatar_url: undefined 
+      };
 
-        // Attach premium status to creator object
-        data.creator.is_premium = !!premiumFeature || sub?.status === 'active';
+      if (eventData.creator_id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id, display_name, avatar_url')
+          .eq('id', eventData.creator_id) // check against id
+          .maybeSingle(); // maybeSingle prevents error if profile missing
+        
+        if (!profile) {
+             // Fallback check for user_id if id didn't match
+             const { data: profileAlt } = await supabase
+              .from('profiles')
+              .select('user_id, display_name, avatar_url')
+              .eq('user_id', eventData.creator_id)
+              .maybeSingle();
+             
+             if (profileAlt) {
+                 creatorProfile = {
+                    user_id: eventData.creator_id,
+                    display_name: profileAlt.display_name || 'Unknown Host',
+                    avatar_url: profileAlt.avatar_url
+                 };
+             }
+        } else {
+             creatorProfile = {
+                user_id: eventData.creator_id,
+                display_name: profile.display_name || 'Unknown Host',
+                avatar_url: profile.avatar_url
+             };
+        }
       }
-
-      return data;
+      
+      return {
+        ...eventData,
+        event_type: (eventData.event_type as 'physical' | 'virtual') || 'physical',
+        creator: creatorProfile
+      } as Event;
     },
+    enabled: !!eventId,
   });
 
-  const { data: attendees = [] } = useQuery({
-    queryKey: ['event_attendees', id],
+  // Fetch attendees
+  const { data: attendees = [] } = useQuery<Attendee[]>({
+    queryKey: ['event-attendees', eventId],
     queryFn: async () => {
-      // First get attendees
-      const { data, error } = await supabase
+      if (!eventId) return [];
+
+      // 1. Get attendee IDs
+      const { data: rawAttendees, error } = await supabase
         .from('event_attendees')
-        .select(`
-          user_id,
-          status,
-          profile:profiles!user_id(*)
-        `)
-        .eq('event_id', id);
+        .select('user_id, status')
+        .eq('event_id', eventId)
+        .eq('status', 'confirmed');
 
       if (error) throw error;
+      if (!rawAttendees?.length) return [];
 
-      if (!data || data.length === 0) return [];
+      const userIds = rawAttendees.map(a => a.user_id);
 
-      // ✅ Check Premium Status for all attendees
-      const userIds = data.map(a => a.user_id);
+      // 2. Fetch Profiles safely
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, user_id, display_name, avatar_url')
+        .or(`id.in.(${userIds.join(',')}),user_id.in.(${userIds.join(',')})`); // Check both ID columns
+
+      // Map back to format
+      return userIds.map(uid => {
+        const profile = profiles?.find(p => p.id === uid || p.user_id === uid);
+        return {
+            user_id: uid,
+            display_name: profile?.display_name || 'Attendee',
+            avatar_url: profile?.avatar_url
+        };
+      });
+    },
+    enabled: !!eventId,
+  });
+
+    // [MODIFIED: Fetch Friends for Invite]
+    const { data: friends = [] } = useQuery<Friend[]>({
+    queryKey: ['my-friends', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
       
-      const { data: premiumFeatures } = await supabase
-        .from('premium_features')
-        .select('user_id')
-        .in('user_id', userIds)
-        .eq('is_active', true)
-        .gt('expires_at', new Date().toISOString());
+      // Get accepted friendships first
+      const { data: friendships } = await supabase
+        .from('friendships')
+        .select('addressee_id, requester_id')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .eq('status', 'accepted');
+      
+      if (!friendships || friendships.length === 0) return [];
+      
+      // Get the friend IDs (the other person in each friendship)
+      const friendIds = friendships.map(f => 
+        f.requester_id === user.id ? f.addressee_id : f.requester_id
+      );
+      
+      // Fetch friend profiles
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', friendIds);
+      
+      return profiles || [];
+    },
+    enabled: !!user && showInviteDialog
+  });
+  
+  const { data: existingInvites = [] } = useQuery<string[]>({
+  queryKey: ['event-invites', eventId],
+  queryFn: async () => {
+    if (!eventId) return [];
+    // Use consistent table name - check your database schema
+    const { data } = await supabase
+      .from('event_invitations') // or 'event_invites' - match your schema
+      .select('invitee_id') // or 'receiver_id' - match your schema
+      .eq('event_id', eventId)
+      .in('status', ['pending', 'accepted']);
+    return data?.map(inv => inv.invitee_id) || [];
+  },
+  enabled: !!eventId && showInviteDialog
+});
 
-      const { data: subs } = await supabase
-        .from('subscriptions')
-        .select('user_id')
-        .in('user_id', userIds)
-        .eq('status', 'active');
+const invitedFriendIds = existingInvites;
 
-      const premiumUserSet = new Set([
-        ...(premiumFeatures?.map(p => p.user_id) || []),
-        ...(subs?.map(s => s.user_id) || [])
-      ]);
+const filteredFriends = friends.filter(f => 
+  f.display_name?.toLowerCase().includes(searchQuery.toLowerCase())
+);
 
-      return data.map(attendee => ({
-        ...attendee,
-        profile: {
-          ...attendee.profile,
-          is_premium: premiumUserSet.has(attendee.user_id)
-        }
-      }));
+  const handleSendInvites = () => {
+    if (selectedFriends.size === 0) {
+      toast.error('Please select at least one friend');
+      return;
+    }
+    sendInvitations.mutate(Array.from(selectedFriends));
+  };
+
+  const getShareLink = () => {
+    return `${window.location.origin}/app/events/${eventId}`;
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(getShareLink());
+      setCopied(true);
+      toast.success('Link copied!');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleExternalShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: event?.title,
+          text: `Join me at ${event?.title}`,
+          url: getShareLink(),
+        });
+      } catch (err) {
+        console.error('Share failed:', err);
+      }
+    } else {
+      await copyToClipboard();
+    }
+  };
+
+  // Check if user is attending
+  const { data: isAttending } = useQuery({
+    queryKey: ['is-attending', eventId, user?.id],
+    queryFn: async () => {
+      if (!user?.id || !eventId) return false;
+      const { data } = await supabase
+        .from('event_attendees')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('user_id', user.id)
+        .eq('status', 'confirmed')
+        .single();
+      return !!data;
+    },
+    enabled: !!eventId && !!user?.id,
+  });
+
+  // RSVP Mutation
+  const rsvpMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id || !eventId) throw new Error('Missing user or event');
+
+      const { error } = await supabase
+        .from('event_attendees')
+        .insert({
+          event_id: eventId,
+          user_id: user.id,
+          status: event?.requires_approval ? 'pending' : 'confirmed'
+        });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(event?.requires_approval 
+        ? 'RSVP sent! Waiting for approval' 
+        : 'Successfully registered!'
+      );
+      queryClient.invalidateQueries({ queryKey: ['event-attendees', eventId] });
+      queryClient.invalidateQueries({ queryKey: ['is-attending', eventId] });
+    },
+    onError: (error: any) => {
+      toast.error('Failed to RSVP: ' + error.message);
     }
   });
 
-  const isCreator = user?.id === event?.creator_id;
-
+  // NEW: Delete Event Mutation
   const deleteEventMutation = useMutation({
     mutationFn: async () => {
+      if (!eventId || !user?.id) return;
       const { error } = await supabase
         .from('events')
         .delete()
-        .eq('id', id);
+        .eq('id', eventId)
+        .eq('creator_id', user.id); // Security: Ensure only creator can delete
+
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success('Event deleted successfully');
-      navigate('/app/events');
+      navigate('/app/events'); // Redirect to main events list
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error('Failed to delete event: ' + error.message);
     }
   });
-
+  
   const editEventMutation = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase
-        .from('events')
-        .update({
-          title: editTitle,
-          description: editDescription,
-          location: editLocation,
-          start_date: editStartDate,
-          price: editPrice ? parseFloat(editPrice) : 0,
+      mutationFn: async () => {
+        if (!eventId || !user?.id) throw new Error('Missing data');
+        
+        const updates = {
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          location: editLocation.trim(),
+          start_date: new Date(editStartDate).toISOString(),
+          ticket_price: parseFloat(editTicketPrice) || 0,
           max_attendees: editMaxAttendees ? parseInt(editMaxAttendees) : null,
-        })
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success('Event updated successfully');
-      setShowEditDialog(false);
-      queryClient.invalidateQueries({ queryKey: ['event', id] });
-    },
-    onError: (error) => {
-      toast.error('Failed to update event: ' + error.message);
-    }
-  });
+        };
+        
+        const { error } = await supabase
+          .from('events')
+          .update(updates)
+          .eq('id', eventId)
+          .eq('creator_id', user.id); // Security: Only creator can edit
+        
+        if (error) throw error;
+      },
+      onSuccess: () => {
+        toast.success('Event updated successfully!');
+        setShowEditDialog(false);
+        queryClient.invalidateQueries({ queryKey: ['event', eventId] });
+      },
+      onError: (error: any) => {
+        toast.error('Failed to update event: ' + error.message);
+      }
+    });
+    
+    const toggleFriendSelection = (friendId: string) => {
+      setSelectedFriends(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(friendId)) {
+          newSet.delete(friendId);
+        } else {
+          newSet.add(friendId);
+        }
+        return newSet;
+      });
+    };
+    
+    const selectAll = () => {
+      const availableFriends = filteredFriends.filter(f => !invitedFriendIds.includes(f.id));
+      setSelectedFriends(new Set(availableFriends.map(f => f.id)));
+    };
+    
+    const deselectAll = () => {
+      setSelectedFriends(new Set());
+    };
 
+    // [MODIFIED: Invite Friends Mutation]
+    const inviteFriendsMutation = useMutation({
+    mutationFn: async (friendIds: string[]) => {
+      if (!eventId || !user) throw new Error('Missing data');
+      
+      const invites = friendIds.map(friendId => ({
+        event_id: eventId,
+        inviter_id: user.id, // Match Notifications schema
+        invitee_id: friendId, // Match Notifications schema
+        status: 'pending'
+      }));
+      
+      // Use consistent table name
+      const { error } = await supabase
+        .from('event_invitations') // Match Notifications.tsx
+        .insert(invites);
+        
+      if (error) throw error;
+      return friendIds.length;
+    },
+    onSuccess: (count) => {
+      toast.success(`Invites sent to ${count} friend${count !== 1 ? 's' : ''}!`);
+      setShowInviteDialog(false);
+      setSelectedFriends(new Set()); // Clear as Set
+      queryClient.invalidateQueries({ queryKey: ['event-invites', eventId] });
+    },
+    onError: (err: any) => {
+      toast.error("Failed to send invites: " + err.message);
+    }
+  }); 
+  
+  const sendInvitations = inviteFriendsMutation;
+
+  // Video Call Functions
+  const startVideoCall = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
+
+      mediaStreamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      setIsInCall(true);
+      setShowVideoDialog(true);
+      toast.success('Video call started');
+    } catch (error) {
+      console.error('Error starting video call:', error);
+      toast.error('Failed to start video call. Please check camera permissions.');
+    }
+  };
+
+  const endVideoCall = () => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setIsInCall(false);
+    setShowVideoDialog(false);
+    setIsMuted(false);
+    setIsVideoOff(false);
+    toast.info('Call ended');
+  };
+
+  const toggleMute = () => {
+    if (mediaStreamRef.current) {
+      const audioTrack = mediaStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
+  };
+
+  const toggleVideo = () => {
+    if (mediaStreamRef.current) {
+      const videoTrack = mediaStreamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoOff(!videoTrack.enabled);
+      }
+    }
+  };
+
+  // Recording Functions
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1920, height: 1080 },
+        audio: true
+      });
+
+      mediaStreamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm;codecs=vp9'
+      });
+
+      const chunks: Blob[] = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        setRecordedChunks(chunks);
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setIsRecording(true);
+      setShowRecordingDialog(true);
+      setRecordingDuration(0);
+
+      // Start duration counter
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+      toast.success('Recording started');
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      toast.error('Failed to start recording. Please check camera permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      toast.success('Recording stopped');
+    }
+  };
+
+  const downloadRecording = () => {
+    if (recordedChunks.length === 0) {
+      toast.error('No recording available');
+      return;
+    }
+
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${event?.title || 'event'}-recording-${Date.now()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast.success('Recording downloaded');
+  };
+
+  const closeRecordingDialog = () => {
+    if (isRecording) {
+      stopRecording();
+    }
+    setShowRecordingDialog(false);
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  // Format duration
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+  
   useEffect(() => {
-    if (event) {
+    if (showEditDialog && event) {
       setEditTitle(event.title);
-      setEditDescription(event.description || '');
+      setEditDescription(event.description);
       setEditLocation(event.location);
-      setEditStartDate(new Date(event.start_date).toISOString().slice(0, 16));
-      setEditPrice(event.price?.toString() || '');
+      setEditStartDate(event.start_date.slice(0, 16)); // Format for datetime-local input
+      setEditTicketPrice(event.ticket_price.toString());
       setEditMaxAttendees(event.max_attendees?.toString() || '');
     }
-  }, [event]);
+  }, [showEditDialog, event]);
 
-  if (isLoading) {
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+    };
+  }, []);
+
+  if (loadingEvent) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  if (error || !event) {
+  if (!event) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground">Event not found</p>
-        <Button onClick={() => navigate('/app/events')}>Back to Events</Button>
+        <Button variant="link" onClick={() => navigate('/app/events')}>Go back to Events</Button>
       </div>
     );
   }
 
-  const filteredFriends = (friends || []).filter((f: any) => {
-    // Determine the correct friend ID and profile data depending on who initiated the request
-    const friendId = f.requester_id === user?.id ? f.addressee_id : f.requester_id;
-    const friendProfile = f.requester_id === user?.id ? f.addressee : f.requester;
-    
-    // Check if this friend is already an attendee
-    const isAlreadyAttendee = attendees.some((a: any) => a.user_id === friendId);
-    
-    // Filter by search and exclude existing attendees
-    return !isAlreadyAttendee && 
-           friendProfile?.display_name?.toLowerCase().includes(inviteSearch.toLowerCase());
-  }).map((f: any) => {
-    // Normalize friend object for easier rendering
-    return f.requester_id === user?.id ? 
-      { id: f.addressee_id, ...f.addressee } : 
-      { id: f.requester_id, ...f.requester };
-  });
+  const isCreator = user?.id === event.creator_id;
+  const eventDate = new Date(event.start_date);
+  const isUpcoming = eventDate > new Date();
 
   return (
     <div className="min-h-screen bg-background pb-20">
-      {/* Header */}
-      <div className="relative h-64 md:h-80 w-full overflow-hidden">
-        <img 
-          src={event.image_url || '/placeholder-event.jpg'} 
-          alt={event.title}
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="absolute top-4 left-4 bg-background/50 backdrop-blur-sm hover:bg-background/80"
-          onClick={() => navigate(-1)}
+      {/* Header with Image */}
+      <div className="relative h-64 bg-gradient-to-br from-purple-600 to-blue-600 mb-8">
+        {event.image_url ? (
+          <img
+            src={event.image_url}
+            alt={event.title}
+            className="w-full h-full object-cover"
+          />
+        ) : null}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+        
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute top-4 left-4 text-white hover:bg-white/20"
+          onClick={() => navigate('/app/events')}
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        
-        {/* Creator Controls */}
-        {isCreator && (
-          <div className="absolute top-4 right-4 flex gap-2">
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute top-4 right-4 text-white hover:bg-white/20"
+          onClick={() => {
+            if (navigator.share) {
+              navigator.share({
+                title: event.title,
+                url: window.location.href
+              });
+            } else {
+              navigator.clipboard.writeText(window.location.href);
+              toast.success("Link copied!");
+            }
+          }}
+        >
+          <Share2 className="w-5 h-5" />
+        </Button>
+      </div>
+
+      <div className="container-mobile -mt-8 space-y-4">
+        {/* Main Info Card */}
+        <Card className="gradient-card shadow-card border-0">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                {/* [MODIFIED: Add Sponsored Badge] */}
+                <div className="flex gap-2 mb-2">
+                  <Badge>{event.category}</Badge>
+                  {event.is_sponsored && (
+                     <Badge variant="outline" className="border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20">
+                       <Megaphone className="w-3 h-3 mr-1" /> Sponsored
+                     </Badge>
+                  )}
+                </div>
+                <h1 className="text-2xl font-bold mb-2">{event.title}</h1>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Avatar className="w-6 h-6">
+                    <AvatarImage src={event.creator?.avatar_url} />
+                    <AvatarFallback>
+                      {event.creator?.display_name?.[0]?.toUpperCase() || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span>Hosted by {event.creator?.display_name || 'Unknown'}</span>
+                </div>
+              </div>
+              <Badge variant={event.event_type === 'virtual' ? 'default' : 'secondary'}>
+                {event.event_type === 'virtual' ? (
+                  <><Video className="w-3 h-3 mr-1" /> Virtual</>
+                ) : (
+                  <><MapPin className="w-3 h-3 mr-1" /> Physical</>
+                )}
+              </Badge>
+            </div>
+
+            <div className="space-y-3 pt-4 border-t border-border">
+              <div className="flex items-center gap-3 text-sm">
+                <Calendar className="w-4 h-4 text-primary" />
+                <span>{eventDate.toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}</span>
+              </div>
+
+              <div className="flex items-center gap-3 text-sm">
+                <Clock className="w-4 h-4 text-primary" />
+                <span>{eventDate.toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}</span>
+              </div>
+
+              <div className="flex items-center gap-3 text-sm">
+                <MapPin className="w-4 h-4 text-primary" />
+                <span>{event.location}</span>
+              </div>
+
+              {event.event_type === 'virtual' && event.meeting_link && (
+                <div className="flex items-center gap-3 text-sm">
+                  <Video className="w-4 h-4 text-primary" />
+                  <a
+                    href={event.meeting_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline flex items-center gap-1"
+                  >
+                    Join Meeting <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 text-sm">
+                <Users className="w-4 h-4 text-primary" />
+                <span>
+                  {attendees.length} attending
+                  {event.max_attendees && ` • ${event.max_attendees} max`}
+                </span>
+              </div>
+
+              {event.ticket_price > 0 && (
+                <div className="flex items-center gap-3 text-sm">
+                  <DollarSign className="w-4 h-4 text-primary" />
+                  <span className="font-semibold">₦{event.ticket_price.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tabs */}
+        <Tabs defaultValue="about" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="about">About</TabsTrigger>
+            <TabsTrigger value="attendees">Attendees ({attendees.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="about" className="space-y-4 mt-4">
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="font-semibold mb-2">Description</h3>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {event.description}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Event Type Specific Features */}
+            {isCreator && (
+              <Card>
+                <CardContent className="p-4 space-y-3">
+                  <h3 className="font-semibold mb-2">Host Controls</h3>
+                  
+                  {/* Edit Event Button - NEW */}
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowEditDialog(true)}
+                  >
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit Event
+                  </Button>
+                  
+                  {event.event_type === 'virtual' ? (
+                    <Button
+                      className="w-full"
+                      onClick={startVideoCall}
+                      disabled={isInCall}
+                    >
+                      <Video className="w-4 h-4 mr-2" />
+                      {isInCall ? 'In Call' : 'Start Video Call'}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      onClick={startRecording}
+                      disabled={isRecording}
+                    >
+                      <Camera className="w-4 h-4 mr-2" />
+                      {isRecording ? 'Recording...' : 'Start Recording Event'}
+                    </Button>
+                  )}
+            
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowInviteDialog(true)}
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Invite Friends
+                  </Button>
+            
+                  <Button
+                    variant="destructive"
+                    className="w-full"
+                    onClick={() => setShowDeleteDialog(true)}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Event
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="attendees" className="space-y-2 mt-4">
+            {attendees.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No attendees yet
+              </div>
+            ) : (
+              attendees.map((attendee) => (
+                <Card key={attendee.user_id}>
+                  <CardContent className="p-3 flex items-center gap-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={attendee.avatar_url} />
+                      <AvatarFallback>
+                        {attendee.display_name?.[0]?.toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm">{attendee.display_name || 'Unknown User'}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* RSVP Button */}
+        {!isCreator && isUpcoming && (
+          <div className="fixed bottom-4 left-0 right-0 px-4 z-10">
             <Button
-              variant="ghost"
-              size="icon"
-              className="bg-background/50 backdrop-blur-sm hover:bg-background/80 text-blue-600"
-              onClick={() => setShowEditDialog(true)}
+              className="w-full gradient-primary text-white shadow-lg"
+              size="lg"
+              onClick={() => rsvpMutation.mutate()}
+              disabled={rsvpMutation.isPending || isAttending}
             >
-              <Pencil className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="bg-background/50 backdrop-blur-sm hover:bg-red-100 text-red-600"
-              onClick={() => setShowDeleteDialog(true)}
-            >
-              <Trash2 className="w-5 h-5" />
+              {rsvpMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : isAttending ? (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Registered
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  RSVP Now
+                </>
+              )}
             </Button>
           </div>
         )}
       </div>
 
-      <div className="container-mobile -mt-12 relative px-4">
-        <Card className="border-0 shadow-lg">
-          <CardContent className="p-6 space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20">
-                  {event.is_sponsored ? 'Sponsored' : 'Event'}
-                </Badge>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                    <Share2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-              <h1 className="text-2xl font-bold mb-2">{event.title}</h1>
-              
-              {/* Creator Info with Premium Badge */}
-              <div className="flex items-center gap-2 mb-4">
-                <Avatar className="h-6 w-6">
-                  <AvatarImage src={event.creator?.avatar_url} />
-                  <AvatarFallback>{event.creator?.display_name?.[0]}</AvatarFallback>
-                </Avatar>
-                <span className="text-sm text-muted-foreground">
-                  Hosted by <span className="font-medium text-foreground">
-                    {event.creator?.display_name}
-                    {event.creator?.is_premium && <PremiumBadge />}
-                  </span>
-                </span>
-              </div>
+      {/* Video Call Dialog */}
+      <Dialog open={showVideoDialog} onOpenChange={setShowVideoDialog}>
+        <DialogContent className="max-w-4xl h-[80vh] p-0">
+          <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+            
+            {/* Call Controls */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
+              <Button
+                size="icon"
+                variant={isMuted ? "destructive" : "secondary"}
+                className="rounded-full w-14 h-14"
+                onClick={toggleMute}
+              >
+                {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              </Button>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 text-sm">
-                  <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                    <Calendar className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">{new Date(event.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-                    <p className="text-muted-foreground">{new Date(event.start_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
-                  </div>
-                </div>
+              <Button
+                size="icon"
+                variant={isVideoOff ? "destructive" : "secondary"}
+                className="rounded-full w-14 h-14"
+                onClick={toggleVideo}
+              >
+                {isVideoOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
+              </Button>
 
-                <div className="flex items-center gap-3 text-sm">
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                    <MapPin className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">{event.location}</p>
-                    <p className="text-muted-foreground">View on Map</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 text-sm">
-                  <div className="w-10 h-10 rounded-lg bg-green-50 text-green-600 flex items-center justify-center shrink-0">
-                    <DollarSign className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">{event.price > 0 ? `₦${event.price.toLocaleString()}` : 'Free Entry'}</p>
-                    <p className="text-muted-foreground">Per person</p>
-                  </div>
-                </div>
-              </div>
+              <Button
+                size="icon"
+                variant="destructive"
+                className="rounded-full w-16 h-16"
+                onClick={endVideoCall}
+              >
+                <PhoneOff className="w-6 h-6" />
+              </Button>
             </div>
 
-            <div className="pt-6 border-t">
-              <h3 className="font-semibold mb-3">About Event</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {event.description}
+            {/* Call Info */}
+            <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm rounded-lg px-4 py-2">
+              <p className="text-white text-sm font-semibold">{event.title}</p>
+              <p className="text-white/70 text-xs">Video Call Active</p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recording Dialog */}
+      <Dialog open={showRecordingDialog} onOpenChange={closeRecordingDialog}>
+        <DialogContent className="max-w-4xl h-[80vh] p-0">
+          <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+
+            {/* Recording Indicator */}
+            {isRecording && (
+              <div className="absolute top-4 left-4 bg-red-600 backdrop-blur-sm rounded-lg px-4 py-2 flex items-center gap-2 animate-pulse">
+                <div className="w-3 h-3 bg-white rounded-full" />
+                <p className="text-white text-sm font-semibold">
+                  REC {formatDuration(recordingDuration)}
+                </p>
+              </div>
+            )}
+
+            {/* Recording Controls */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
+              {isRecording ? (
+                <Button
+                  size="icon"
+                  variant="destructive"
+                  className="rounded-full w-16 h-16"
+                  onClick={stopRecording}
+                >
+                  <StopCircle className="w-6 h-6" />
+                </Button>
+              ) : recordedChunks.length > 0 ? (
+                <>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="rounded-full w-14 h-14"
+                    onClick={downloadRecording}
+                  >
+                    <Download className="w-6 h-6" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="default"
+                    className="rounded-full w-14 h-14"
+                    onClick={startRecording}
+                  >
+                    <Play className="w-6 h-6" />
+                  </Button>
+                </>
+              ) : null}
+            </div>
+
+            {/* Event Info */}
+            <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm rounded-lg px-4 py-2">
+              <p className="text-white text-sm font-semibold">{event.title}</p>
+              <p className="text-white/70 text-xs">
+                {isRecording ? 'Recording in progress' : 'Ready to record'}
               </p>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-            {/* Attendees Section with Premium Badges */}
-            <div className="pt-6 border-t">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Attendees ({attendees.length})</h3>
-                {isCreator && (
-                  <Button variant="outline" size="sm" onClick={() => setShowInviteModal(true)}>
-                    <UserPlus className="w-4 h-4 mr-2" /> Invite
-                  </Button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {attendees.map((attendee: any) => (
-                  <div key={attendee.user_id} className="relative group">
-                    <Avatar className="h-10 w-10 border-2 border-background">
-                      <AvatarImage src={attendee.profile?.avatar_url} />
-                      <AvatarFallback>{attendee.profile?.display_name?.[0]}</AvatarFallback>
-                    </Avatar>
-                    {/* Tiny premium indicator on avatar */}
-                    {attendee.profile?.is_premium && (
-                      <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5">
-                        <svg className="w-3 h-3 text-blue-500" viewBox="0 0 22 22" fill="currentColor">
-                          <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {attendees.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No attendees yet. Be the first!</p>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t">
-        <div className="container-mobile flex gap-3">
-          <Button variant="outline" className="flex-1">Maybe</Button>
-          <Button className="flex-[2] gradient-primary text-white font-semibold shadow-lg">Join Event</Button>
-        </div>
-      </div>
-
-      {/* Delete Confirmation Dialog */}
+      {/* NEW: Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Event?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete your event.
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full">
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <AlertDialogTitle className="text-xl">Delete Event?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-base leading-relaxed">
+              Are you sure you want to delete this event? This action cannot be undone.
+              All attendees will be removed and the event page will no longer be accessible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={() => deleteEventMutation.mutate()}
               className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => deleteEventMutation.mutate()}
+              disabled={deleteEventMutation.isPending}
             >
-              {deleteEventMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteEventMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Event
+                </>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Invite Friends Modal - Refactored */}
-      <Dialog open={showInviteModal} onOpenChange={setShowInviteModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Invite Friends</DialogTitle>
+      
+      {/* [MODIFIED: Invite Friends Dialog] */}
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+        <DialogContent className="sm:max-w-[500px] max-w-[calc(100vw-2rem)] h-[80vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
+            <DialogTitle className="space-y-4">
+              {/* Share Link Section */}
+              <Card className="gradient-card shadow-card border-0">
+                <CardContent className="p-4 space-y-3">
+                  <h3 className="font-semibold flex items-center gap-2 text-base">
+                    <Share2 className="w-4 h-4" />
+                    Share Event Link
+                  </h3>
+                  <div className="flex gap-2">
+                    <Input
+                      value={getShareLink()}
+                      readOnly
+                      className="flex-1 bg-background/50 text-sm"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={copyToClipboard}
+                    >
+                      {copied ? (
+                        <Check className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleExternalShare}
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Share via Apps
+                  </Button>
+                </CardContent>
+              </Card>
+      
+              {/* Friend Selection Header */}
+              <div className="flex items-center justify-between pt-2">
+                <h3 className="font-semibold flex items-center gap-2 text-base">
+                  <Users className="w-5 h-5" />
+                  Invite Friends ({selectedFriends.size} selected)
+                </h3>
+                <div className="flex gap-2">
+                  {selectedFriends.size > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={deselectAll}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={selectAll}
+                    disabled={filteredFriends.filter(f => !invitedFriendIds.includes(f.id)).length === 0}
+                  >
+                    Select All
+                  </Button>
+                </div>
+              </div>
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+      
+          {/* Search Bar */}
+          <div className="px-6 py-4 border-b flex-shrink-0">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search friends..."
-                className="pl-9"
-                value={inviteSearch}
-                onChange={(e) => setInviteSearch(e.target.value)}
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search friends..." 
+                className="pl-9 bg-muted/50" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            
-            <div className="flex justify-end">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={handleSelectAll}
-                className="text-xs"
-              >
-                {selectedFriends.length === filteredFriends.length ? 'Deselect All' : 'Select All'}
-              </Button>
-            </div>
-
-            <div className="max-h-[300px] overflow-y-auto space-y-2">
+          </div>
+      
+          {/* Scrollable Friends List */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-2">
+            <div className="space-y-2 pb-4">
               {filteredFriends.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-4">No friends found</p>
+                <div className="text-center py-12">
+                  <Users className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-sm text-muted-foreground">
+                    {friends.length === 0 ? 'No friends to invite' : 'No friends match your search'}
+                  </p>
+                </div>
               ) : (
-                filteredFriends.map((friend: any) => (
-                  <div 
-                    key={friend.id}
-                    className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors"
-                    onClick={() => toggleFriendSelection(friend.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={friend.avatar_url} />
-                        <AvatarFallback>{friend.display_name?.[0]}</AvatarFallback>
+                filteredFriends.map((friend) => {
+                  const isInvited = invitedFriendIds.includes(friend.id);
+                  const isSelected = selectedFriends.has(friend.id);
+                  
+                  return (
+                    <div 
+                      key={friend.id} 
+                      className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                        isInvited 
+                          ? 'bg-muted/30 opacity-60 cursor-not-allowed' 
+                          : isSelected
+                          ? 'bg-primary/10 border-2 border-primary'
+                          : 'hover:bg-muted/50 border-2 border-transparent cursor-pointer'
+                      }`}
+                      onClick={() => !isInvited && toggleFriendSelection(friend.id)}
+                    >
+                      <Checkbox 
+                        id={`friend-${friend.id}`}
+                        checked={isSelected}
+                        disabled={isInvited}
+                        onCheckedChange={() => !isInvited && toggleFriendSelection(friend.id)}
+                        className="pointer-events-none"
+                      />
+                      <Avatar className="h-10 w-10 ring-2 ring-background">
+                        <AvatarImage src={friend.avatar_url || ''} />
+                        <AvatarFallback className="text-sm">
+                          {friend.display_name?.[0]?.toUpperCase() || 'U'}
+                        </AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium">{friend.display_name}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {friend.display_name || 'Unknown User'}
+                        </p>
+                        {isInvited && (
+                          <p className="text-xs text-muted-foreground">Already invited</p>
+                        )}
+                      </div>
+                      {isSelected && !isInvited && (
+                        <Check className="w-5 h-5 text-primary flex-shrink-0" />
+                      )}
                     </div>
-                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
-                      selectedFriends.includes(friend.id) 
-                        ? 'bg-primary border-primary text-white' 
-                        : 'border-muted-foreground'
-                    }`}>
-                      {selectedFriends.includes(friend.id) && <Check className="w-3 h-3" />}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
+          </div>
+      
+          {/* Footer with info and buttons */}
+          <div className="border-t flex-shrink-0">
+            {invitedFriendIds.length > 0 && (
+              <div className="px-6 py-3 bg-muted/30">
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  {invitedFriendIds.length} friend{invitedFriendIds.length !== 1 ? 's' : ''} already invited
+                </p>
+              </div>
+            )}
             
-            <Button 
-              className="w-full" 
-              onClick={handleInviteFriends}
-              disabled={selectedFriends.length === 0}
-            >
-              Send {selectedFriends.length} Invitation{selectedFriends.length !== 1 ? 's' : ''}
-            </Button>
+            <DialogFooter className="px-6 py-4">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowInviteDialog(false);
+                  setSelectedFriends(new Set());
+                  setSearchQuery('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendInvites}
+                disabled={sendInvitations.isPending || selectedFriends.size === 0}
+                className="min-w-[140px]"
+              >
+                {sendInvitations.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Send {selectedFriends.size > 0 ? `(${selectedFriends.size})` : ''}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Edit Event Dialog */}
+      
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[600px] max-w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Event</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5" />
+              Edit Event
+            </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            {/* Title */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Event Title</label>
+              <label className="text-sm font-medium">Event Title *</label>
               <Input
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="Event Title"
+                placeholder="Enter event title"
+                maxLength={100}
               />
             </div>
-            
+      
+            {/* Description */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Description</label>
-              <textarea
-                className="w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              <label className="text-sm font-medium">Description *</label>
+              <Textarea
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
                 placeholder="Describe your event..."
+                rows={4}
+                maxLength={500}
               />
             </div>
-
+      
+            {/* Location */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Location</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  value={editLocation}
-                  onChange={(e) => setEditLocation(e.target.value)}
-                  placeholder="Event Location"
-                />
-              </div>
+              <label className="text-sm font-medium">Location *</label>
+              <Input
+                value={editLocation}
+                onChange={(e) => setEditLocation(e.target.value)}
+                placeholder="Event location or address"
+              />
             </div>
-
+      
+            {/* Date & Time */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Start Date & Time</label>
+              <label className="text-sm font-medium">Start Date & Time *</label>
               <Input
                 type="datetime-local"
                 value={editStartDate}
                 onChange={(e) => setEditStartDate(e.target.value)}
               />
             </div>
-
+      
+            {/* Ticket Price */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Price (NGN)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₦</span>
-                <Input
-                  type="number"
-                  className="pl-8"
-                  value={editPrice}
-                  onChange={(e) => setEditPrice(e.target.value)}
-                  placeholder="0 for free"
-                  min="0"
-                />
-              </div>
+              <label className="text-sm font-medium">Ticket Price (₦)</label>
+              <Input
+                type="number"
+                value={editTicketPrice}
+                onChange={(e) => setEditTicketPrice(e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
             </div>
-
+      
             {/* Max Attendees */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Max Attendees (Optional)</label>
