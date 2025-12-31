@@ -766,8 +766,8 @@ const Profile = () => {
                         Verified Premium
                       </div>
                     </div> 
-                  )}
-                </div> */}
+                  )} */}
+                </div> 
                 </>
               )}
               <p className="text-white/90 text-sm truncate font-medium flex items-center gap-2">
