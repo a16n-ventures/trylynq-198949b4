@@ -102,23 +102,23 @@ export default function Messages() {
 
   // Profile for typing identity
   const { data: userProfile } = useQuery({
-  queryKey: ['my_profile', user?.id],
-  queryFn: async () => {
-    if (!user?.id) return null;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, user_id, display_name, username, email, avatar_url')  // Added full_name
-      .eq('user_id', user.id)
-      .single();
-    
-    if (error) {
-      console.error("Error fetching user profile:", error);
-      return null;
-    }
-    return data;
-  },
-  enabled: !!user?.id
-});
+    queryKey: ['my_profile', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, user_id, display_name, username, email, avatar_url')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (error) {
+        console.error("Error fetching user profile:", error);
+        return null;
+      }
+      return data;
+    },
+    enabled: !!user?.id
+  });
 
   const currentUser = useMemo(() => ({
     id: user?.id,
@@ -160,7 +160,7 @@ export default function Messages() {
   // Clear typing when chat changes
   useEffect(() => {
     clearTyping();
-  }, [selectedChat?.id]); //, clearTyping
+  }, [selectedChat?.id]);
 
   // Debounce search query
   useEffect(() => {
@@ -170,153 +170,129 @@ export default function Messages() {
 
   // FIXED DM LIST QUERY - Properly fetch and display user names
   const { data: dmList = [], isLoading: loadingDMs, error: dmError } = useQuery({
-  queryKey: ['dm_list', user?.id],
-  queryFn: async (): Promise<DMListItem[]> => {
-    try {
-      if (!user?.id) return [];
+    queryKey: ['dm_list', user?.id],
+    queryFn: async (): Promise<DMListItem[]> => {
+      try {
+        if (!user?.id) return [];
 
-      console.log("🔍 Fetching DM list for user:", user.id);
+        // Step 1: Get all messages with error handling
+        const { data: rawMessages, error: msgError } = await supabase
+          .from('messages')
+          .select('*')
+          .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+          .order('created_at', { ascending: false });
 
-      // Step 1: Get all messages with error handling
-      const { data: rawMessages, error: msgError } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-        .order('created_at', { ascending: false });
-
-      if (msgError) {
-        console.error("❌ Error fetching messages:", msgError);
-        throw new Error(`Failed to fetch messages: ${msgError.message}`);
-      }
-
-      if (!rawMessages || rawMessages.length === 0) {
-        console.log("ℹ️ No messages found");
-        return [];
-      }
-
-      console.log("📧 Raw messages fetched:", rawMessages.length);
-
-      // Step 2: Build partner map with null checks
-      const partnerMap = new Map<string, { last_msg: string; time: string }>();
-      const partnerIds = new Set<string>();
-
-      rawMessages.forEach((msg: any) => {
-        try {
-          if (!msg) return;
-          
-          const partnerId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
-          
-          if (!partnerId || typeof partnerId !== 'string') {
-            console.warn('Invalid partner ID:', partnerId);
-            return;
-          }
-          
-          if (!partnerMap.has(partnerId)) {
-            partnerMap.set(partnerId, {
-              last_msg: msg.content ?? (msg.image_url ? '📷 Photo' : 'Message'),
-              time: msg.created_at || new Date().toISOString()
-            });
-            partnerIds.add(partnerId);
-          }
-        } catch (err) {
-          console.error('Error processing message:', err);
+        if (msgError) {
+          console.error("❌ Error fetching messages:", msgError);
+          throw new Error(`Failed to fetch messages: ${msgError.message}`);
         }
-      });
 
-      const idsList = Array.from(partnerIds);
-      console.log("👥 Unique partner IDs:", idsList.length);
+        if (!rawMessages || rawMessages.length === 0) {
+          return [];
+        }
 
-      if (idsList.length === 0) return [];
+        // Step 2: Build partner map with null checks
+        const partnerMap = new Map<string, { last_msg: string; time: string }>();
+        const partnerIds = new Set<string>();
 
-      // Step 3: Fetch profiles with error handling
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, user_id, display_name, username, email, avatar_url')
-        .in('user_id', idsList);
-
-      if (profileError) {
-        console.error("❌ Profile fetch error:", profileError);
-        // Don't throw - continue with what we have
-      }
-
-      console.log("👤 Profiles fetched:", profiles?.length, "/ Expected:", idsList.length);
-
-      // Step 4: Create profile lookup with safety
-      const profileLookup = new Map<string, any>();
-      if (profiles && Array.isArray(profiles)) {
-        profiles.forEach((p: any) => {
+        rawMessages.forEach((msg: any) => {
           try {
-            if (p && p.user_id) {
-              profileLookup.set(p.user_id, p);
-            }
-            if (p && p.id && p.id !== p.user_id) {
-              profileLookup.set(p.id, p);
+            if (!msg) return;
+            const partnerId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
+            
+            if (!partnerId || typeof partnerId !== 'string') return;
+            
+            if (!partnerMap.has(partnerId)) {
+              partnerMap.set(partnerId, {
+                last_msg: msg.content ?? (msg.image_url ? '📷 Photo' : 'Message'),
+                time: msg.created_at || new Date().toISOString()
+              });
+              partnerIds.add(partnerId);
             }
           } catch (err) {
-            console.error('Error processing profile:', err);
+            console.error('Error processing message:', err);
           }
         });
-      }
 
-      // Step 5: Fetch unread counts
-      const { data: unreadData } = await supabase
-        .from('messages')
-        .select('sender_id')
-        .eq('receiver_id', user.id)
-        .eq('is_read', false);
+        const idsList = Array.from(partnerIds);
+        if (idsList.length === 0) return [];
 
-      const unreadCounts = new Map<string, number>();
-      if (unreadData && Array.isArray(unreadData)) {
-        unreadData.forEach((m: any) => {
-          if (m && m.sender_id) {
-            unreadCounts.set(m.sender_id, (unreadCounts.get(m.sender_id) || 0) + 1);
-          }
-        });
-      }
+        // Step 3: Fetch profiles with error handling
+        const { data: profiles, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, user_id, display_name, username, email, avatar_url')
+          .in('user_id', idsList);
 
-      // Step 6: Map to DMListItem with proper name resolution
-      const dmListItems = idsList
-        .map(pid => {
-          try {
-            const details = partnerMap.get(pid);
-            if (!details) {
-              console.warn(`⚠️ No details for partner ID: ${pid}`);
+        if (profileError) {
+          console.error("❌ Profile fetch error:", profileError);
+        }
+
+        // Step 4: Create profile lookup with safety
+        const profileLookup = new Map<string, any>();
+        if (profiles && Array.isArray(profiles)) {
+          profiles.forEach((p: any) => {
+            try {
+              if (p && p.user_id) profileLookup.set(p.user_id, p);
+              if (p && p.id && p.id !== p.user_id) profileLookup.set(p.id, p);
+            } catch (err) {
+              console.error('Error processing profile:', err);
+            }
+          });
+        }
+
+        // Step 5: Fetch unread counts
+        const { data: unreadData } = await supabase
+          .from('messages')
+          .select('sender_id')
+          .eq('receiver_id', user.id)
+          .eq('is_read', false);
+
+        const unreadCounts = new Map<string, number>();
+        if (unreadData && Array.isArray(unreadData)) {
+          unreadData.forEach((m: any) => {
+            if (m && m.sender_id) {
+              unreadCounts.set(m.sender_id, (unreadCounts.get(m.sender_id) || 0) + 1);
+            }
+          });
+        }
+
+        // Step 6: Map to DMListItem with proper name resolution
+        const dmListItems = idsList
+          .map(pid => {
+            try {
+              const details = partnerMap.get(pid);
+              if (!details) return null;
+
+              const profile = profileLookup.get(pid);
+              const displayName = getDisplayName(profile);
+
+              return {
+                type: 'dm' as const,
+                id: pid,
+                partner_id: pid,
+                name: displayName,
+                avatar: profile?.avatar_url || undefined,
+                last_msg: details.last_msg,
+                time: details.time,
+                is_online: false,
+                unread_count: unreadCounts.get(pid) || 0
+              };
+            } catch (err) {
+              console.error(`Error mapping DM for partner ${pid}:`, err);
               return null;
             }
+          })
+          .filter((item): item is DMListItem => item !== null)
+          .sort((a, b) => {
+            try {
+              return new Date(b.time).getTime() - new Date(a.time).getTime();
+            } catch {
+              return 0;
+            }
+          });
 
-            const profile = profileLookup.get(pid);
-            const displayName = getDisplayName(profile);
-
-            console.log(`✅ DM mapped: ${displayName} (${pid})`);
-
-            return {
-              type: 'dm' as const,
-              id: pid,
-              partner_id: pid,
-              name: displayName,
-              avatar: profile?.avatar_url || undefined,
-              last_msg: details.last_msg,
-              time: details.time,
-              is_online: false,
-              unread_count: unreadCounts.get(pid) || 0
-            };
-          } catch (err) {
-            console.error(`Error mapping DM for partner ${pid}:`, err);
-            return null;
-          }
-        })
-        .filter((item): item is DMListItem => item !== null)
-        .sort((a, b) => {
-          try {
-            return new Date(b.time).getTime() - new Date(a.time).getTime();
-          } catch {
-            return 0;
-          }
-        });
-
-        console.log(`✅ Successfully mapped ${dmListItems.length} DMs`);
-        return dmListItems;
-        
+          return dmListItems;
+          
       } catch (error) {
         console.error("💥 Fatal error in DM list query:", error);
         throw error;
@@ -328,105 +304,70 @@ export default function Messages() {
     retry: 2,
     retryDelay: 1000
   });
-  
-        // 4. ADD ERROR DISPLAY FOR DM LIST
-        {dmError && (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <p className="text-destructive mb-2">Failed to load conversations</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => queryClient.invalidateQueries({ queryKey: ['dm_list'] })}
-            >
-              Retry
-            </Button>
-          </div>
-        )}
+
+  // FIXED COMMUNITIES QUERY - Properly fetch all community data AND live count
+  const { data: commList = [], isLoading: loadingComms } = useQuery({
+    queryKey: ['comm_list', user?.id],
+    queryFn: async (): Promise<CommunityListItem[]> => {
+      if (!user?.id) return [];
       
-        // FIXED COMMUNITIES QUERY - Properly fetch all community data
-        const { data: commList = [], isLoading: loadingComms } = useQuery({
-          queryKey: ['comm_list', user?.id],
-          queryFn: async (): Promise<CommunityListItem[]> => {
-            if (!user?.id) return [];
-            
-            try {
-              console.log("🏘️ Fetching communities for user:", user.id);
-      
-              // Fetch ALL communities with complete field selection
-              const { data: communities, error: commError } = await supabase
-                .from('communities')
-                .select('id, name, description, cover_url, member_count, creator_id, created_at')
-                .order('created_at', { ascending: false });
-      
-              if (commError) {
-                console.error("❌ Communities fetch error:", commError);
-                throw commError;
-              }
-              
-              console.log("🏘️ Communities fetched:", communities?.length);
-      
-              if (!communities || communities.length === 0) {
-                console.log("ℹ️ No communities found");
-                return [];
-              }
-              
-              const { data: myMembership } = useQuery({
-                queryKey: ['my_membership', selectedChat?.id, user?.id],
-                queryFn: async () => {
-                  if (!user?.id || !selectedChat || selectedChat.type !== 'community') {
-                    return null;
-                  }
-              
-                  const { data } = await supabase
-                    .from('community_members')
-                    .select('role, muted_until')
-                    .eq('community_id', selectedChat.id)
-                    .eq('user_id', user.id)
-                    .single();
-              
-                  return data;
-                },
-                enabled: selectedChat?.type === 'community' && !!user?.id
-              });
-      
-              // Fetch user's memberships
-              const { data: memberships, error: memError } = await supabase
-                .from('community_members')
-                .select('community_id, role')
-                .eq('user_id', user.id);
-      
-              if (memError) {
-                console.error("❌ Memberships fetch error:", memError);
-              }
-      
-              console.log("👥 User memberships:", memberships?.length);
-      
-              const membershipMap = new Map<string, string>();
-              memberships?.forEach((m: any) => {
-                membershipMap.set(m.community_id, m.role);
-              });
-      
+      try {
+        // Fetch ALL communities with complete field selection and live member count
+        const { data: communities, error: commError } = await supabase
+          .from('communities')
+          .select(`
+            id, name, description, cover_url, creator_id, created_at, member_count,
+            community_members ( count )
+          `)
+          .order('created_at', { ascending: false });
+
+        if (commError) {
+          console.error("❌ Communities fetch error:", commError);
+          throw commError;
+        }
+        
+        if (!communities || communities.length === 0) {
+          return [];
+        }
+        
+        // Fetch user's memberships
+        const { data: memberships, error: memError } = await supabase
+          .from('community_members')
+          .select('community_id, role')
+          .eq('user_id', user.id);
+
+        if (memError) {
+          console.error("❌ Memberships fetch error:", memError);
+        }
+
+        const membershipMap = new Map<string, string>();
+        memberships?.forEach((m: any) => {
+          membershipMap.set(m.community_id, m.role);
+        });
+
         // Map communities with proper data validation
         return communities.map((c: any) => {
-        const myRole = membershipMap.get(c.id);
-        
-        const communityName = c.name?.trim() || 'Unnamed Community';
-        
-        console.log(`✅ Community: "${communityName}" - Role: ${myRole || 'none'} - Cover: ${c.cover_url ? 'Yes' : 'No'}`);
-      
-        return {
-          type: 'community' as const,
-          id: c.id,
-          name: communityName,
-          description: c.description?.trim() || '',
-          cover: c.cover_url || undefined,
-          cover_url: c.cover_url || undefined,  // Add this field
-          avatar: c.cover_url || undefined,      // Add this field for consistency
-          member_count: c.member_count || 0,
-          my_role: (myRole || 'none') as 'admin' | 'moderator' | 'member' | 'none',
-          is_joined: !!myRole,
-        };
-      });
+          const myRole = membershipMap.get(c.id);
+          const communityName = c.name?.trim() || 'Unnamed Community';
+          
+          // Use live count from the join if available, fallback to static column
+          // community_members comes as [{ count: number }] from the select
+          const liveCount = c.community_members?.[0]?.count;
+          const finalCount = liveCount !== undefined ? liveCount : (c.member_count || 0);
+
+          return {
+            type: 'community' as const,
+            id: c.id,
+            name: communityName,
+            description: c.description?.trim() || '',
+            cover: c.cover_url || undefined,
+            cover_url: c.cover_url || undefined,
+            avatar: c.cover_url || undefined,
+            member_count: finalCount,
+            my_role: (myRole || 'none') as 'admin' | 'moderator' | 'member' | 'none',
+            is_joined: !!myRole,
+          };
+        });
       } catch (e) {
         console.error("💥 Community fetch error:", e);
         return [];
@@ -437,58 +378,60 @@ export default function Messages() {
     refetchInterval: 60000
   });
 
+  const { data: myMembership } = useQuery({
+    queryKey: ['my_membership', selectedChat?.id, user?.id],
+    queryFn: async () => {
+      if (!user?.id || !selectedChat || selectedChat.type !== 'community') {
+        return null;
+      }
+  
+      const { data } = await supabase
+        .from('community_members')
+        .select('role, muted_until')
+        .eq('community_id', selectedChat.id)
+        .eq('user_id', user.id)
+        .single();
+  
+      return data;
+    },
+    enabled: selectedChat?.type === 'community' && !!user?.id
+  });
+
   // FIXED FRIENDS HOOK - Robust name resolution
   const { friends: rawFriends = [] } = useFriends(user?.id);
 
-  // Debug: Log raw friends structure
-  useEffect(() => {
-    if (rawFriends && rawFriends.length > 0) {
-      console.log("🔍 Raw friends structure:", JSON.stringify(rawFriends[0], null, 2));
-    }
-  }, [rawFriends]);
-  
   const friends = useMemo(() => {
     try {
       if (!rawFriends || !Array.isArray(rawFriends) || !user?.id) {
-        console.log("❌ No friends data available");
         return [];
       }
       
-      console.log("👫 Processing", rawFriends.length, "friend relationships");
-      
       const processed = rawFriends
-        .map((friendship: any, index: number) => {
+        .map((friendship: any) => {
           try {
             if (!friendship) return null;
-            
-            console.log(`\n--- Processing friendship ${index + 1} ---`);
             
             let profile = null;
             let friendId = null;
   
             // Case 1: Current user is requester
             if (friendship.requester_id === user.id) {
-              console.log("→ User is requester, friend is addressee");
               const addressee = friendship.addressee;
               profile = Array.isArray(addressee) ? addressee[0] : addressee;
               friendId = friendship.addressee_id;
             } 
             // Case 2: Current user is addressee
             else if (friendship.addressee_id === user.id) {
-              console.log("→ User is addressee, friend is requester");
               const requester = friendship.requester;
               profile = Array.isArray(requester) ? requester[0] : requester;
               friendId = friendship.requester_id;
             }
   
-            // Validate data
             if (!profile || !friendId) {
-              console.warn(`⚠️ Invalid friendship data at index ${index}`);
               return null;
             }
   
             const displayName = getDisplayName(profile);
-            console.log(`✅ Resolved: ${displayName} (ID: ${friendId})`);
             
             return {
               id: friendId,
@@ -498,13 +441,12 @@ export default function Messages() {
               last_seen: profile.last_seen || null
             };
           } catch (err) {
-            console.error(`Error processing friendship at index ${index}:`, err);
+            console.error(`Error processing friendship:`, err);
             return null;
           }
         })
         .filter((f): f is NonNullable<typeof f> => f !== null);
   
-      console.log(`\n✅ Successfully processed ${processed.length} out of ${rawFriends.length} friends\n`);
       return processed;
     } catch (error) {
       console.error('Fatal error in friends processing:', error);
@@ -512,8 +454,8 @@ export default function Messages() {
     }
   }, [rawFriends, user?.id]);
   
-    // FIXED: Messages query with proper sender name resolution
-    const { data: messages = [], isLoading: loadingMessages, error: messagesError } = useQuery({
+  // FIXED: Messages query with proper sender name resolution
+  const { data: messages = [], isLoading: loadingMessages, error: messagesError } = useQuery({
     queryKey: ['messages', selectedChat?.type, selectedChat?.id, user?.id],
     queryFn: async (): Promise<Message[]> => {
       try {
@@ -606,18 +548,6 @@ export default function Messages() {
     }
   }, [messages, selectedChat, user?.id, queryClient]);
   
-  useEffect(() => {
-  console.log('Messages Component State:', {
-    hasUser: !!user,
-    userId: user?.id,
-    selectedChat: selectedChat?.type,
-    dmListLength: dmList?.length,
-    commListLength: commList?.length,
-    friendsLength: friends?.length,
-    messagesLength: messages?.length
-  });
-}, [user, selectedChat, dmList, commList, friends, messages]);
-
   // Scroll to message
   const scrollToId = useCallback((id: string) => {
     const el = document.getElementById(`msg-${id}`);
@@ -648,7 +578,7 @@ export default function Messages() {
       const { error } = await supabase.from('community_members').insert({ community_id: communityId, user_id: user.id, role: 'member' });
       if (error) throw error;
       
-      // Update member count
+      // Update member count (RPC as backup, but we fetch live count now)
       await supabase.rpc('increment_community_members', { community_id: communityId });
     },
     onSuccess: () => {
@@ -685,10 +615,9 @@ export default function Messages() {
           .getPublicUrl(filePath);
         
         coverUrl = urlData.publicUrl;
-        console.log("✅ Cover uploaded successfully:", coverUrl);
       }
   
-        const { data: comm, error } = await supabase
+      const { data: comm, error } = await supabase
         .from('communities')
         .insert({ 
           name: newCommName.trim(), 
@@ -705,7 +634,7 @@ export default function Messages() {
         throw error;
       }
   
-        await supabase.from('community_members').insert({ 
+      await supabase.from('community_members').insert({ 
         community_id: comm.id, 
         user_id: user.id, 
         role: 'admin' 
@@ -714,7 +643,6 @@ export default function Messages() {
       return comm;
     },
     onSuccess: (comm) => {
-      console.log("✅ Community created:", comm);
       setIsCreateCommunityOpen(false);
       setNewCommName('');
       setNewCommDesc('');
@@ -998,7 +926,7 @@ export default function Messages() {
     const chatImages = messages.filter(m => m.image_url && !m.is_deleted).map(m => ({ url: m.image_url!, id: m.id }));
     const pinnedMessages = isComm ? messages.filter(m => m.is_pinned && !m.is_deleted) : [];
 
-      // 6. ADD LOADING STATE CHECK AT THE TOP OF RENDER
+      // Loading Check
     if (!user) {
       return (
         <div className="min-h-screen w-full flex items-center justify-center bg-background">
@@ -1043,7 +971,6 @@ export default function Messages() {
             </p>
           </div>
           
-          {/* Buttons Section - FIXED */}
           <div className="flex items-center gap-1">
             {chatImages.length > 0 && (
               <Button 
@@ -1380,6 +1307,18 @@ export default function Messages() {
 
         {/* DM Tab */}
         <TabsContent value="dm" className="space-y-2 mt-0">
+          {dmError && (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <p className="text-destructive mb-2">Failed to load conversations</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['dm_list'] })}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
           {loadingDMs ? (
             <div className="flex justify-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -1467,8 +1406,8 @@ export default function Messages() {
                     my_role: comm.my_role,
                     member_count: comm.member_count,
                     is_joined: comm.is_joined
-                  })>
-                }
+                  })
+                }>
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{comm.name}</h3>
                     {comm.my_role === 'admin' && <Badge className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200">Admin</Badge>}
@@ -1495,7 +1434,7 @@ export default function Messages() {
       {/* New Chat Dialog */}
       <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
         <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] h-[85vh] flex flex-col p-0 gap-0">
-          {/* Header - Fixed */}
+          {/* Header */}
           <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
             <DialogTitle className="text-xl">New Message</DialogTitle>
             <DialogDescription>
@@ -1506,7 +1445,7 @@ export default function Messages() {
             </DialogDescription>
           </DialogHeader>
           
-          {/* Search - Fixed */}
+          {/* Search */}
           {friends.length > 0 && (
             <div className="px-6 py-4 bg-muted/10 flex-shrink-0">
               <div className="relative">
@@ -1521,7 +1460,6 @@ export default function Messages() {
             </div>
           )}
       
-          {/* ✅ Scrollable Content - This is the key fix */}
           <div className="flex-1 min-h-0 overflow-y-auto px-6">
             <div className="space-y-6 pb-6 pt-2">
               {friends.length === 0 ? (
