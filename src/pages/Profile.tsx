@@ -1160,7 +1160,7 @@ const Profile = () => {
               <Input
                 id="settings-fullname"
                 type="text"
-                placeholder="John Doe"
+                placeholder="Barack Musa"
                 value={settingsForm.fullName}
                 onChange={(e) => setSettingsForm(prev => ({ ...prev, fullName: e.target.value }))}
                 maxLength={MAX_NAME_LENGTH}
@@ -1180,7 +1180,7 @@ const Profile = () => {
               <Input
                 id="settings-username"
                 type="text"
-                placeholder="barack_300"
+                placeholder="username_1234"
                 value={settingsForm.username}
                 onChange={(e) => setSettingsForm(prev => ({ 
                   ...prev, 
@@ -1203,7 +1203,7 @@ const Profile = () => {
               <Input
                 id="settings-email"
                 type="email"
-                placeholder="barack@example.com"
+                placeholder="name@example.com"
                 value={settingsForm.email}
                 onChange={(e) => setSettingsForm(prev => ({ ...prev, email: e.target.value }))}
                 className="h-11"
