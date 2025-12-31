@@ -1,5 +1,3 @@
-// src/components/admin/PremiumFeaturesManager.tsx
-
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -137,41 +135,68 @@ export default function PremiumFeaturesManager() {
   // Toggle feature status mutation
   const toggleFeatureMutation = useMutation({
     mutationFn: async ({ featureId, isActive }: { featureId: string; isActive: boolean }) => {
-      const { error } = await supabase
+      console.log('🔄 Toggling feature:', featureId, 'to', isActive);
+      
+      const { data, error } = await supabase
         .from('premium_features')
         .update({ 
           is_active: isActive,
           updated_at: new Date().toISOString()
         })
-        .eq('id', featureId);
+        .eq('id', featureId)
+        .select();
       
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Toggle error:', error);
+        throw error;
+      }
+      
+      console.log('✅ Toggle result:', data);
+      return data;
     },
-    onSuccess: () => {
-      toast.success('Feature status updated');
-      queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
+    onSuccess: (data) => {
+      const status = data?.[0]?.is_active ? 'activated' : 'deactivated';
+      toast.success(`Feature ${status} successfully`);
+      queryClient.invalidateQueries({ queryKey: ['user_premium_features', selectedUser?.user_id] });
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to update feature');
+      console.error('❌ Toggle mutation error:', error);
+      toast.error(error.message || 'Failed to update feature. Check console for details.');
     }
   });
 
   // Delete feature mutation
   const deleteFeatureMutation = useMutation({
     mutationFn: async (featureId: string) => {
-      const { error } = await supabase
+      console.log('🗑️ Deleting feature:', featureId);
+      
+      const { data, error } = await supabase
         .from('premium_features')
         .delete()
-        .eq('id', featureId);
+        .eq('id', featureId)
+        .select();
       
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Delete error:', error);
+        throw error;
+      }
+      
+      console.log('✅ Delete result:', data);
+      
+      if (!data || data.length === 0) {
+        throw new Error('Feature not found or already deleted');
+      }
+      
+      return data;
     },
     onSuccess: () => {
-      toast.success('Feature removed');
-      queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
+      toast.success('Feature removed successfully');
+      queryClient.invalidateQueries({ queryKey: ['user_premium_features', selectedUser?.user_id] });
+      queryClient.refetchQueries({ queryKey: ['user_premium_features', selectedUser?.user_id] });
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to remove feature');
+      console.error('❌ Delete mutation error:', error);
+      toast.error(error.message || 'Failed to remove feature. Check console for details.');
     }
   });
 
