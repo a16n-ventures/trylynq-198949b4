@@ -760,6 +760,86 @@ export default function Messages() {
       await queryClient.cancelQueries({ 
         queryKey: ['messages', selectedChat.type, selectedChat.id] 
       });
+const sendMessage = useMutation({
+    mutationFn: async (vars: { content: string | null; file: File | null }) => {
+      if ((!vars.content && !vars.file) || !selectedChat || !user) {
+        throw new Error('Missing required data');
+      }
+  
+      // 1. Upload file if exists
+      let imageUrl: string | null = null;
+      if (vars.file) {
+        const fileExt = vars.file.name.split('.').pop();
+        const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('chat-attachments')
+          .upload(filePath, vars.file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        if (uploadError) {
+          throw new Error(`Upload failed: ${uploadError.message}`);
+        }
+        
+        const { data: urlData } = supabase.storage
+          .from('chat-attachments')
+          .getPublicUrl(filePath);
+        
+        imageUrl = urlData.publicUrl;
+      }
+  
+      // 2. Insert message based on type
+      if (selectedChat.type === 'dm') {
+        const { data, error } = await supabase
+          .from('messages')
+          .insert({
+            sender_id: user.id,
+            receiver_id: selectedChat.partner_id,
+            content: vars.content || null,
+            image_url: imageUrl,
+            is_read: false
+          })
+          .select()
+          .single();
+        
+        if (error) {
+          throw new Error(`DM failed: ${error.message}`);
+        }
+        
+        return data;
+        
+      } else {
+        // ✅ FIXED: Removed 'is_deleted' and 'is_pinned' to allow DB defaults
+        // ✅ FIXED: Ensuring we send the minimal required data
+        const { data, error } = await supabase
+          .from('community_messages')
+          .insert({
+            sender_id: user.id,
+            community_id: selectedChat.id,
+            content: vars.content || null,
+            image_url: imageUrl
+          })
+          .select()
+          .single();
+        
+        if (error) {
+          console.error("Community Insert Error:", error); // Added logging
+          throw new Error(`Community message failed: ${error.message}`);
+        }
+        
+        return data;
+      }
+    },
+    
+    // ... keep the rest of onMutate, onError, onSettled exactly as they are ...
+    onMutate: async (vars) => {
+      if (!selectedChat || !user) return;
+      
+      await queryClient.cancelQueries({ 
+        queryKey: ['messages', selectedChat.type, selectedChat.id] 
+      });
       
       const previousMessages = queryClient.getQueryData<Message[]>([
         'messages', 
@@ -804,19 +884,13 @@ export default function Messages() {
           context.previousMessages
         );
       }
-      
       toast.error(err.message || 'Failed to send message');
-    },
-    
-    onSuccess: () => {
-      // Message sent successfully
     },
     
     onSettled: () => {
       queryClient.invalidateQueries({ 
         queryKey: ['messages', selectedChat?.type, selectedChat?.id] 
       });
-      
       queryClient.invalidateQueries({ 
         queryKey: ['dm_list'] 
       });
