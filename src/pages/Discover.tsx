@@ -413,7 +413,7 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
   const handleShareToDM = () => {
     toast.info('Share to DM - Coming soon!');
     // TODO: Navigate to messages with story link
-    // navigate('/app/messages', { state: { shareStory: current.id } });
+    navigate('/app/messages', { state: { shareStory: current.id } });
   };
 
   if (loading) return (
@@ -860,14 +860,14 @@ const { data: storyData, error: storyError } = await supabase
     const path = `${user.id}/${Date.now()}.${ext}`;
     
     const { error: uploadError } = await supabase.storage
-      .from('chat-attachments')
+      .from('stories')
       .upload(path, preview.file);
     
     if (uploadError) throw uploadError;
     
     // 2. Get public URL
     const { data: { publicUrl } } = supabase.storage
-      .from('chat-attachments')
+      .from('stories')
       .getPublicUrl(path);
     
     // 3. Get current user profile
