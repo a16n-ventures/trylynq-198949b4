@@ -806,6 +806,7 @@ const sendMessage = useMutation({
         return data;
         
       } else {
+        // ✅ FIXED: reply_to_id now properly references the message ID being replied to (or null)
         const { data, error } = await supabase
           .from('community_messages')
           .insert({
@@ -815,7 +816,7 @@ const sendMessage = useMutation({
             image_url: imageUrl,
             is_pinned: false,
             is_deleted: false,
-            reply_to_id: user.id
+            reply_to_id: replyingTo?.id || null 
           })
           .select()
           .single();
