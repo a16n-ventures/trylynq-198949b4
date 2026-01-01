@@ -23,7 +23,7 @@ export interface CommunityMember {
   role: 'admin' | 'moderator' | 'member';
   is_muted?: boolean;
   muted_until?: string | null;
-  profile: { display_name: string; avatar_url: string; };
+  profile: { display_name: string; avatar_url: string; username?: string; };
   joined_at: string;
 }
 
@@ -42,6 +42,8 @@ export type SelectedChat =
       id: string; 
       name: string; 
       avatar?: string; 
+      cover?: string;
+      cover_url?: string;
       description?: string; 
       my_role: 'admin' | 'moderator' | 'member' | 'none'; 
       member_count: number;
@@ -65,6 +67,8 @@ export interface CommunityListItem {
   name: string;
   description?: string;
   avatar?: string;
+  cover?: string;
+  cover_url?: string;
   member_count: number;
   my_role: 'admin' | 'moderator' | 'member' | 'none';
   is_joined: boolean;

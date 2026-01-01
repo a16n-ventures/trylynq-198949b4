@@ -89,9 +89,10 @@ type Attendee = {
   avatar_url?: string;
 };
 
-// [MODIFIED: Added Friend Type]
+// [MODIFIED: Added Friend Type - includes user_id for compatibility]
 type Friend = {
-  id: string;
+  id?: string;
+  user_id: string;
   display_name: string | null;
   avatar_url: string | null;
 };

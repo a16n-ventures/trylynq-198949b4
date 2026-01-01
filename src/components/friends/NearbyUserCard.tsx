@@ -1,6 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { UserPlus, MapPin, Loader2 } from "lucide-react";
+import { PremiumBadge } from "@/components/PremiumBadge";
 import type { NearbyProfile } from "@/hooks/useNearbyUsers";
 
 interface NearbyUserCardProps {
@@ -15,7 +16,6 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
     return km < 1 ? `${Math.round(km * 1000)}m away` : `${km.toFixed(1)}km away`;
   };
 
-  // ✅ FIXED: Show actual display name from profile, with better fallback chain
   const displayName = profile.display_name || `User${profile.user_id?.slice(-4) || ''}`;
 
   return (
@@ -28,7 +28,10 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
       </Avatar>
       
       <div className="flex-1 min-w-0 text-left">
-        <div className="font-semibold truncate">{displayName}</div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold truncate">{displayName}</span>
+          <PremiumBadge userId={profile.user_id} size="sm" />
+        </div>
         {profile.distance_km !== undefined && (
           <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
             <MapPin className="w-3 h-3" />

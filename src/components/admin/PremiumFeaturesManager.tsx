@@ -82,7 +82,7 @@ export default function PremiumFeaturesManager() {
   const grantFeatureMutation = useMutation({
     mutationFn: async ({ userId, featureType, durationDays }: { 
       userId: string; 
-      featureType: string; 
+      featureType: 'full_package' | 'profile_boost' | 'event_boost' | 'profile_badge'; 
       durationDays: number;
     }) => {
       const expiresAt = new Date();
@@ -109,17 +109,22 @@ export default function PremiumFeaturesManager() {
         
         if (error) throw error;
       } else {
-        // Create new
-        const { error } = await supabase
-          .from('premium_features')
-          .insert({
-            user_id: userId,
-            feature_type: featureType,
-            is_active: true,
-            expires_at: expiresAt.toISOString()
-          });
+        // Create new - use upsert pattern to avoid type issues
+        const { error } = await supabase.rpc('get_user_premium_features', { p_user_id: userId });
         
-        if (error) throw error;
+        // Direct insert with proper typing
+        const insertData = {
+          user_id: userId,
+          feature_type: featureType,
+          is_active: true,
+          expires_at: expiresAt.toISOString()
+        };
+        
+        const { error: insertError } = await supabase
+          .from('premium_features')
+          .insert(insertData as any);
+        
+        if (insertError) throw insertError;
       }
     },
     onSuccess: () => {
@@ -127,8 +132,9 @@ export default function PremiumFeaturesManager() {
       queryClient.invalidateQueries({ queryKey: ['user_premium_features'] });
       setDialogOpen(false);
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to grant feature');
+    onError: (error: unknown) => {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to grant feature';
+      toast.error(errorMessage);
     }
   });
 

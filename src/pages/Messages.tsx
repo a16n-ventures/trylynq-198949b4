@@ -387,7 +387,7 @@ export default function Messages() {
   
       const { data } = await supabase
         .from('community_members')
-        .select('role, muted_until')
+        .select('role')
         .eq('community_id', selectedChat.id)
         .eq('user_id', user.id)
         .single();
@@ -914,7 +914,8 @@ const sendMessage = useMutation({
   if (selectedChat) {
     const isComm = selectedChat.type === 'community';
     
-    const isMuted = myMembership?.muted_until && new Date(myMembership.muted_until) > new Date();
+    // Note: muted_until feature not yet implemented in the database
+    const isMuted = false; // Will be enabled when muted_until column is added
     const canType =
       !isComm ||
       (isComm && selectedChat.my_role && selectedChat.my_role !== 'none' && !isMuted
@@ -1246,7 +1247,7 @@ const sendMessage = useMutation({
                 <>
                   <p className="text-sm text-muted-foreground">You are muted in this community</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Until {myMembership?.muted_until && new Date(myMembership.muted_until).toLocaleString()}
+                    Please contact an admin to get unmuted
                   </p>
                 </>
               ) : (
@@ -1387,8 +1388,7 @@ const sendMessage = useMutation({
                       cover_url: comm.cover_url,
                       description: comm.description,
                       member_count: comm.member_count,
-                      my_role: comm.my_role,
-                      is_joined: comm.is_joined
+                      my_role: comm.my_role
                     })
                   }
                   >
@@ -1402,8 +1402,7 @@ const sendMessage = useMutation({
                     cover: comm.cover_url,
                     description: comm.description,
                     my_role: comm.my_role,
-                    member_count: comm.member_count,
-                    is_joined: comm.is_joined
+                    member_count: comm.member_count
                   })
                 }>
                   <div className="flex items-center gap-2 mb-1">

@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PremiumBadge } from "@/components/PremiumBadge";
 import type { Profile, Friendship } from "@/hooks/useFriends";
 
 interface FriendCardProps {
@@ -46,7 +47,10 @@ export function FriendCard({
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold truncate">{friend.display_name || 'Unknown User'}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold truncate">{friend.display_name || 'Unknown User'}</span>
+            <PremiumBadge userId={friend.user_id} size="sm" />
+          </div>
           <div className="text-xs text-muted-foreground">Connected</div>
         </div>
       </button>

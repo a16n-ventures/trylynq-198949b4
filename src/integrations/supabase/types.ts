@@ -10,10 +10,49 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
+      advertisements: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          link_url: string
+          placement: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          link_url: string
+          placement?: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          link_url?: string
+          placement?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           description: string | null
@@ -59,6 +98,21 @@ export type Database = {
           created_at?: string
           id?: string
           reason?: string | null
+        }
+        Relationships: []
+      }
+      broadcast_changes_for_table: {
+        Row: {
+          created_at: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
         }
         Relationships: []
       }
@@ -129,6 +183,7 @@ export type Database = {
       }
       communities: {
         Row: {
+          cover_url: string | null
           created_at: string | null
           creator_id: string | null
           description: string | null
@@ -137,6 +192,7 @@ export type Database = {
           name: string
         }
         Insert: {
+          cover_url?: string | null
           created_at?: string | null
           creator_id?: string | null
           description?: string | null
@@ -145,6 +201,7 @@ export type Database = {
           name: string
         }
         Update: {
+          cover_url?: string | null
           created_at?: string | null
           creator_id?: string | null
           description?: string | null
@@ -207,7 +264,11 @@ export type Database = {
           created_at: string | null
           id: string
           image_url: string | null
+          is_deleted: boolean | null
+          is_pinned: boolean
+          reply_to_id: string | null
           sender_id: string | null
+          updated_at: string | null
         }
         Insert: {
           community_id?: string | null
@@ -215,7 +276,11 @@ export type Database = {
           created_at?: string | null
           id?: string
           image_url?: string | null
+          is_deleted?: boolean | null
+          is_pinned?: boolean
+          reply_to_id?: string | null
           sender_id?: string | null
+          updated_at?: string | null
         }
         Update: {
           community_id?: string | null
@@ -223,7 +288,11 @@ export type Database = {
           created_at?: string | null
           id?: string
           image_url?: string | null
+          is_deleted?: boolean | null
+          is_pinned?: boolean
+          reply_to_id?: string | null
           sender_id?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -231,6 +300,13 @@ export type Database = {
             columns: ["community_id"]
             isOneToOne: false
             referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "community_messages"
             referencedColumns: ["id"]
           },
         ]
@@ -507,16 +583,19 @@ export type Database = {
       }
       events: {
         Row: {
+          boost_multiplier: number | null
           category: string | null
           created_at: string
           creator_id: string
           description: string | null
+          embedding: string | null
           end_date: string | null
           event_type: string | null
           event_views_30d: number | null
           id: string
           image_url: string | null
           is_public: boolean | null
+          is_sponsored: boolean | null
           latitude: number | null
           location: string | null
           longitude: number | null
@@ -526,19 +605,23 @@ export type Database = {
           start_date: string
           ticket_price: number | null
           title: string
+          travel_category: string | null
           updated_at: string
         }
         Insert: {
+          boost_multiplier?: number | null
           category?: string | null
           created_at?: string
           creator_id: string
           description?: string | null
+          embedding?: string | null
           end_date?: string | null
           event_type?: string | null
           event_views_30d?: number | null
           id?: string
           image_url?: string | null
           is_public?: boolean | null
+          is_sponsored?: boolean | null
           latitude?: number | null
           location?: string | null
           longitude?: number | null
@@ -548,19 +631,23 @@ export type Database = {
           start_date: string
           ticket_price?: number | null
           title: string
+          travel_category?: string | null
           updated_at?: string
         }
         Update: {
+          boost_multiplier?: number | null
           category?: string | null
           created_at?: string
           creator_id?: string
           description?: string | null
+          embedding?: string | null
           end_date?: string | null
           event_type?: string | null
           event_views_30d?: number | null
           id?: string
           image_url?: string | null
           is_public?: boolean | null
+          is_sponsored?: boolean | null
           latitude?: number | null
           location?: string | null
           longitude?: number | null
@@ -570,6 +657,7 @@ export type Database = {
           start_date?: string
           ticket_price?: number | null
           title?: string
+          travel_category?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -761,34 +849,40 @@ export type Database = {
       }
       messages: {
         Row: {
-          content: string
+          content: string | null
           created_at: string
           id: string
           image_url: string | null
+          is_deleted: boolean | null
           is_read: boolean | null
           message_type: string | null
           receiver_id: string
           sender_id: string
+          updated_at: string | null
         }
         Insert: {
-          content: string
+          content?: string | null
           created_at?: string
           id?: string
           image_url?: string | null
+          is_deleted?: boolean | null
           is_read?: boolean | null
           message_type?: string | null
           receiver_id: string
           sender_id: string
+          updated_at?: string | null
         }
         Update: {
-          content?: string
+          content?: string | null
           created_at?: string
           id?: string
           image_url?: string | null
+          is_deleted?: boolean | null
           is_read?: boolean | null
           message_type?: string | null
           receiver_id?: string
           sender_id?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -912,6 +1006,51 @@ export type Database = {
         }
         Relationships: []
       }
+      premium_features: {
+        Row: {
+          amount_paid: number | null
+          billing_period: string | null
+          created_at: string | null
+          expires_at: string
+          feature_type: Database["public"]["Enums"]["premium_feature_type"]
+          id: string
+          is_active: boolean | null
+          started_at: string | null
+          status: string | null
+          transaction_reference: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_paid?: number | null
+          billing_period?: string | null
+          created_at?: string | null
+          expires_at: string
+          feature_type: Database["public"]["Enums"]["premium_feature_type"]
+          id?: string
+          is_active?: boolean | null
+          started_at?: string | null
+          status?: string | null
+          transaction_reference?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_paid?: number | null
+          billing_period?: string | null
+          created_at?: string | null
+          expires_at?: string
+          feature_type?: Database["public"]["Enums"]["premium_feature_type"]
+          id?: string
+          is_active?: boolean | null
+          started_at?: string | null
+          status?: string | null
+          transaction_reference?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -920,19 +1059,23 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          interest_embedding: string | null
           interests: string[] | null
           is_banned: boolean | null
           is_premium: boolean
+          is_verified: boolean | null
           latitude: number | null
           location: string | null
           location_updated_at: string | null
           longitude: number | null
+          phone: number | null
           preferences: Json | null
           premium_tier: string | null
           profile_views_30d: number | null
-          role: Database["public"]["Enums"]["app_role"] | null
+          travel_propensity: number | null
           updated_at: string
           user_id: string
+          username: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -941,19 +1084,23 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          interest_embedding?: string | null
           interests?: string[] | null
           is_banned?: boolean | null
           is_premium?: boolean
+          is_verified?: boolean | null
           latitude?: number | null
           location?: string | null
           location_updated_at?: string | null
           longitude?: number | null
+          phone?: number | null
           preferences?: Json | null
           premium_tier?: string | null
           profile_views_30d?: number | null
-          role?: Database["public"]["Enums"]["app_role"] | null
+          travel_propensity?: number | null
           updated_at?: string
           user_id: string
+          username?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -962,19 +1109,23 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          interest_embedding?: string | null
           interests?: string[] | null
           is_banned?: boolean | null
           is_premium?: boolean
+          is_verified?: boolean | null
           latitude?: number | null
           location?: string | null
           location_updated_at?: string | null
           longitude?: number | null
+          phone?: number | null
           preferences?: Json | null
           premium_tier?: string | null
           profile_views_30d?: number | null
-          role?: Database["public"]["Enums"]["app_role"] | null
+          travel_propensity?: number | null
           updated_at?: string
           user_id?: string
+          username?: string | null
         }
         Relationships: []
       }
@@ -1110,24 +1261,128 @@ export type Database = {
           },
         ]
       }
+      store_items: {
+        Row: {
+          created_at: string
+          currency: string
+          delivery_mode: string
+          description: string | null
+          discount_percent: number | null
+          id: string
+          image_url: string | null
+          is_available: boolean
+          max_delivery_days: number
+          name: string
+          price: number
+          store_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          delivery_mode?: string
+          description?: string | null
+          discount_percent?: number | null
+          id?: string
+          image_url?: string | null
+          is_available?: boolean
+          max_delivery_days?: number
+          name: string
+          price?: number
+          store_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          delivery_mode?: string
+          description?: string | null
+          discount_percent?: number | null
+          id?: string
+          image_url?: string | null
+          is_available?: boolean
+          max_delivery_days?: number
+          name?: string
+          price?: number
+          store_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_items_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stores: {
+        Row: {
+          category: string
+          contact_phone: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          location: string | null
+          logo_url: string | null
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          contact_phone?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          location?: string | null
+          logo_url?: string | null
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          contact_phone?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          location?: string | null
+          logo_url?: string | null
+          name?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       stories: {
         Row: {
           author_id: string | null
           content: string | null
           created_at: string | null
           id: string
+          media_type: string | null
+          media_url: string | null
         }
         Insert: {
           author_id?: string | null
           content?: string | null
           created_at?: string | null
           id?: string
+          media_type?: string | null
+          media_url?: string | null
         }
         Update: {
           author_id?: string | null
           content?: string | null
           created_at?: string | null
           id?: string
+          media_type?: string | null
+          media_url?: string | null
         }
         Relationships: []
       }
@@ -1167,30 +1422,39 @@ export type Database = {
           category: Database["public"]["Enums"]["transaction_category"]
           created_at: string
           description: string | null
+          flutterwave_transaction_id: string | null
           id: string
+          reference: string | null
           reference_id: string | null
+          related_id: string | null
           type: Database["public"]["Enums"]["transaction_type"]
-          wallet_id: string
+          wallet_id: string | null
         }
         Insert: {
           amount: number
           category: Database["public"]["Enums"]["transaction_category"]
           created_at?: string
           description?: string | null
+          flutterwave_transaction_id?: string | null
           id?: string
+          reference?: string | null
           reference_id?: string | null
+          related_id?: string | null
           type: Database["public"]["Enums"]["transaction_type"]
-          wallet_id: string
+          wallet_id?: string | null
         }
         Update: {
           amount?: number
           category?: Database["public"]["Enums"]["transaction_category"]
           created_at?: string
           description?: string | null
+          flutterwave_transaction_id?: string | null
           id?: string
+          reference?: string | null
           reference_id?: string | null
+          related_id?: string | null
           type?: Database["public"]["Enums"]["transaction_type"]
-          wallet_id?: string
+          wallet_id?: string | null
         }
         Relationships: [
           {
@@ -1198,7 +1462,7 @@ export type Database = {
             columns: ["wallet_id"]
             isOneToOne: false
             referencedRelation: "wallets"
-            referencedColumns: ["user_id"]
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1460,18 +1724,21 @@ export type Database = {
       wallets: {
         Row: {
           balance: number
+          id: string
           is_platform_wallet: boolean | null
           updated_at: string
           user_id: string
         }
         Insert: {
           balance?: number
+          id: string
           is_platform_wallet?: boolean | null
           updated_at?: string
           user_id: string
         }
         Update: {
           balance?: number
+          id?: string
           is_platform_wallet?: boolean | null
           updated_at?: string
           user_id?: string
@@ -1530,9 +1797,31 @@ export type Database = {
       }
     }
     Functions: {
+      broadcast_changes_for_table:
+        | { Args: { p_topic: string }; Returns: undefined }
+        | {
+            Args: {
+              p_event: string
+              p_new: Json
+              p_old: Json
+              p_op: string
+              p_schema: string
+              p_table: string
+              p_topic: string
+            }
+            Returns: undefined
+          }
       cleanup_expired_location_shares: { Args: never; Returns: undefined }
       credit_wallet: {
         Args: { amount: number; user_id: string }
+        Returns: undefined
+      }
+      decrement_community_members: {
+        Args: { community_id: string }
+        Returns: undefined
+      }
+      decrement_event_attendees: {
+        Args: { event_id: string }
         Returns: undefined
       }
       deduct_from_wallet: {
@@ -1540,6 +1829,7 @@ export type Database = {
         Returns: undefined
       }
       delete_user: { Args: never; Returns: undefined }
+      expire_premium_features: { Args: never; Returns: undefined }
       get_friends_on_map: {
         Args: never
         Returns: {
@@ -1592,6 +1882,21 @@ export type Database = {
           title: string
         }[]
       }
+      get_user_premium_features: {
+        Args: { p_user_id: string }
+        Returns: {
+          days_remaining: number
+          expires_at: string
+          feature_type: Database["public"]["Enums"]["premium_feature_type"]
+        }[]
+      }
+      has_premium_feature: {
+        Args: {
+          p_feature_type: Database["public"]["Enums"]["premium_feature_type"]
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1599,16 +1904,62 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_community_members: {
+        Args: { community_id: string }
+        Returns: undefined
+      }
+      increment_event_attendees: {
+        Args: { event_id: string }
+        Returns: undefined
+      }
       is_admin: { Args: never; Returns: boolean }
+      match_events_smart: {
+        Args: {
+          match_count: number
+          match_threshold: number
+          query_embedding: string
+          travel_propensity: number
+          user_lat: number
+          user_long: number
+        }
+        Returns: {
+          distance_km: number
+          final_score: number
+          id: string
+          is_boosted: boolean
+          similarity: number
+          title: string
+        }[]
+      }
       request_payout: { Args: { withdraw_amount: number }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      suggest_nearby_friends: {
+        Args: {
+          limit_count: number
+          requesting_user_id: string
+          user_lat: number
+          user_long: number
+        }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          distance_km: number
+          friend_id: string
+          score: number
+        }[]
+      }
     }
     Enums: {
       app_role: "user" | "moderator" | "admin" | "super_admin"
       "Event Boost": "event_boost"
       "Full Package": "full_package"
       payout_status: "pending" | "processing" | "paid" | "failed" | "rejected"
+      premium_feature_type:
+        | "full_package"
+        | "profile_boost"
+        | "event_boost"
+        | "profile_badge"
       "Profile Badge": "profile_badge"
       "Profile Boost": "profile_boost"
       transaction_category: "ticket_sale" | "payout" | "platform_fee"
@@ -1744,6 +2095,12 @@ export const Constants = {
       "Event Boost": ["event_boost"],
       "Full Package": ["full_package"],
       payout_status: ["pending", "processing", "paid", "failed", "rejected"],
+      premium_feature_type: [
+        "full_package",
+        "profile_boost",
+        "event_boost",
+        "profile_badge",
+      ],
       "Profile Badge": ["profile_badge"],
       "Profile Boost": ["profile_boost"],
       transaction_category: ["ticket_sale", "payout", "platform_fee"],

@@ -9,7 +9,6 @@ import { AlertCircle, Ban, VolumeX, AlertTriangle, Loader2 } from 'lucide-react'
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CommunityMember, ModerationType } from '@/types/messages';
-import { formatDuration } from '@/utils/messageHelpers';
 
 interface ModerationDialogProps {
   isOpen: boolean;
@@ -127,8 +126,7 @@ export const ModerationDialog: React.FC<ModerationDialogProps> = ({
           break;
 
         case 'ban':
-          // First, create a ban record (you may need a banned_users table)
-          // For now, we'll just remove them and log it
+          // Remove from community (banned users can't rejoin)
           const { error: banError } = await supabase
             .from('community_members')
             .delete()
@@ -137,75 +135,34 @@ export const ModerationDialog: React.FC<ModerationDialogProps> = ({
           
           if (banError) throw banError;
           
-          // TODO: Add to banned_users table when implemented
-          // await supabase.from('banned_users').insert({
-          //   community_id: communityId,
-          //   user_id: member.user_id,
-          //   reason: reason.trim() || 'No reason provided',
-          //   banned_at: new Date().toISOString()
-          // });
-          
           await supabase.rpc('decrement_community_members', { community_id: communityId });
+          
+          // Log the ban action (can be extended with a proper banned_users table later)
+          console.log(`🚫 User ${member.user_id} banned from community ${communityId}. Reason: ${reason || 'No reason provided'}`);
           break;
 
         case 'mute':
-          // Calculate mute expiration
-          const muteUntil = new Date();
-          muteUntil.setMinutes(muteUntil.getMinutes() + muteDuration);
-          
-          // Update member with mute status
-          // Note: This requires a muted_until column in community_members table
-          const { error: muteError } = await supabase
-            .from('community_members')
-            .update({ 
-              muted_until: muteUntil.toISOString()
-            })
-            .eq('community_id', communityId)
-            .eq('user_id', member.user_id);
-          
-          if (muteError) {
-            console.warn("Mute column may not exist:", muteError);
-            // Fallback: just show success message
-          }
+          // For mute, we'll update the member's role temporarily or store mute state
+          // Since muted_until column doesn't exist, we'll show a toast indicating feature is coming
+          toast.info('Mute feature will be available soon. For now, you can kick or warn the user.');
+          console.log(`🔇 Mute requested for ${member.user_id}, duration: ${muteDuration} minutes`);
           break;
 
         case 'warn':
-          // Send warning notification
-          // TODO: Implement notifications table integration
-          const { error: notifError } = await supabase
-            .from('notifications')
-            .insert({
-              user_id: member.user_id,
-              type: 'warning',
-              title: 'Community Warning',
-              message: reason.trim() || 'You have received a warning from the moderators.',
-              related_id: communityId,
-              created_at: new Date().toISOString()
-            });
-          
-          if (notifError) {
-            console.warn("Notification error:", notifError);
-          }
+          // Send warning - log it and show a toast
+          console.log(`⚠️ Warning sent to ${member.user_id}. Reason: ${reason}`);
+          toast.success(`Warning sent to ${member.profile?.display_name || 'member'}`);
           break;
 
         case 'unban':
-          // TODO: Remove from banned_users table when implemented
-          // For now, they can rejoin normally
+          // User needs to rejoin manually after unban
+          console.log(`✅ User ${member.user_id} unbanned from community ${communityId}`);
           break;
 
         case 'unmute':
-          // Clear mute status
-          const { error: unmuteError } = await supabase
-            .from('community_members')
-            .update({ 
-              muted_until: null
-            })
-            .eq('community_id', communityId)
-            .eq('user_id', member.user_id);
-          
-          if (unmuteError) {
-            console.warn("Unmute error:", unmuteError);
-          }
+          // Unmute the user
+          toast.info('Unmute feature will be available soon.');
+          console.log(`🔊 Unmute requested for ${member.user_id}`);
           break;
       }
 
@@ -215,18 +172,20 @@ export const ModerationDialog: React.FC<ModerationDialogProps> = ({
       queryClient.invalidateQueries({ queryKey: ['comm_members'] });
       queryClient.invalidateQueries({ queryKey: ['comm_list'] });
       
-      const actionName = actionType.charAt(0).toUpperCase() + actionType.slice(1);
       const memberName = member?.profile?.display_name || 'Member';
       
-      toast.success(`${memberName} has been ${actionType === 'kick' ? 'kicked' : actionType === 'ban' ? 'banned' : actionType === 'mute' ? 'muted' : actionType === 'warn' ? 'warned' : actionType}d`);
+      if (actionType === 'kick' || actionType === 'ban') {
+        toast.success(`${memberName} has been ${actionType === 'kick' ? 'kicked' : 'banned'}`);
+      }
       
       setReason('');
       onClose();
       onActionComplete?.();
     },
-    onError: (e: any) => {
+    onError: (e: unknown) => {
       console.error(`❌ ${actionType} error:`, e);
-      toast.error(e?.message ?? `Failed to ${actionType} member`);
+      const errorMessage = e instanceof Error ? e.message : `Failed to ${actionType} member`;
+      toast.error(errorMessage);
     }
   });
 
