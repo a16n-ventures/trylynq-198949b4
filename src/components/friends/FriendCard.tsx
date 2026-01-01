@@ -43,7 +43,7 @@ export function FriendCard({
         <Avatar className="w-12 h-12 border border-border/50">
           <AvatarImage src={friend.avatar_url || undefined} className="object-cover" />
           <AvatarFallback className="bg-muted text-muted-foreground">
-            {friend.display_name?.[0]?.toUpperCase() || 'U'}
+            {friend.display_name?.[0]?.toUpperCase() || friend.username?.[0]?.toUpperCase() || 'U'}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
