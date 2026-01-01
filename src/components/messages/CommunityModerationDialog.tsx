@@ -196,10 +196,11 @@ export function CommunityModerationDialog({
       if (error) throw error;
     },
     onSuccess: (_data, variables) => {
-      toast.success(variables.duration ? 'Member muted' : 'Member unmuted');
-      queryClient.invalidateQueries({ queryKey: ['community_members', communityId] });
-      setConfirmAction(null);
-    },
+  toast.success(variables.duration ? 'Member muted' : 'Member unmuted');
+  queryClient.invalidateQueries({ queryKey: ['community_members', communityId] });
+  queryClient.invalidateQueries({ queryKey: ['my_membership'] }); 
+  setConfirmAction(null);
+},
     onError: (error: any) => {
       toast.error(error.message || 'Failed to update mute status');
     },
