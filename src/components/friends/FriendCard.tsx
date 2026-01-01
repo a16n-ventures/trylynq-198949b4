@@ -48,7 +48,7 @@ export function FriendCard({
         </Avatar>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold truncate">{friend.display_name || 'Unknown User'}</span>
+            <span className="font-semibold truncate">{friend.display_name || friend.username || 'Unknown User'}</span>
             <PremiumBadge userId={friend.user_id} size="sm" />
           </div>
           <div className="text-xs text-muted-foreground">Connected</div>
@@ -59,7 +59,7 @@ export function FriendCard({
         <Button 
           variant="ghost" 
           size="icon"
-          onClick={() => navigate(`/app/messages?userId=${friend.user_id}`)}
+          onClick={() => navigate(`/app/messages?tab=dm?userId=${friend.user_id}`)}
         >
           <MessageSquare className="w-5 h-5 text-primary" />
         </Button>
