@@ -12,18 +12,18 @@ interface AddContactFormProps {
 
 export function AddContactForm({ onSubmit, onCancel, isPending }: AddContactFormProps) {
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
 
   const handleSubmit = () => {
     if (name.trim()) {
       onSubmit({ 
         name: name.trim(), 
-        email: email.trim() || undefined, 
+        username: username.trim() || undefined, 
         phone: phone.trim() || undefined 
       });
       setName("");
-      setEmail("");
+      setUsername("");
       setPhone("");
     }
   };
@@ -44,10 +44,10 @@ export function AddContactForm({ onSubmit, onCancel, isPending }: AddContactForm
           className="bg-background" 
         />
         <Input 
-          type="email" 
-          placeholder="Email" 
-          value={email} 
-          onChange={(e) => setEmail(e.target.value)} 
+          type="username" 
+          placeholder="@username_1234" 
+          value={username} 
+          onChange={(e) => setUsername(e.target.value)} 
           className="bg-background" 
         />
         <Input 
