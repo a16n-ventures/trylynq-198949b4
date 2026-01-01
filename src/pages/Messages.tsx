@@ -560,7 +560,7 @@ export default function Messages() {
     .select(`
       *,
       sender:profiles!sender_id(id, user_id, display_name, username, email, avatar_url),
-      reply_to:community_messages!reply_to_id(id, content, sender_id, image_url)
+      reply_to:community_messages(id, content, sender_id, image_url)
     `)
     .eq('community_id', selectedChat.id)
     .order('created_at', { ascending: true });
@@ -1171,16 +1171,14 @@ const sendMessage = useMutation({
               coverUrl={selectedChat.cover || selectedChat.cover_url || selectedChat.avatar}
             />
             {/* ✅ FIXED: Render dialog if isAdmin is true */}
-            {isAdmin && (
               <CommunitySettingsDialog 
-                isOpen={isSettingsOpen} 
+                isOpen={isSettingsOpen && isAdmin} 
                 onClose={() => setIsSettingsOpen(false)} 
                 communityId={selectedChat.id} 
                 currentName={selectedChat.name} 
                 currentDesc={selectedChat.description || ''} 
                 currentCoverUrl={selectedChat.cover || selectedChat.cover_url || selectedChat.avatar}
               />
-            )}
             {/* ✅ NEW: Moderation Dialog */}
             {canModerate && (
               <CommunityModerationDialog 
