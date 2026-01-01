@@ -23,7 +23,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
       <Avatar className="w-12 h-12 border border-border/50">
         <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
         <AvatarFallback className="bg-muted text-muted-foreground">
-          {displayName[0]?.toUpperCase() || username[0]?.toUpperCase || 'U'}
+          {displayName[0]?.toUpperCase() || username[0]?.toUpperCase() || 'U'}
         </AvatarFallback>
       </Avatar>
       
