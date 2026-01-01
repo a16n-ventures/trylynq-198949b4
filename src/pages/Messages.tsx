@@ -65,6 +65,22 @@ const getDisplayName = (profile: any): string => {
   }
 };
 
+// Premium Badge Component
+const PremiumBadge = () => (
+  <svg 
+    className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 ml-1" 
+    viewBox="0 0 22 22" 
+    fill="currentColor"
+    aria-label="Verified"
+  >
+    <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
+  </svg>
+);
+
+// Extended type to support premium status locally without modifying the global type file
+type ExtendedSelectedChat = SelectedChat & { is_premium?: boolean };
+type ExtendedDMListItem = DMListItem & { is_premium?: boolean };
+
 export default function Messages() {
   const [hasError, setHasError] = useState(false);
   const { user } = useAuth() || {};
@@ -74,7 +90,7 @@ export default function Messages() {
 
   // UI state
   const [activeTab, setActiveTab] = useState<ChatMode>('dm');
-  const [selectedChat, setSelectedChat] = useState<SelectedChat | null>(null);
+  const [selectedChat, setSelectedChat] = useState<ExtendedSelectedChat | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -171,7 +187,7 @@ export default function Messages() {
   // FIXED DM LIST QUERY - Properly fetch and display user names
   const { data: dmList = [], isLoading: loadingDMs, error: dmError } = useQuery({
     queryKey: ['dm_list', user?.id],
-    queryFn: async (): Promise<DMListItem[]> => {
+    queryFn: async (): Promise<ExtendedDMListItem[]> => {
       try {
         if (!user?.id) return [];
 
@@ -227,6 +243,25 @@ export default function Messages() {
           console.error("❌ Profile fetch error:", profileError);
         }
 
+        // Step 3.5: Fetch premium status for these users
+        const { data: premiumFeatures } = await supabase
+          .from('premium_features')
+          .select('user_id')
+          .in('user_id', idsList)
+          .eq('is_active', true)
+          .gt('expires_at', new Date().toISOString());
+
+        const { data: subscriptions } = await supabase
+          .from('subscriptions')
+          .select('user_id, status')
+          .in('user_id', idsList)
+          .eq('status', 'active');
+
+        const premiumUserIds = new Set([
+          ...(premiumFeatures?.map(pf => pf.user_id) || []),
+          ...(subscriptions?.map(s => s.user_id) || [])
+        ]);
+
         // Step 4: Create profile lookup with safety
         const profileLookup = new Map<string, any>();
         if (profiles && Array.isArray(profiles)) {
@@ -265,6 +300,7 @@ export default function Messages() {
 
               const profile = profileLookup.get(pid);
               const displayName = getDisplayName(profile);
+              const isPremium = premiumUserIds.has(pid);
 
               return {
                 type: 'dm' as const,
@@ -275,14 +311,15 @@ export default function Messages() {
                 last_msg: details.last_msg,
                 time: details.time,
                 is_online: false,
-                unread_count: unreadCounts.get(pid) || 0
+                unread_count: unreadCounts.get(pid) || 0,
+                is_premium: isPremium
               };
             } catch (err) {
               console.error(`Error mapping DM for partner ${pid}:`, err);
               return null;
             }
           })
-          .filter((item): item is DMListItem => item !== null)
+          .filter((item): item is ExtendedDMListItem => item !== null)
           .sort((a, b) => {
             try {
               return new Date(b.time).getTime() - new Date(a.time).getTime();
@@ -400,6 +437,40 @@ export default function Messages() {
   // FIXED FRIENDS HOOK - Robust name resolution
   const { friends: rawFriends = [] } = useFriends(user?.id);
 
+  // Fetch premium status for friends separately to display in New Chat
+  const { data: friendPremiumStatus = {} } = useQuery({
+    queryKey: ['friends_premium', rawFriends],
+    queryFn: async () => {
+      if (!rawFriends || rawFriends.length === 0 || !user?.id) return {};
+      
+      const friendIds = rawFriends.map((f: any) => 
+        f.requester_id === user.id ? f.addressee_id : f.requester_id
+      ).filter(Boolean);
+
+      if (friendIds.length === 0) return {};
+
+      const { data: premiumFeatures } = await supabase
+        .from('premium_features')
+        .select('user_id')
+        .in('user_id', friendIds)
+        .eq('is_active', true)
+        .gt('expires_at', new Date().toISOString());
+
+      const { data: subscriptions } = await supabase
+        .from('subscriptions')
+        .select('user_id, status')
+        .in('user_id', friendIds)
+        .eq('status', 'active');
+
+      const premiumMap: Record<string, boolean> = {};
+      premiumFeatures?.forEach(pf => { premiumMap[pf.user_id] = true; });
+      subscriptions?.forEach(s => { premiumMap[s.user_id] = true; });
+
+      return premiumMap;
+    },
+    enabled: rawFriends.length > 0
+  });
+
   const friends = useMemo(() => {
     try {
       if (!rawFriends || !Array.isArray(rawFriends) || !user?.id) {
@@ -432,13 +503,15 @@ export default function Messages() {
             }
   
             const displayName = getDisplayName(profile);
+            const isPremium = friendPremiumStatus[friendId] || false;
             
             return {
               id: friendId,
               name: displayName,
               avatar: profile.avatar_url || null,
               is_online: profile.is_online || false,
-              last_seen: profile.last_seen || null
+              last_seen: profile.last_seen || null,
+              is_premium: isPremium
             };
           } catch (err) {
             console.error(`Error processing friendship:`, err);
@@ -452,7 +525,7 @@ export default function Messages() {
       console.error('Fatal error in friends processing:', error);
       return [];
     }
-  }, [rawFriends, user?.id]);
+  }, [rawFriends, user?.id, friendPremiumStatus]);
   
   // FIXED: Messages query with proper sender name resolution
   const { data: messages = [], isLoading: loadingMessages, error: messagesError } = useQuery({
@@ -951,7 +1024,10 @@ const sendMessage = useMutation({
           </Avatar>
           
           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
-            <h3 className="font-bold text-base truncate">{selectedChat.name}</h3>
+            <div className="flex items-center gap-1">
+              <h3 className="font-bold text-base truncate">{selectedChat.name}</h3>
+              {selectedChat.is_premium && <PremiumBadge />}
+            </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1.5">
               {isComm ? (
                 <>
@@ -1042,7 +1118,10 @@ const sendMessage = useMutation({
                   <AvatarFallback className="text-2xl">{selectedChat.name?.[0]?.toUpperCase() ?? '?'}</AvatarFallback>
                 </Avatar>
                 <div className="text-center">
-                  <h2 className="text-xl font-bold mb-1">{selectedChat.name}</h2>
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <h2 className="text-xl font-bold">{selectedChat.name}</h2>
+                    {selectedChat.is_premium && <PremiumBadge />}
+                  </div>
                   <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5">
                     {selectedChat.is_online ? (
                       <>
@@ -1334,7 +1413,15 @@ const sendMessage = useMutation({
               <div 
                 key={dm.id} 
                 className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl transition-all cursor-pointer bg-gradient-to-r from-background to-muted/5 group"
-                onClick={() => setSelectedChat({ type: 'dm', id: dm.id, partner_id: dm.partner_id, name: dm.name, avatar: dm.avatar, is_online: dm.is_online })}
+                onClick={() => setSelectedChat({ 
+                  type: 'dm', 
+                  id: dm.id, 
+                  partner_id: dm.partner_id, 
+                  name: dm.name, 
+                  avatar: dm.avatar, 
+                  is_online: dm.is_online,
+                  is_premium: dm.is_premium 
+                })}
               >
                 <div className="relative">
                   <Avatar className="h-14 w-14 ring-2 ring-background shadow-md group-hover:shadow-lg transition-all">
@@ -1347,7 +1434,10 @@ const sendMessage = useMutation({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{dm.name}</h3>
+                    <div className="flex items-center gap-1">
+                      <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{dm.name}</h3>
+                      {dm.is_premium && <PremiumBadge />}
+                    </div>
                     <span className="text-[11px] text-muted-foreground font-medium">{formatTime(dm.time)}</span>
                   </div>
                   <p className="text-sm text-muted-foreground truncate">{dm.last_msg}</p>
@@ -1492,7 +1582,15 @@ const sendMessage = useMutation({
                           <div 
                             key={f.id} 
                             onClick={() => { 
-                            setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar, is_online: f.is_online }); 
+                            setSelectedChat({ 
+                              type: 'dm', 
+                              id: f.id, 
+                              partner_id: f.id, 
+                              name: f.name, 
+                              avatar: f.avatar, 
+                              is_online: f.is_online,
+                              is_premium: f.is_premium
+                            }); 
                               setIsNewChatOpen(false); 
                             }} 
                             className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
@@ -1505,7 +1603,10 @@ const sendMessage = useMutation({
                               <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                              <div className="flex items-center gap-1">
+                                <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                                {f.is_premium && <PremiumBadge />}
+                              </div>
                               <p className="text-xs text-green-600 font-medium">Active now</p>
                             </div>
                             <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1528,7 +1629,15 @@ const sendMessage = useMutation({
                           <div 
                             key={f.id} 
                             onClick={() => { 
-                              setSelectedChat({ type: 'dm', id: f.id, partner_id: f.id, name: f.name, avatar: f.avatar, is_online: f.is_online }); 
+                              setSelectedChat({ 
+                                type: 'dm', 
+                                id: f.id, 
+                                partner_id: f.id, 
+                                name: f.name, 
+                                avatar: f.avatar, 
+                                is_online: f.is_online,
+                                is_premium: f.is_premium
+                              }); 
                               setIsNewChatOpen(false); 
                             }} 
                             className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
@@ -1538,7 +1647,10 @@ const sendMessage = useMutation({
                               <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                              <div className="flex items-center gap-1">
+                                <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                                {f.is_premium && <PremiumBadge />}
+                              </div>
                               {f.last_seen && (
                                 <p className="text-xs text-muted-foreground">
                                   Active {formatDistanceToNow(new Date(f.last_seen), { addSuffix: true })}

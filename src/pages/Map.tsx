@@ -34,6 +34,7 @@ type FriendOnMap = {
   distanceKm?: number | null;
   latitude?: number | null;
   longitude?: number | null;
+  is_premium?: boolean; // Added premium status
 };
 
 // --- Helpers ---
@@ -45,6 +46,18 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
+
+// Premium Badge Component
+const PremiumBadge = () => (
+  <svg 
+    className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 ml-1" 
+    viewBox="0 0 22 22" 
+    fill="currentColor"
+    aria-label="Verified"
+  >
+    <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
+  </svg>
+);
 
 const MapPage = () => {
   const { user } = useAuth();
@@ -75,6 +88,34 @@ const MapPage = () => {
       f.requester_id === user.id ? f.addressee_id : f.requester_id
     ).filter(Boolean);
   }, [friends, user]);
+
+  // --- 1.5 Fetch Friend Premium Status ---
+  const { data: premiumStatus = {} } = useQuery({
+    queryKey: ['map_friends_premium', friendIds],
+    queryFn: async () => {
+      if (friendIds.length === 0) return {};
+      
+      const { data: premiumFeatures } = await supabase
+        .from('premium_features')
+        .select('user_id')
+        .in('user_id', friendIds)
+        .eq('is_active', true)
+        .gt('expires_at', new Date().toISOString());
+
+      const { data: subscriptions } = await supabase
+        .from('subscriptions')
+        .select('user_id, status')
+        .in('user_id', friendIds)
+        .eq('status', 'active');
+
+      const premiumMap: Record<string, boolean> = {};
+      premiumFeatures?.forEach(pf => { premiumMap[pf.user_id] = true; });
+      subscriptions?.forEach(s => { premiumMap[s.user_id] = true; });
+
+      return premiumMap;
+    },
+    enabled: friendIds.length > 0
+  });
 
   const { data: friendLocations = [] } = useQuery({
     queryKey: ['friend-locations', friendIds],
@@ -183,6 +224,8 @@ const friendsMapped: FriendOnMap[] = useMemo(() => {
 
       console.log(`✅ Friend "${loc.profiles?.display_name}" included: ${dist.toFixed(1)}km away`);
 
+      const isPremium = premiumStatus[loc.user_id] || false;
+
       return {
         id: loc.user_id,
         name: loc.profiles?.display_name || 'Friend',
@@ -194,10 +237,11 @@ const friendsMapped: FriendOnMap[] = useMemo(() => {
         distanceKm: Number(dist.toFixed(1)),
         latitude: loc.latitude,
         longitude: loc.longitude,
+        is_premium: isPremium
       };
     })
     .filter(Boolean) as FriendOnMap[];
-}, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm]);
+}, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus]);
 
 // --- UPDATE events query to use user's radius ---
 const { data: events = [], isLoading: eventsLoading } = useQuery({
@@ -410,7 +454,10 @@ const { data: events = [], isLoading: eventsLoading } = useQuery({
                           )}
                         </div>
                         <div>
-                          <h3 className="font-bold text-lg leading-tight">{selectedFriend.name}</h3>
+                          <h3 className="font-bold text-lg leading-tight flex items-center gap-1">
+                            {selectedFriend.name}
+                            {selectedFriend.is_premium && <PremiumBadge />}
+                          </h3>
                           <p className="text-sm text-muted-foreground flex items-center gap-1">
                             <MapPin className="w-3 h-3" /> 
                             {selectedFriend.locationLabel}
@@ -540,7 +587,10 @@ const { data: events = [], isLoading: eventsLoading } = useQuery({
                             
                             <div className="flex-1 min-w-0">
                               <div className="flex justify-between">
-                                <h4 className="font-medium text-sm truncate">{item.name || item.title}</h4>
+                                <h4 className="font-medium text-sm truncate flex items-center gap-1">
+                                  {item.name || item.title}
+                                  {activeView === 'friends' && item.is_premium && <PremiumBadge />}
+                                </h4>
                                 <span className="text-xs text-muted-foreground">{item.distanceKm}km</span>
                               </div>
                               <p className="text-xs text-muted-foreground truncate">{item.locationLabel || item.location}</p>
