@@ -986,17 +986,14 @@ const sendMessage = useMutation({
       }
     };
   }, [imagePreview]);
-
-  // Chat view
-  if (selectedChat) {
-    const isComm = selectedChat.type === 'community';
-    
-    // Note: muted_until feature not yet implemented in the database
+  const isComm = selectedChat.type === 'community';
     const isMuted = useMemo(() => {
   if (!isComm || !myMembership) return false;
   return myMembership.muted_until && new Date(myMembership.muted_until) > new Date();
 }, [isComm, myMembership]);
-    
+
+  // Chat view
+  if (selectedChat) {
     // ✅ FIXED: Use LIVE membership data for role checks if available
     const myRole = myMembership?.role || selectedChat.my_role || 'none';
     const canType = !isComm || (isComm && myRole !== 'none' && !isMuted);
