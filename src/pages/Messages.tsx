@@ -986,7 +986,7 @@ const sendMessage = useMutation({
       }
     };
   }, [imagePreview]);
-  const isComm = selectedChat.type === 'community';
+  const isComm = selectedChat?.type === 'community';
     const isMuted = useMemo(() => {
   if (!isComm || !myMembership) return false;
   return myMembership.muted_until && new Date(myMembership.muted_until) > new Date();
