@@ -13,24 +13,28 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { Profile, Friendship } from "@/hooks/useFriends";
 
-// ✅ FIXED: Added loading state and better error handling
+// ✅ Internal VerifiedBadge component with synchronized MainLayout logic
 const VerifiedBadge = ({ userId }: { userId: string }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     const checkPremiumStatus = async () => {
       try {
-        setIsLoading(true);
-        
-        // Check for active subscription OR manual premium feature
+        // 1. Check for active subscription OR manual premium feature
         const { data: premiumFeature, error: premiumError } = await supabase
           .from('premium_features')
           .select('is_active, expires_at')
           .eq('user_id', userId)
           .eq('is_active', true)
-          .gt('expires_at', new Date().toISOString())
+          .gt('expires_at', new Date().toISOString()) // Ensure not expired
           .maybeSingle();
+
+        if (premiumError && premiumError.code !== 'PGRST116') {
+             console.error('Premium feature error:', premiumError);
+        }
 
         const { data: sub, error: subError } = await supabase
           .from('subscriptions')
@@ -38,24 +42,30 @@ const VerifiedBadge = ({ userId }: { userId: string }) => {
           .eq('user_id', userId)
           .maybeSingle();
 
-        // Debug logging (remove in production)
-        if (premiumError) console.error('Premium feature error:', premiumError);
-        if (subError) console.error('Subscription error:', subError);
+        if (subError && subError.code !== 'PGRST116') {
+            console.error('Subscription error:', subError);
+        }
 
-        // User is premium if they have an active manual feature OR an active subscription
-        const hasPremium = !!premiumFeature || sub?.status === 'active';
-        setIsPremium(hasPremium);
+        if (mounted) {
+          // User is premium if they have an active manual feature OR an active subscription
+          const hasPremium = !!premiumFeature || sub?.status === 'active';
+          setIsPremium(hasPremium);
+        }
       } catch (error) {
         console.error('Error checking premium status:', error);
-        setIsPremium(false);
+        if (mounted) setIsPremium(false);
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     };
 
     if (userId) {
       checkPremiumStatus();
     }
+
+    return () => {
+      mounted = false;
+    };
   }, [userId]);
 
   // Don't show anything while loading or if not premium
@@ -110,7 +120,6 @@ export function FriendCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-semibold truncate">{friend.display_name || friend.username || 'Unknown User'}</span>
-            {/* ✅ FIXED: Using improved VerifiedBadge with loading state */}
             <VerifiedBadge userId={friend.user_id} />
           </div>
           <div className="text-xs text-muted-foreground">Connected</div>
