@@ -27,7 +27,7 @@ import {
   AlertCircle, 
   Building2,
   CreditCard,
-  Zap // Added Zap icon
+  Zap
 } from "lucide-react"; 
 import { 
   Dialog, 
@@ -57,7 +57,7 @@ type Event = {
   image_url?: string;
   creator_id: string;
   is_public: boolean;
-  is_boosted?: boolean; // Added is_boosted field
+  is_boosted?: boolean;
   max_attendees?: number | null;
   event_type: 'physical' | 'virtual';
   meeting_link?: string | null;
@@ -152,7 +152,7 @@ export default function Events() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my");
-  const [hostedFilter, setHostedFilter] = useState<'active' | 'past'>('active'); // Added sub-category state
+  const [hostedFilter, setHostedFilter] = useState<'active' | 'past'>('active');
   
   // Payout & Modal States
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
@@ -169,7 +169,7 @@ export default function Events() {
         .from("events")
         .select("*")
         .eq("creator_id", userId)
-        .order("start_date", { ascending: false }); // Changed to descending to show recent first
+        .order("start_date", { ascending: false }); 
       
       if (error) throw error;
       if (!events || events.length === 0) return [];
@@ -439,7 +439,8 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     const status = getEventStatus(event.start_date);
     const eventDate = new Date(event.start_date);
     const isFull = event.max_attendees && event.attendee_count ? event.attendee_count >= event.max_attendees : false;
-    const isEventPast = isPast(eventDate) && !isToday(eventDate); // Check if event is in the past
+    // ✅ CHANGED: Logic to strictly check time (removes !isToday check)
+    const isEventPast = isPast(eventDate); 
     
     // Explicitly check for pending status
     const isPending = event.my_status === 'pending';
@@ -481,9 +482,9 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                 </Badge>
               </div>
 
-               {/* Boosted Zap Icon */}
+               {/* ✅ CHANGED: Boosted Zap Icon moved to absolute corner */}
                {event.is_boosted && !isEventPast && (
-                <div className="absolute top-2 right-2 bg-yellow-400 text-white rounded-full p-1 shadow-sm z-10 animate-pulse">
+                <div className="absolute top-0 right-0 bg-yellow-400 text-white rounded-bl-lg p-1.5 shadow-sm z-10 animate-pulse">
                   <Zap className="w-3 h-3 fill-white" />
                 </div>
               )}
@@ -616,9 +617,9 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
 
   const filteredMyEvents = filterEvents(myEvents);
   
-  // Filter for Hosted Active vs Past
-  const myActiveEvents = filteredMyEvents.filter(e => isFuture(new Date(e.start_date)) || isToday(new Date(e.start_date)));
-  const myPastEvents = filteredMyEvents.filter(e => isPast(new Date(e.start_date)) && !isToday(new Date(e.start_date)));
+  // ✅ CHANGED: Filter logic to strictly check time (Active = NOT past, Past = IS past)
+  const myActiveEvents = filteredMyEvents.filter(e => !isPast(new Date(e.start_date)));
+  const myPastEvents = filteredMyEvents.filter(e => isPast(new Date(e.start_date)));
   
   const filteredAttendingEvents = filterEvents(attendingEvents);
 
@@ -654,8 +655,8 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
 
         <TabsContent value="my" className="space-y-3 mt-6 animate-in fade-in-50">
           
-           {/* Sub-Category Toggles for Active/Past */}
-          <div className="flex items-center gap-2 mb-4 bg-muted/30 p-1 rounded-lg w-fit">
+           {/* ✅ CHANGED: Added mx-auto to center the toggle */}
+          <div className="flex items-center gap-2 mb-4 bg-muted/30 p-1 rounded-lg w-fit mx-auto">
             <button
               onClick={() => setHostedFilter('active')}
               className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${hostedFilter === 'active' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
