@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Users, Upload, Loader2, Plus, X } from 'lucide-react';
+import { Users, Upload, Loader2, Plus, X, FileSpreadsheet } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -14,16 +14,28 @@ interface ContactImportModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Enhancement 2: Phone Normalization Logic
+const normalizePhone = (phone: string): string => {
+  // Removes all characters except digits and the plus sign
+  // e.g. "(555) 123-4567" -> "5551234567"
+  // e.g. "+234 80 123" -> "+23480123"
+  if (!phone) return '';
+  return phone.replace(/[^\d+]/g, '');
+};
+
 export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalProps) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
-  const [contacts, setContacts] = useState<Array<{ name: string; phone: string; email: string }>>([
-    { name: '', phone: '', email: '' }
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Enhancement 3: Replaced Email with Username
+  const [contacts, setContacts] = useState<Array<{ name: string; phone: string; username: string }>>([
+    { name: '', phone: '', username: '' }
   ]);
 
   const addContact = () => {
-    setContacts([...contacts, { name: '', phone: '', email: '' }]);
+    setContacts([...contacts, { name: '', phone: '', username: '' }]);
   };
 
   const updateContact = (index: number, field: string, value: string) => {
@@ -36,6 +48,61 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
     const newContacts = [...contacts];
     newContacts.splice(index, 1);
     setContacts(newContacts);
+  };
+
+  // Enhancement 1: CSV File Upload Handler
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        // Split by new line
+        const lines = text.split(/\r\n|\n/);
+        
+        const newContacts: Array<{ name: string; phone: string; username: string }> = [];
+        
+        // Simple heuristic to skip header if "name" is in the first row
+        const startRow = lines[0].toLowerCase().includes('name') ? 1 : 0;
+
+        for (let i = startRow; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          
+          // Basic CSV parsing (Split by comma)
+          // Expected format: Name, Username, Phone
+          const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+          
+          if (cols.length > 0 && cols[0]) {
+            newContacts.push({
+              name: cols[0] || '',
+              username: cols[1] || '',
+              phone: cols[2] || ''
+            });
+          }
+        }
+
+        if (newContacts.length > 0) {
+          // Append to existing contacts (excluding empty first row if it exists)
+          setContacts(prev => {
+            const filteredPrev = prev.filter(c => c.name.trim() !== '');
+            return [...filteredPrev, ...newContacts];
+          });
+          toast.success(`Parsed ${newContacts.length} contacts from CSV`);
+        } else {
+          toast.error("No valid contacts found in CSV");
+        }
+      } catch (err) {
+        console.error("CSV Parse Error", err);
+        toast.error("Failed to parse CSV file");
+      }
+      
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
   };
 
   const handleImport = async () => {
@@ -53,18 +120,21 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
 
     try {
       await Promise.all(validContacts.map(async (contact) => {
-        // Search by display_name or email (profiles doesn't have phone column)
+        // Search by display_name or USERNAME (Updated from email)
         const conditions: string[] = [];
         
+        // Fuzzy search name
         if (contact.name) conditions.push(`display_name.ilike.%${contact.name.trim()}%`);
-        if (contact.email) conditions.push(`email.eq.${contact.email.trim().toLowerCase()}`);
+        
+        // Exact search username (Higher priority usually, but 'or' logic checks both)
+        if (contact.username) conditions.push(`username.eq.${contact.username.trim()}`);
 
         let existingUser = null;
         
         if (conditions.length > 0) {
           const { data, error } = await supabase
             .from('profiles')
-            .select('user_id, display_name, email, avatar_url')
+            .select('user_id, display_name, username, avatar_url')
             .neq('user_id', user?.id)
             .or(conditions.join(','))
             .limit(1)
@@ -98,15 +168,18 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
               requestsSent++;
             }
           }
-        } else if (contact.email || contact.phone) {
+        } else {
           // USER NOT FOUND - Save as contact
+          // Enhancement 2: Normalize Phone before saving
+          const cleanPhone = normalizePhone(contact.phone);
+
           const { error: saveError } = await supabase
             .from('contacts')
             .insert({
               user_id: user?.id,
               name: contact.name,
-              phone: contact.phone ? contact.phone.replace(/[\s\-\(\)]/g, '') : null,
-              email: contact.email || null 
+              phone: cleanPhone || null,
+              username: contact.username || null // Updated field
             });
 
           if (!saveError) contactsSaved++;
@@ -125,7 +198,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
       
       toast.success(msg);
       onOpenChange(false);
-      setContacts([{ name: '', phone: '', email: '' }]); 
+      setContacts([{ name: '', phone: '', username: '' }]); 
 
     } catch (error) {
       console.error(error);
@@ -144,11 +217,32 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
             Import Contacts
           </DialogTitle>
           <DialogDescription>
-            Enter details below. If they use the app (username/email/phone match), we'll send a friend request. If not, we'll save them as a contact.
+            Enter details or upload CSV. If they use the app (username match), we'll send a friend request. If not, we'll save them as a contact.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Enhancement 1: CSV Upload Button */}
+          <div className="flex gap-2">
+             <Input 
+               type="file" 
+               accept=".csv"
+               className="hidden" 
+               ref={fileInputRef}
+               onChange={handleFileUpload}
+             />
+             <Button 
+               variant="outline" 
+               className="w-full border-dashed"
+               onClick={() => fileInputRef.current?.click()}
+             >
+               <FileSpreadsheet className="w-4 h-4 mr-2" />
+               Upload CSV (Name, Username, Phone)
+             </Button>
+          </div>
+
+          <div className="h-px bg-border/50 my-2" />
+
           {contacts.map((contact, index) => (
             <div key={index} className="space-y-3 p-4 bg-muted/40 border border-border/50 rounded-lg relative group">
                {index > 0 && (
@@ -163,30 +257,30 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
                )}
               
               <div>
-                <Label className="text-xs">Name / Username</Label>
+                <Label className="text-xs">Name (Required)</Label>
                 <Input
                   value={contact.name}
                   onChange={(e) => updateContact(index, 'name', e.target.value)}
-                  placeholder="e.g. johndoe"
+                  placeholder="e.g. John Doe"
                   className="h-9"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs">Phone (Optional)</Label>
+                  <Label className="text-xs">Username (App Users)</Label>
                   <Input
-                    value={contact.phone}
-                    onChange={(e) => updateContact(index, 'phone', e.target.value)}
-                    placeholder="080..."
+                    value={contact.username}
+                    onChange={(e) => updateContact(index, 'username', e.target.value)}
+                    placeholder="@username"
                     className="h-9"
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Email (Optional)</Label>
+                  <Label className="text-xs">Phone (Optional)</Label>
                   <Input
-                    value={contact.email}
-                    onChange={(e) => updateContact(index, 'email', e.target.value)}
-                    placeholder="mail@..."
+                    value={contact.phone}
+                    onChange={(e) => updateContact(index, 'phone', e.target.value)}
+                    placeholder="+123..."
                     className="h-9"
                   />
                 </div>
