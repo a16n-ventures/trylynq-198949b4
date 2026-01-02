@@ -26,7 +26,8 @@ import {
   Check,
   AlertCircle, 
   Building2,
-  CreditCard
+  CreditCard,
+  Zap // Added Zap icon
 } from "lucide-react"; 
 import { 
   Dialog, 
@@ -56,6 +57,7 @@ type Event = {
   image_url?: string;
   creator_id: string;
   is_public: boolean;
+  is_boosted?: boolean; // Added is_boosted field
   max_attendees?: number | null;
   event_type: 'physical' | 'virtual';
   meeting_link?: string | null;
@@ -68,7 +70,7 @@ type Event = {
 
 type EventWithStats = Event & {
   attendee_count?: number;
-  my_status?: 'confirmed' | 'pending'; // Added status field
+  my_status?: 'confirmed' | 'pending'; 
 }; 
 
 type BankDetails = {
@@ -121,8 +123,8 @@ const EmptyState = ({
 }: { 
   title: string;
   description: string;
-  action: () => void;
-  actionLabel: string;
+  action?: () => void;
+  actionLabel?: string;
 }) => (
   <Card className="border-2 border-dashed border-muted bg-muted/5 shadow-none py-12">
     <CardContent className="flex flex-col items-center text-center space-y-3">
@@ -133,9 +135,11 @@ const EmptyState = ({
       <p className="text-sm text-muted-foreground max-w-xs mx-auto">
         {description}
       </p>
-      <Button onClick={action} className="mt-4 gradient-primary text-white shadow-md">
-        <Plus className="w-4 h-4 mr-2" /> {actionLabel}
-      </Button>
+      {action && actionLabel && (
+        <Button onClick={action} className="mt-4 gradient-primary text-white shadow-md">
+          <Plus className="w-4 h-4 mr-2" /> {actionLabel}
+        </Button>
+      )}
     </CardContent>
   </Card>
 );
@@ -148,6 +152,7 @@ export default function Events() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my");
+  const [hostedFilter, setHostedFilter] = useState<'active' | 'past'>('active'); // Added sub-category state
   
   // Payout & Modal States
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
@@ -164,7 +169,7 @@ export default function Events() {
         .from("events")
         .select("*")
         .eq("creator_id", userId)
-        .order("start_date", { ascending: true });
+        .order("start_date", { ascending: false }); // Changed to descending to show recent first
       
       if (error) throw error;
       if (!events || events.length === 0) return [];
@@ -434,6 +439,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     const status = getEventStatus(event.start_date);
     const eventDate = new Date(event.start_date);
     const isFull = event.max_attendees && event.attendee_count ? event.attendee_count >= event.max_attendees : false;
+    const isEventPast = isPast(eventDate) && !isToday(eventDate); // Check if event is in the past
     
     // Explicitly check for pending status
     const isPending = event.my_status === 'pending';
@@ -451,7 +457,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
               {event.image_url ? (
                 <img 
                   src={event.image_url} 
-                  className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 ${isPending ? 'grayscale-[50%]' : 'group-hover:scale-110'}`}
+                  className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 ${isPending || isEventPast ? 'grayscale-[50%]' : 'group-hover:scale-110'}`}
                   alt={event.title}
                 />
               ) : (
@@ -474,6 +480,13 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                   {event.event_type === 'virtual' ? <Video className="w-3 h-3" /> : <MapPinned className="w-3 h-3" />}
                 </Badge>
               </div>
+
+               {/* Boosted Zap Icon */}
+               {event.is_boosted && !isEventPast && (
+                <div className="absolute top-2 right-2 bg-yellow-400 text-white rounded-full p-1 shadow-sm z-10 animate-pulse">
+                  <Zap className="w-3 h-3 fill-white" />
+                </div>
+              )}
 
               {/* Pending Overlay Badge */}
               {isPending && (
@@ -555,14 +568,19 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                     className={`h-7 text-xs w-full shadow-sm ${
                       isPending 
                         ? 'bg-yellow-500 hover:bg-yellow-600 text-white' 
+                        : isEventPast 
+                        ? 'bg-muted text-muted-foreground' // Disabled style for past events
                         : 'gradient-primary text-white'
                     }`}
+                    disabled={isEventPast}
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/app/events/${event.id}`);
+                      if (!isEventPast) navigate(`/app/events/${event.id}`);
                     }}
                   >
-                    {isPending ? (
+                    {isEventPast ? (
+                        <>Event Ended</>
+                    ) : isPending ? (
                          <><Clock className="w-3 h-3 mr-1" /> Approval Pending</>
                     ) : (
                          <><Ticket className="w-3 h-3 mr-1" /> View Ticket</>
@@ -572,11 +590,11 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                   <Button 
                     size="sm" 
                     className="h-7 text-xs w-full"
-                    variant={isFull ? "outline" : "default"}
-                    disabled={isFull}
+                    variant={isFull || isEventPast ? "outline" : "default"}
+                    disabled={isFull || isEventPast}
                     onClick={(e) => { e.stopPropagation(); navigate(`/app/events/${event.id}`); }}
                   >
-                    {isFull ? 'Event Full' : 'View Details'}
+                    {isEventPast ? 'Event Ended' : isFull ? 'Event Full' : 'View Details'}
                   </Button>
                 )}
               </div>
@@ -597,6 +615,11 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
   };
 
   const filteredMyEvents = filterEvents(myEvents);
+  
+  // Filter for Hosted Active vs Past
+  const myActiveEvents = filteredMyEvents.filter(e => isFuture(new Date(e.start_date)) || isToday(new Date(e.start_date)));
+  const myPastEvents = filteredMyEvents.filter(e => isPast(new Date(e.start_date)) && !isToday(new Date(e.start_date)));
+  
   const filteredAttendingEvents = filterEvents(attendingEvents);
 
   return (
@@ -630,22 +653,54 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
         </TabsList>
 
         <TabsContent value="my" className="space-y-3 mt-6 animate-in fade-in-50">
+          
+           {/* Sub-Category Toggles for Active/Past */}
+          <div className="flex items-center gap-2 mb-4 bg-muted/30 p-1 rounded-lg w-fit">
+            <button
+              onClick={() => setHostedFilter('active')}
+              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${hostedFilter === 'active' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
+            >
+              Active ({myActiveEvents.length})
+            </button>
+            <button
+               onClick={() => setHostedFilter('past')}
+               className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${hostedFilter === 'past' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
+            >
+              Past ({myPastEvents.length})
+            </button>
+          </div>
+
           {loadingMy ? (
             <EventSkeleton />
-          ) : filteredMyEvents.length === 0 ? (
-            <EmptyState
-              title="No Hosted Events"
-              description={searchQuery 
-                ? "No events match your search. Try different keywords." 
-                : "You haven't created any events yet. Start hosting to build your community!"
-              }
-              action={() => navigate('/create-event')}
-              actionLabel="Create Event"
-            />
+          ) : hostedFilter === 'active' ? (
+             // Active Events List
+            myActiveEvents.length === 0 ? (
+                <EmptyState
+                title="No Active Events"
+                description={searchQuery 
+                    ? "No active events match your search." 
+                    : "You don't have any upcoming events. Create one now!"
+                }
+                action={() => navigate('/create-event')}
+                actionLabel="Create Event"
+                />
+            ) : (
+                <div className="space-y-3">
+                {myActiveEvents.map(e => renderEventCard(e, 'mine'))}
+                </div>
+            )
           ) : (
-            <div className="space-y-3">
-              {filteredMyEvents.map(e => renderEventCard(e, 'mine'))}
-            </div>
+             // Past Events List
+             myPastEvents.length === 0 ? (
+                <EmptyState
+                title="No Past Events"
+                description="You haven't hosted any events that have ended yet."
+                />
+            ) : (
+                <div className="space-y-3">
+                {myPastEvents.map(e => renderEventCard(e, 'mine'))}
+                </div>
+            )
           )}
         </TabsContent>
 
