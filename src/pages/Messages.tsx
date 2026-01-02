@@ -429,7 +429,7 @@ export default function Messages() {
   
       const { data } = await supabase
         .from('community_members')
-        .select('role')
+        .select('role, muted_until')
         .eq('community_id', selectedChat.id)
         .eq('user_id', user.id)
         .single();
@@ -989,8 +989,10 @@ const sendMessage = useMutation({
     };
   }, [imagePreview]);
   const isComm = selectedChat?.type === 'community';
-  // Mute feature requires database migration - disabled for now
-  const isMuted = false;
+  const isMuted = useMemo(() => {
+    if (!isComm || !myMembership) return false;
+    return myMembership.muted_until && new Date(myMembership.muted_until) > new Date();
+  }, [isComm, myMembership]);
 
   // Chat view
   if (selectedChat) {

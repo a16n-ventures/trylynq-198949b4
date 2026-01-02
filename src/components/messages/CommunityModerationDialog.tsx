@@ -62,6 +62,7 @@ interface Member {
   user_id: string;
   role: 'admin' | 'moderator' | 'member';
   joined_at: string;
+  muted_until: string | null;
   profile: {
     display_name?: string;
     username?: string;
@@ -112,6 +113,7 @@ export function CommunityModerationDialog({
           user_id,
           role,
           joined_at,
+          muted_until,
           profile:profiles!user_id(
             display_name,
             username,
@@ -143,7 +145,7 @@ export function CommunityModerationDialog({
       case 'mods':
         return filtered.filter((m) => m.role === 'moderator');
       case 'muted':
-        return []; // Mute feature requires database migration
+        return filtered.filter((m) => m.muted_until && new Date(m.muted_until) > new Date());
       default:
         return filtered;
     }
@@ -155,7 +157,7 @@ export function CommunityModerationDialog({
       total: members.length,
       admins: members.filter((m) => m.role === 'admin').length,
       mods: members.filter((m) => m.role === 'moderator').length,
-      muted: 0, // Mute feature requires database migration
+      muted: members.filter((m) => m.muted_until && new Date(m.muted_until) > new Date()).length,
     };
   }, [members]);
 
@@ -179,12 +181,19 @@ export function CommunityModerationDialog({
     },
   });
 
-  // Mute/unmute member - Note: muted_until column not yet in database
+  // Mute/unmute member
   const muteMutation = useMutation({
     mutationFn: async ({ memberId, duration }: { memberId: string; duration: number | null }) => {
-      // Mute feature requires adding muted_until column to community_members table
-      toast.info('Mute feature coming soon - requires database update');
-      throw new Error('Mute feature not yet available');
+      const muted_until = duration 
+        ? new Date(Date.now() + duration * 60 * 60 * 1000).toISOString()
+        : null;
+
+      const { error } = await supabase
+        .from('community_members')
+        .update({ muted_until })
+        .eq('id', memberId);
+
+      if (error) throw error;
     },
     onSuccess: (_data, variables) => {
       toast.success(variables.duration ? 'Member muted' : 'Member unmuted');
@@ -193,10 +202,7 @@ export function CommunityModerationDialog({
       setConfirmAction(null);
     },
     onError: (error: any) => {
-      // Don't show error toast for the expected "not available" error
-      if (error.message !== 'Mute feature not yet available') {
-        toast.error(error.message || 'Failed to update mute status');
-      }
+      toast.error(error.message || 'Failed to update mute status');
     },
   });
 
@@ -273,9 +279,8 @@ export function CommunityModerationDialog({
     }
   };
 
-  const isMuted = (_member: Member) => {
-    // Mute feature requires database migration
-    return false;
+  const isMuted = (member: Member) => {
+    return member.muted_until && new Date(member.muted_until) > new Date();
   };
 
   if (!canModerate) {
