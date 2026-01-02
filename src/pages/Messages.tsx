@@ -1029,7 +1029,7 @@ const sendMessage = useMutation({
             className="h-11 w-11 border-2 border-background ring-2 ring-primary/10 cursor-pointer" 
             onClick={() => {
               if (!isComm && selectedChat.type === 'dm') {
-                navigate(`/profile?id=${selectedChat.partner_id}`);
+                navigate(`/app/profile?id=${selectedChat.partner_id}`);
               } else {
                 setIsInfoOpen(true);
               }
@@ -1043,7 +1043,7 @@ const sendMessage = useMutation({
             className="flex-1 min-w-0 cursor-pointer" 
             onClick={() => {
               if (!isComm && selectedChat.type === 'dm') {
-                navigate(`/profile?id=${selectedChat.partner_id}`);
+                navigate(`/app/profile?id=${selectedChat.partner_id}`);
               } else {
                 setIsInfoOpen(true);
               }
