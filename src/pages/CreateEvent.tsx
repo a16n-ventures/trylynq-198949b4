@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { 
   Calendar, MapPin, DollarSign, ArrowLeft, Image as ImageIcon, 
-  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check, Megaphone
+  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,9 +50,7 @@ const CreateEvent = () => {
     category: '',
     isPrivate: false,
     requireApproval: false,
-    isSponsored: false, // [MODIFIED: Added isSponsored state]
     eventType: 'physical', // 'physical' or 'virtual'
-    meetingLink: '', // For virtual events
   });
 
   const categories = [
@@ -115,14 +113,6 @@ const CreateEvent = () => {
 
     if (eventData.price && parseFloat(eventData.price) < 0) {
       newErrors.price = 'Price cannot be negative';
-    }
-
-    if (eventData.eventType === 'virtual' && eventData.meetingLink) {
-      try {
-        new URL(eventData.meetingLink);
-      } catch {
-        newErrors.meetingLink = 'Please enter a valid URL';
-      }
     }
 
     setErrors(newErrors);
@@ -197,25 +187,31 @@ const CreateEvent = () => {
         throw new Error("Invalid date or time format");
       }
 
-      // 3. Insert Event
+      // 3. Auto-generate meeting link for virtual events
+      // Assuming a generic internal meeting URL structure or Jitsi/External placeholder
+      // Using crypto.randomUUID() for unique room ID
+      const generatedMeetingLink = eventData.eventType === 'virtual' 
+        ? `https://meet.jit.si/corridor-${crypto.randomUUID()}` 
+        : null;
+
+      // 4. Insert Event
       const { data: newEvent, error } = await supabase
         .from('events')
         .insert({
           title: eventData.title.trim(),
           description: eventData.description.trim(),
           category: eventData.category,
-          location: eventData.location.trim(),
+          location: eventData.eventType === 'virtual' ? 'In-App' : eventData.location.trim(),
           start_date: startDateTime.toISOString(),
           end_date: null,
           max_attendees: eventData.capacity ? parseInt(eventData.capacity) : null,
           ticket_price: eventData.price ? parseFloat(eventData.price) : 0,
           is_public: !eventData.isPrivate,
           requires_approval: eventData.requireApproval,
-          is_sponsored: eventData.isSponsored, // [MODIFIED: Insert sponsored status]
           creator_id: user.id,
           image_url: imageUrl,
           event_type: eventData.eventType,
-          meeting_link: eventData.eventType === 'virtual' ? eventData.meetingLink : null,
+          meeting_link: generatedMeetingLink,
         })
         .select()
         .single();
@@ -353,7 +349,11 @@ const CreateEvent = () => {
             <CardContent>
               <RadioGroup 
                 value={eventData.eventType} 
-                onValueChange={(value) => setEventData({...eventData, eventType: value})}
+                onValueChange={(value) => setEventData({
+                  ...eventData, 
+                  eventType: value,
+                  location: value === 'virtual' ? 'In-App' : '' 
+                })}
                 className="grid grid-cols-2 gap-4"
               >
                 <div>
@@ -491,7 +491,7 @@ const CreateEvent = () => {
             </CardContent>
           </Card>
 
-          {/* Location / Meeting Link */}
+          {/* Location / Meeting Details */}
           <Card className="gradient-card shadow-card border-0">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2">
@@ -513,40 +513,40 @@ const CreateEvent = () => {
                 <Label htmlFor="location">
                   {eventData.eventType === 'physical' ? 'Location *' : 'Event Platform *'}
                 </Label>
-                <Input
-                  id="location"
-                  placeholder={eventData.eventType === 'physical' 
-                    ? "Where will your event take place?" 
-                    : "e.g., Zoom, Google Meet, Microsoft Teams"
-                  }
-                  value={eventData.location}
-                  onChange={(e) => {
-                    setEventData({...eventData, location: e.target.value});
-                    if (errors.location) setErrors({...errors, location: ''});
-                  }}
-                  className={errors.location ? 'border-red-500' : ''}
-                />
+                
+                {eventData.eventType === 'physical' ? (
+                  <Input
+                    id="location"
+                    placeholder="Where will your event take place?"
+                    value={eventData.location}
+                    onChange={(e) => {
+                      setEventData({...eventData, location: e.target.value});
+                      if (errors.location) setErrors({...errors, location: ''});
+                    }}
+                    className={errors.location ? 'border-red-500' : ''}
+                  />
+                ) : (
+                  <Select value="In-App" disabled>
+                    <SelectTrigger>
+                      <SelectValue>In-App</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="In-App">In-App</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                
                 {errors.location && <p className="text-xs text-red-500 mt-1">{errors.location}</p>}
               </div>
 
               {eventData.eventType === 'virtual' && (
-                <div>
-                  <Label htmlFor="meetingLink">Meeting Link (Optional)</Label>
-                  <Input
-                    id="meetingLink"
-                    type="url"
-                    placeholder="https://zoom.us/j/123456789"
-                    value={eventData.meetingLink}
-                    onChange={(e) => {
-                      setEventData({...eventData, meetingLink: e.target.value});
-                      if (errors.meetingLink) setErrors({...errors, meetingLink: ''});
-                    }}
-                    className={errors.meetingLink ? 'border-red-500' : ''}
-                  />
-                  {errors.meetingLink && <p className="text-xs text-red-500 mt-1">{errors.meetingLink}</p>}
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Add your meeting link or generate one later
-                  </p>
+                <div className="bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg">
+                   <p className="text-xs text-blue-900 dark:text-blue-100 font-medium">
+                     Video Link Auto-Generation
+                   </p>
+                   <p className="text-xs text-muted-foreground mt-1">
+                     A unique meeting link will be automatically generated for your event upon creation. Attendees can join directly from the app.
+                   </p>
                 </div>
               )}
 
@@ -621,29 +621,6 @@ const CreateEvent = () => {
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Sponsorship & Promotion - [MODIFIED: Added Sponsorship Section] */}
-          <Card className="gradient-card shadow-card border-0">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2">
-                <Megaphone className="w-5 h-5" />
-                Sponsorship & Promotion
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-               <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="sponsor">Sponsor Event</Label>
-                  <p className="text-sm text-muted-foreground">Promote this event to a wider audience</p>
-                </div>
-                <Switch
-                  id="sponsor"
-                  checked={eventData.isSponsored}
-                  onCheckedChange={(checked) => setEventData({...eventData, isSponsored: checked})}
-                />
-              </div>
             </CardContent>
           </Card>
 
