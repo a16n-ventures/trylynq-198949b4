@@ -330,15 +330,16 @@ const EmptyState = ({ icon: Icon, title, desc, action, onAction }: any) => (
   </Card>
 );
 
+// ✅ FIXED: Wrapped in Dialog for reliable opening (z-index fix)
 function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) {
   const { user: currentUser } = useAuth();
   const [stories, setStories] = useState<Story[]>([]);
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [liked, setLiked] = useState(false);
   const [msg, setMsg] = useState("");
   const [showActions, setShowActions] = useState(false); 
   const [viewCount, setViewCount] = useState(0);
-  const [liked, setLiked] = useState(false);
   const [incomingHearts, setIncomingHearts] = useState<{ id: number, left: number }[]>([]);
 
   useEffect(() => {
@@ -347,17 +348,16 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
       const yesterday = new Date(Date.now() - 864e5).toISOString();
       const { data } = await supabase
         .from('stories')
-        .select('id, content, created_at, author_id, media_url, media_type, view_count') // Ensure view_count is selected
+        .select('id, content, created_at, author_id, media_url, media_type, view_count')
         .eq('author_id', user.id) 
         .gte('created_at', yesterday)
         .order('created_at', { ascending: true });
       
-      if (data) {
+      if (data && data.length > 0) {
         setStories(data);
-        if (data.length > 0) {
-          // Initialize view count for first story
-          setViewCount(data[0].view_count || 0);
-        }
+        setViewCount(data[0].view_count || 0);
+      } else {
+        onClose(); // Close if no stories found
       }
       setLoading(false);
     };
@@ -374,7 +374,6 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
     // 1. Record View (Only if not my own story)
     if (!isMyStory) {
       const recordView = async () => {
-        // Optimistic update locally not needed for views usually, but good to know
         await supabase.rpc('increment_story_view', { story_id: current.id, viewer_id: currentUser.id });
       };
       recordView();
@@ -396,7 +395,6 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
         'postgres_changes', 
         { event: 'INSERT', schema: 'public', table: 'story_likes', filter: `story_id=eq.${current.id}` },
         (payload) => {
-          // Trigger floating heart animation
           if (payload.new.user_id !== currentUser.id) {
              const id = Date.now();
              setIncomingHearts(prev => [...prev, { id, left: Math.random() * 80 + 10 }]);
@@ -415,7 +413,6 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
     if (index < stories.length - 1) {
       setIndex(i => i + 1);
       setLiked(false);
-      // Update local view count state immediately for next story from loaded data
       setViewCount(stories[index + 1].view_count || 0); 
     } else {
       onClose();
@@ -427,7 +424,6 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
     setLiked(true);
     setIncomingHearts(prev => [...prev, { id: Date.now(), left: 50 }]); // Show my own heart
     
-    // Insert like into DB
     const { error } = await supabase.from('story_likes').insert({
       story_id: current.id,
       user_id: currentUser.id
@@ -477,179 +473,171 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
     toast.info('Share to DM - Coming soon!');
   };
 
-  if (loading) return (
-    <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-      <Loader2 className="text-white animate-spin" />
-    </div>
-  );
-  
+  if (loading) return null; // Wait for load
   if (!current) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex items-center justify-center sm:p-4 animate-in fade-in duration-300">
-      <button 
-        onClick={onClose} 
-        className="absolute top-6 right-6 z-50 text-white/80 hover:text-white"
-      >
-        <X className="w-8 h-8" />
-      </button>
-      
-      {isMyStory && (
-        <button 
-          onClick={() => setShowActions(!showActions)} 
-          className="absolute top-6 right-20 z-50 text-white/80 hover:text-white"
-        >
-          <MoreVertical className="w-7 h-7" />
-        </button>
-      )}
-      
-      {/* Floating Hearts Container */}
-      <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden">
-        {incomingHearts.map((h) => (
-          <div 
-            key={h.id}
-            className="absolute bottom-20 text-4xl animate-float-up opacity-0"
-            style={{ left: `${h.left}%` }}
-          >
-            ❤️
+    <Dialog open={true} onOpenChange={() => onClose()}>
+      <DialogContent className="sm:max-w-md p-0 border-0 bg-transparent shadow-none gap-0 outline-none h-full sm:h-auto flex flex-col justify-center items-center">
+        <div className="relative w-full h-full sm:h-[75vh] max-h-[800px] bg-black sm:rounded-2xl overflow-hidden flex flex-col border border-white/10 shadow-2xl">
+          <div className="absolute top-0 w-full z-20 flex gap-1 p-2">
+            {stories.map((_, i) => (
+              <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm">
+                <div className={`h-full bg-white transition-all duration-300 ${i <= index ? 'w-full' : 'w-0'}`} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      
-      {/* Reduced Height for Story Viewer - Fixed to ~70vh or max 650px */}
-      <div className="relative w-full h-full sm:max-w-md sm:h-[70vh] max-h-[650px] bg-black sm:rounded-2xl overflow-hidden flex flex-col border border-white/10 shadow-2xl">
-        <div className="absolute top-0 w-full z-20 flex gap-1 p-2">
-          {stories.map((_, i) => (
-            <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm">
-              <div className={`h-full bg-white transition-all duration-300 ${i <= index ? 'w-full' : 'w-0'}`} />
+          
+          <div className="absolute top-6 left-0 w-full p-4 z-20 flex items-center gap-3 bg-gradient-to-b from-black/60 to-transparent">
+            <img 
+              src={user.avatar_url || '/default-avatar.png'} 
+              className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" 
+              alt={user.display_name || 'User'}
+            />
+            <div className="flex-1">
+              <span className="text-white font-bold text-sm drop-shadow-md block">
+                {isMyStory ? 'Your Story' : (user.display_name || 'User')}
+              </span>
+              <span className="text-white/70 text-xs">
+                {formatDistanceToNow(new Date(current.created_at), { addSuffix: true })}
+              </span>
             </div>
-          ))}
-        </div>
-        
-        <div className="absolute top-6 left-0 w-full p-4 z-20 flex items-center gap-3 bg-gradient-to-b from-black/60 to-transparent">
-          <img 
-            src={user.avatar_url || '/default-avatar.png'} 
-            className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" 
-            alt={user.display_name || 'User'}
-          />
-          <div className="flex-1">
-            <span className="text-white font-bold text-sm drop-shadow-md block">
-              {isMyStory ? 'Your Story' : (user.display_name || 'User')}
-            </span>
-            <span className="text-white/70 text-xs">
-              {formatDistanceToNow(new Date(current.created_at), { addSuffix: true })}
-            </span>
-          </div>
-        </div>
-        
-        {isMyStory && showActions && (
-          <div className="absolute top-20 right-4 z-30 bg-black/90 backdrop-blur-xl rounded-xl border border-white/20 overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <button 
-              onClick={handleDeleteStory}
-              className="w-full px-4 py-3 text-left text-red-400 hover:bg-red-500/20 flex items-center gap-3 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span className="text-sm font-medium">Delete Story</span>
-            </button>
-            <button 
-              onClick={handleShareToDM}
-              className="w-full px-4 py-3 text-left text-white hover:bg-white/10 flex items-center gap-3 transition-colors"
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span className="text-sm font-medium">Share to DM</span>
-            </button>
-            <button 
-              onClick={() => {
-                navigator.clipboard.writeText(current.media_url || current.content || '');
-                toast.success('Copied!');
-              }}
-              className="w-full px-4 py-3 text-left text-white hover:bg-white/10 flex items-center gap-3 transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-              <span className="text-sm font-medium">Copy</span>
+            <button onClick={onClose} className="text-white/80 hover:text-white p-2">
+              <X className="w-6 h-6" />
             </button>
           </div>
-        )}
-        
-        <div className="flex-1 flex items-center justify-center bg-black relative" onClick={next}>
-          <div className="w-full h-full flex items-center justify-center p-4">
-            {current.media_url ? (
-              current.media_type === 'video' ? (
-                <video 
-                  src={current.media_url} 
-                  className="max-w-full max-h-full object-contain rounded-lg"
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                />
+          
+          {isMyStory && (
+            <button 
+              onClick={() => setShowActions(!showActions)} 
+              className="absolute top-6 right-16 z-50 text-white/80 hover:text-white p-2"
+            >
+              <MoreVertical className="w-6 h-6" />
+            </button>
+          )}
+
+          {/* Floating Hearts */}
+          <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden">
+            {incomingHearts.map((h) => (
+              <div 
+                key={h.id}
+                className="absolute bottom-20 text-4xl animate-float-up"
+                style={{ left: `${h.left}%`, transition: 'transform 2s ease-out, opacity 2s ease-out' }}
+              >
+                ❤️
+              </div>
+            ))}
+          </div>
+          
+          {isMyStory && showActions && (
+            <div className="absolute top-20 right-4 z-30 bg-black/90 backdrop-blur-xl rounded-xl border border-white/20 overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <button 
+                onClick={handleDeleteStory}
+                className="w-full px-4 py-3 text-left text-red-400 hover:bg-red-500/20 flex items-center gap-3 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="text-sm font-medium">Delete Story</span>
+              </button>
+              <button 
+                onClick={handleShareToDM}
+                className="w-full px-4 py-3 text-left text-white hover:bg-white/10 flex items-center gap-3 transition-colors"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span className="text-sm font-medium">Share to DM</span>
+              </button>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(current.media_url || current.content || '');
+                  toast.success('Copied!');
+                }}
+                className="w-full px-4 py-3 text-left text-white hover:bg-white/10 flex items-center gap-3 transition-colors"
+              >
+                <Copy className="w-4 h-4" />
+                <span className="text-sm font-medium">Copy</span>
+              </button>
+            </div>
+          )}
+          
+          <div className="flex-1 flex items-center justify-center bg-black relative" onClick={next}>
+            <div className="w-full h-full flex items-center justify-center p-4">
+              {current.media_url ? (
+                current.media_type === 'video' ? (
+                  <video 
+                    src={current.media_url} 
+                    className="max-w-full max-h-full object-contain rounded-lg"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                  />
+                ) : (
+                  <img 
+                    src={current.media_url} 
+                    className="max-w-full max-h-full object-contain rounded-lg"
+                    alt="Story"
+                  />
+                )
               ) : (
-                <img 
-                  src={current.media_url} 
-                  className="max-w-full max-h-full object-contain rounded-lg"
-                  alt="Story"
-                />
-              )
-            ) : (
-              <p className="text-white text-xl text-center px-8 leading-relaxed">
-                {current.content || ''}
-              </p>
+                <p className="text-white text-xl text-center px-8 leading-relaxed">
+                  {current.content || ''}
+                </p>
+              )}
+            </div>
+            
+            {current.media_url && current.content && (
+              <div className="absolute bottom-20 left-0 right-0 px-6">
+                <p className="text-white text-center text-sm bg-black/40 backdrop-blur-sm rounded-full py-2 px-4">
+                  {current.content}
+                </p>
+              </div>
             )}
           </div>
           
-          {current.media_url && current.content && (
-            <div className="absolute bottom-20 left-0 right-0 px-6">
-              <p className="text-white text-center text-sm bg-black/40 backdrop-blur-sm rounded-full py-2 px-4">
-                {current.content}
-              </p>
+          {!isMyStory && (
+            <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
+              <Input 
+                value={msg} 
+                onChange={(e) => setMsg(e.target.value)} 
+                placeholder="Reply..." 
+                className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0" 
+                onClick={(e) => e.stopPropagation()} 
+              />
+              <Button 
+                size="icon" 
+                variant="ghost" 
+                className="text-white rounded-full hover:bg-white/10" 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  handleLike();
+                }}
+              >
+                <Heart className={`w-7 h-7 transition-transform active:scale-125 ${liked ? 'fill-red-500 text-red-500' : ''}`} />
+              </Button>
+              <Button 
+                size="icon" 
+                variant="ghost" 
+                className="text-white rounded-full hover:bg-white/10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleShareToDM();
+                }}
+              >
+                <Share2 className="w-7 h-7" />
+              </Button>
+            </div>
+          )}
+          
+          {isMyStory && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
+              <div className="bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full flex items-center gap-2">
+                <Eye className="w-4 h-4 text-white" />
+                <span className="text-white text-sm font-medium">{viewCount} views</span>
+              </div>
             </div>
           )}
         </div>
-        
-        {!isMyStory && (
-          <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
-            <Input 
-              value={msg} 
-              onChange={(e) => setMsg(e.target.value)} 
-              placeholder="Reply..." 
-              className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0" 
-              onClick={(e) => e.stopPropagation()} 
-            />
-            <Button 
-              size="icon" 
-              variant="ghost" 
-              className="text-white rounded-full hover:bg-white/10" 
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                handleLike();
-              }}
-            >
-              <Heart className={`w-7 h-7 transition-transform active:scale-125 ${liked ? 'fill-red-500 text-red-500' : ''}`} />
-            </Button>
-            <Button 
-              size="icon" 
-              variant="ghost" 
-              className="text-white rounded-full hover:bg-white/10"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleShareToDM();
-              }}
-            >
-              <Share2 className="w-7 h-7" />
-            </Button>
-          </div>
-        )}
-        
-        {isMyStory && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
-            <div className="bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full flex items-center gap-2">
-              <Eye className="w-4 h-4 text-white" />
-              <span className="text-white text-sm font-medium">{viewCount} views</span>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1395,6 +1383,7 @@ export default function Discover() {
                 </CardContent>
               </Card>
             ) : (
+              // ✅ FIXED: Sub-categories shown immediately
               <Tabs defaultValue="smart_events" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 bg-muted/30 p-1 mb-4 rounded-lg">
                   <TabsTrigger value="smart_events" className="text-xs">Smart Events</TabsTrigger>
