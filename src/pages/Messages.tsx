@@ -432,7 +432,7 @@ export default function Messages() {
         .select('role, muted_until')
         .eq('community_id', selectedChat.id)
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
   
       return data;
     },
@@ -1192,7 +1192,7 @@ const sendMessage = useMutation({
             />
             {/* ✅ FIXED: Render dialog if isAdmin is true */}
               <CommunitySettingsDialog 
-                isOpen={isSettingsOpen && isAdmin} 
+                isOpen={isSettingsOpen} 
                 onClose={() => setIsSettingsOpen(false)} 
                 communityId={selectedChat.id} 
                 currentName={selectedChat.name} 
