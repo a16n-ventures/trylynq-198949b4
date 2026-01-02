@@ -45,7 +45,7 @@ export function AddContactForm({ onSubmit, onCancel, isPending }: AddContactForm
         />
         <Input 
           type="username" 
-          placeholder="@username_1234" 
+          placeholder="Username" 
           value={username} 
           onChange={(e) => setUsername(e.target.value)} 
           className="bg-background" 
