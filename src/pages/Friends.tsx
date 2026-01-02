@@ -544,26 +544,25 @@ export default function Friends() {
           {/* CONTACTS VIEW */}
           {discoverView === 'contacts' && (
             <div className="space-y-3">
-              {showAddContact ? (
-                <ContactImportModal
-                  onSubmit={(data) => {
-                    addContact.mutate(data);
-                    setShowAddContact(false);
-                  }}
-                  onCancel={() => setShowAddContact(false)}
-                  isPending={addContact.isPending}
-                />
-              ) : (
-                <Button className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white" onClick={() => setShowAddContact(true)}>
-                  <User className="w-4 h-4 mr-2" /> Add New Contact
-                </Button>
-              )}
+              {/* ✅ FIXED: Render Button and Modal separately */}
+              <Button 
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white" 
+                onClick={() => setShowAddContact(true)}
+              >
+                <User className="w-4 h-4 mr-2" /> Add New Contact
+              </Button>
+
+              {/* The Modal controls its own visibility via props */}
+              <ContactImportModal 
+                open={showAddContact} 
+                onOpenChange={setShowAddContact}
+              />
 
               {loadingContacts ? (
                 <FriendSkeleton />
               ) : filteredContacts.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
-                  {search ? 'No contacts match your search' : !showAddContact && 'No contacts yet. Add someone to invite them!'}
+                  {search ? 'No contacts match your search' : 'No contacts yet. Add someone to invite them!'}
                 </div>
               ) : (
                 <div className="space-y-2">
