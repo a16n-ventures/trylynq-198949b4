@@ -545,7 +545,7 @@ export default function Friends() {
           {discoverView === 'contacts' && (
             <div className="space-y-3">
               {showAddContact ? (
-                <AddContactForm
+                <ContactImportModal
                   onSubmit={(data) => {
                     addContact.mutate(data);
                     setShowAddContact(false);
