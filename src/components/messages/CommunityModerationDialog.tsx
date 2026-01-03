@@ -292,7 +292,7 @@ export function CommunityModerationDialog({
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogPortal>
-          <DialogContent className="sm:max-w-[600px] max-w-[calc(100vw-2rem)] h-[85vh] flex flex-col p-0">
+          <DialogContent className="sm:max-w-[600px] max-w-[calc(100vw-2rem)] h-[85vh] flex flex-col p-0 z-[9999]">
             {/* Header */}
             <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
               <DialogTitle className="flex items-center gap-2">
