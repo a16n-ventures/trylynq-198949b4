@@ -253,7 +253,7 @@ const MainLayout = () => {
               <Store className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
               
               {/* Pulsating Hot Label */}
-              <div className="absolute -top-0 -right-0 z-10">
+              <div className="absolute -top-0 -right-1 z-10">
                 <div className="relative flex items-center justify-center">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-3.5 px-1 bg-gradient-to-r from-orange-500 to-red-600 text-[8px] font-bold text-white items-center justify-center shadow-sm border border-white dark:border-background">
