@@ -241,8 +241,8 @@ export const CommunitySettingsDialog: React.FC<CommunitySettingsDialogProps> = (
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
+        <DialogContent className="sm:max-w-[500px] z-[200]">
           <DialogHeader>
             <DialogTitle>Community Settings</DialogTitle>
             <DialogDescription>Manage your community's information and appearance</DialogDescription>
@@ -373,7 +373,7 @@ export const CommunitySettingsDialog: React.FC<CommunitySettingsDialogProps> = (
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[250]">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Community?</AlertDialogTitle>
             <AlertDialogDescription>

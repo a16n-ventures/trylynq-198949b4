@@ -331,7 +331,6 @@ export type Database = {
       contacts: {
         Row: {
           created_at: string
-          email: string | null
           id: string
           invited_at: string | null
           is_app_user: boolean | null
@@ -339,10 +338,10 @@ export type Database = {
           name: string
           phone: string | null
           user_id: string
+          username: string | null
         }
         Insert: {
           created_at?: string
-          email?: string | null
           id?: string
           invited_at?: string | null
           is_app_user?: boolean | null
@@ -350,10 +349,10 @@ export type Database = {
           name: string
           phone?: string | null
           user_id: string
+          username?: string | null
         }
         Update: {
           created_at?: string
-          email?: string | null
           id?: string
           invited_at?: string | null
           is_app_user?: boolean | null
@@ -361,6 +360,7 @@ export type Database = {
           name?: string
           phone?: string | null
           user_id?: string
+          username?: string | null
         }
         Relationships: []
       }
@@ -611,8 +611,8 @@ export type Database = {
           event_views_30d: number | null
           id: string
           image_url: string | null
+          is_boosted: boolean | null
           is_public: boolean | null
-          is_sponsored: boolean | null
           latitude: number | null
           location: string | null
           longitude: number | null
@@ -637,8 +637,8 @@ export type Database = {
           event_views_30d?: number | null
           id?: string
           image_url?: string | null
+          is_boosted?: boolean | null
           is_public?: boolean | null
-          is_sponsored?: boolean | null
           latitude?: number | null
           location?: string | null
           longitude?: number | null
@@ -663,8 +663,8 @@ export type Database = {
           event_views_30d?: number | null
           id?: string
           image_url?: string | null
+          is_boosted?: boolean | null
           is_public?: boolean | null
-          is_sponsored?: boolean | null
           latitude?: number | null
           location?: string | null
           longitude?: number | null
@@ -1384,6 +1384,7 @@ export type Database = {
           id: string
           media_type: string | null
           media_url: string | null
+          view_count: number | null
         }
         Insert: {
           author_id?: string | null
@@ -1392,6 +1393,7 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          view_count?: number | null
         }
         Update: {
           author_id?: string | null
@@ -1400,8 +1402,38 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          view_count?: number | null
         }
         Relationships: []
+      }
+      story_likes: {
+        Row: {
+          created_at: string | null
+          id: string
+          story_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          story_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          story_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_likes_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {
@@ -1927,6 +1959,10 @@ export type Database = {
       }
       increment_event_attendees: {
         Args: { event_id: string }
+        Returns: undefined
+      }
+      increment_story_view: {
+        Args: { story_id: string; viewer_id: string }
         Returns: undefined
       }
       is_admin: { Args: never; Returns: boolean }

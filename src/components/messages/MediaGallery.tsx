@@ -15,8 +15,8 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({
   images 
 }) => {
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl h-[80vh] flex flex-col p-0 bg-background/95 backdrop-blur-xl">
+    <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
+      <DialogContent className="max-w-3xl h-[80vh] flex flex-col p-0 bg-background/95 backdrop-blur-xl z-[200]">
         <DialogHeader className="p-4 border-b">
           <DialogTitle>Media Gallery</DialogTitle>
           <DialogDescription>{images.length} photo{images.length !== 1 ? 's' : ''}</DialogDescription>

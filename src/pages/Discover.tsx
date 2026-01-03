@@ -8,7 +8,7 @@ import {
   Users, Calendar, MapPin, X, Loader2, Plus, 
   Heart, Share2, Sparkles, Lock, RefreshCw, Check,
   Ticket, Megaphone, MessageSquare,
-  MoreVertical, Trash2, Copy, Eye
+  MoreVertical, Trash2, Copy, Eye, Clock
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns"; 
 import React, { useState, useEffect, useRef } from "react";
@@ -25,7 +25,7 @@ interface Story {
   created_at: string; 
   author_id: string | null;
   media_url?: string | null; 
-  media_type?: 'image' | 'video' | null; 
+  media_type?: 'image' | 'video' | string | null; 
   view_count?: number;
 }
 interface Community { 
@@ -36,9 +36,9 @@ interface Community {
   avatar_url: string | null;
   cover_url?: string | null;
   is_member?: boolean;
-  my_role?: 'admin' | 'member' | null;
+  my_role?: 'admin' | 'member' | string | null;
   match_score?: number; 
-} 
+}
 
 interface Event { 
   id: string; 
@@ -647,6 +647,8 @@ export default function Discover() {
   const [storyUsers, setStoryUsers] = useState<ProfileWithStoryInner[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [pastEvents, setPastEvents] = useState<Event[]>([]);
+  const [eventsFilter, setEventsFilter] = useState<'active' | 'past'>('active');
   
   // Smart Feed States
   const [smartEvents, setSmartEvents] = useState<Event[]>([]);
@@ -780,15 +782,28 @@ export default function Discover() {
         setCommunities(enrichedComms);
       }
       
-      // 6. Events
-      const { data: evts } = await supabase
+      // 6. Events - Fetch both active and past events
+      const now = new Date().toISOString();
+      
+      // Fetch upcoming/active events
+      const { data: activeEvts } = await supabase
         .from('events')
         .select('*')
-        .gte('start_date', new Date().toISOString())
+        .gte('start_date', now)
         .order('start_date', { ascending: true })
         .limit(20);
       
-      if (evts) {
+      // Fetch past events
+      const { data: pastEvts } = await supabase
+        .from('events')
+        .select('*')
+        .lt('start_date', now)
+        .order('start_date', { ascending: false })
+        .limit(20);
+      
+      const processEvents = async (evts: any[] | null): Promise<Event[]> => {
+        if (!evts || evts.length === 0) return [];
+        
         const eventIds = evts.map((e: any) => e.id);
         const { data: rsvps } = await supabase
           .from('event_attendees')
@@ -809,7 +824,7 @@ export default function Discover() {
           attendeeMap.set(a.event_id, (attendeeMap.get(a.event_id) || 0) + 1);
         });
 
-        const mappedEvents: Event[] = evts.map((e: any) => {
+        return evts.map((e: any) => {
           const attendeeCount = attendeeMap.get(e.id) || e.attendee_count || 0;
           const isAttending = rsvpSet.has(e.id);
     
@@ -827,8 +842,15 @@ export default function Discover() {
             is_sponsored: e.is_sponsored || false
           };
         });
-        setEvents(mappedEvents);
-      }
+      };
+      
+      const [mappedActiveEvents, mappedPastEvents] = await Promise.all([
+        processEvents(activeEvts),
+        processEvents(pastEvts)
+      ]);
+      
+      setEvents(mappedActiveEvents);
+      setPastEvents(mappedPastEvents);
 
       // Check premium status
       const { data: sub } = await supabase
@@ -1318,56 +1340,132 @@ export default function Discover() {
             )}
           </TabsContent>
 
-          <TabsContent value="events" className="mt-6 space-y-3 animate-in fade-in-50">
-            {loading ? <FeedSkeleton /> : events.length === 0 ? (
-               <EmptyState icon={Calendar} title="No Upcoming Events" desc="It's quiet... too quiet. Host a party!" action="Create Event" onAction={() => navigate('/create-event')} />
-            ) : (
-              events.map(e => (
-                <Card 
-                  key={e.id} 
-                  className="hover:shadow-md transition-all border-border/50 cursor-pointer"
-                  onClick={() => setSelectedEvent(e)}
-                >
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <div className="w-14 h-16 rounded-xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-primary flex-shrink-0">
-                      <span className="text-[10px] font-black uppercase tracking-wider opacity-60">
-                        {new Date(e.start_date).toLocaleString('default', {month:'short'})}
-                      </span>
-                      <span className="text-xl font-bold leading-none">
-                        {new Date(e.start_date).getDate()}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-base truncate">{e.title}</h3>
-                        {e.is_attending && <Badge className="bg-green-600 text-xs"><Check className="w-3 h-3 mr-1" /> Going</Badge>}
-                        {e.is_sponsored && <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">Sponsored</Badge>}
-                      </div>
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                        <MapPin className="w-3.5 h-3.5" /> <span className="truncate">{e.location}</span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-1">
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Users className="w-3 h-3" /> {e.attendee_count || 0} attending
-                        </div>
-                        {e.price !== undefined && (
-                          <div className="flex items-center gap-1 text-xs font-semibold text-primary">
-                            <Ticket className="w-3 h-3" /> {e.price === 0 ? 'Free' : `₦${e.price.toLocaleString()}`}
+          <TabsContent value="events" className="mt-6 space-y-4 animate-in fade-in-50">
+            {/* Active/Past Events Sub-tabs */}
+            <div className="flex gap-2 mb-4">
+              <Button
+                size="sm"
+                variant={eventsFilter === 'active' ? 'default' : 'outline'}
+                className="rounded-full flex items-center gap-1.5"
+                onClick={() => setEventsFilter('active')}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                Active ({events.length})
+              </Button>
+              <Button
+                size="sm"
+                variant={eventsFilter === 'past' ? 'default' : 'outline'}
+                className="rounded-full flex items-center gap-1.5"
+                onClick={() => setEventsFilter('past')}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                Past ({pastEvents.length})
+              </Button>
+            </div>
+
+            {loading ? <FeedSkeleton /> : (
+              <>
+                {eventsFilter === 'active' && (
+                  events.length === 0 ? (
+                    <EmptyState icon={Calendar} title="No Upcoming Events" desc="It's quiet... too quiet. Host a party!" action="Create Event" onAction={() => navigate('/create-event')} />
+                  ) : (
+                    events.map(e => (
+                      <Card 
+                        key={e.id} 
+                        className="hover:shadow-md transition-all border-border/50 cursor-pointer"
+                        onClick={() => setSelectedEvent(e)}
+                      >
+                        <CardContent className="p-4 flex items-center gap-4">
+                          <div className="w-14 h-16 rounded-xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-primary flex-shrink-0">
+                            <span className="text-[10px] font-black uppercase tracking-wider opacity-60">
+                              {new Date(e.start_date).toLocaleString('default', {month:'short'})}
+                            </span>
+                            <span className="text-xl font-bold leading-none">
+                              {new Date(e.start_date).getDate()}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                    <Button 
-                      size="sm" 
-                      variant={e.is_attending ? "default" : "outline"}
-                      className="rounded-full"
-                      onClick={(evt) => { evt.stopPropagation(); setSelectedEvent(e); }}
-                    >
-                      View
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-base truncate">{e.title}</h3>
+                              {e.is_attending && <Badge className="bg-green-600 text-xs"><Check className="w-3 h-3 mr-1" /> Going</Badge>}
+                              {e.is_sponsored && <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">Sponsored</Badge>}
+                            </div>
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                              <MapPin className="w-3.5 h-3.5" /> <span className="truncate">{e.location}</span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Users className="w-3 h-3" /> {e.attendee_count || 0} attending
+                              </div>
+                              {e.price !== undefined && (
+                                <div className="flex items-center gap-1 text-xs font-semibold text-primary">
+                                  <Ticket className="w-3 h-3" /> {e.price === 0 ? 'Free' : `₦${e.price.toLocaleString()}`}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            variant={e.is_attending ? "default" : "outline"}
+                            className="rounded-full"
+                            onClick={(evt) => { evt.stopPropagation(); setSelectedEvent(e); }}
+                          >
+                            View
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )
+                )}
+
+                {eventsFilter === 'past' && (
+                  pastEvents.length === 0 ? (
+                    <EmptyState icon={Clock} title="No Past Events" desc="You haven't attended any events yet." />
+                  ) : (
+                    pastEvents.map(e => (
+                      <Card 
+                        key={e.id} 
+                        className="hover:shadow-md transition-all border-border/50 cursor-pointer opacity-80"
+                        onClick={() => setSelectedEvent(e)}
+                      >
+                        <CardContent className="p-4 flex items-center gap-4">
+                          <div className="w-14 h-16 rounded-xl bg-muted border border-muted-foreground/10 flex flex-col items-center justify-center text-muted-foreground flex-shrink-0">
+                            <span className="text-[10px] font-black uppercase tracking-wider opacity-60">
+                              {new Date(e.start_date).toLocaleString('default', {month:'short'})}
+                            </span>
+                            <span className="text-xl font-bold leading-none">
+                              {new Date(e.start_date).getDate()}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-base truncate">{e.title}</h3>
+                              <Badge variant="secondary" className="text-[10px] bg-muted text-muted-foreground">Past</Badge>
+                              {e.is_attending && <Badge className="bg-green-600/50 text-xs"><Check className="w-3 h-3 mr-1" /> Attended</Badge>}
+                            </div>
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                              <MapPin className="w-3.5 h-3.5" /> <span className="truncate">{e.location}</span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Users className="w-3 h-3" /> {e.attendee_count || 0} attended
+                              </div>
+                            </div>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="rounded-full"
+                            onClick={(evt) => { evt.stopPropagation(); setSelectedEvent(e); }}
+                          >
+                            View
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )
+                )}
+              </>
             )}
           </TabsContent>
 

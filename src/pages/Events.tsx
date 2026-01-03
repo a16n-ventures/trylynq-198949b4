@@ -56,7 +56,8 @@ type PremiumFeature = {
 
 type Subscription = {
   user_id: string;
-  plan_type: string;
+  plan_type?: string;
+  plan_interval?: string;
   status: string;
 };
 
