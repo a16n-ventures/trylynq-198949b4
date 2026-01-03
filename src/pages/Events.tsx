@@ -257,6 +257,7 @@ export default function Events() {
         `)
         .eq("user_id", userId)
         .in("status", ["confirmed", "pending"])
+        .order("start_date", { ascending: false })
         .not("event", "is", null);
       
       if (error) throw error;
