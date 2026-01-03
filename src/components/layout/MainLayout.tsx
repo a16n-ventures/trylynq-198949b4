@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Users, MapPin, MessageSquare, Calendar, Bell, ShieldCheck, ShoppingBasket } from 'lucide-react';
+import { Compass, Users, MapPin, MessageSquare, Calendar, Bell, ShieldCheck, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -250,7 +250,7 @@ const MainLayout = () => {
               onClick={() => navigate('/app/marketplace')}
             >
               {/* Store Icon with Hover Effect */}
-              <ShoppingBasket className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+              <Store className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
               
               {/* Pulsating Hot Label */}
               <div className="absolute -top-1 -right-2 z-10">
