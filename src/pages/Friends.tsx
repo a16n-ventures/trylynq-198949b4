@@ -626,7 +626,7 @@ export default function Friends() {
             <div className="space-y-3">
               {/* ✅ FIXED: Render Button and Modal separately */}
               <Button 
-                className="w-fit bg-gradient-to-r from-blue-500 to-purple-500 text-white" 
+                className="w-fit mx-auto bg-gradient-to-r from-blue-500 to-purple-500 text-white" 
                 onClick={() => setShowAddContact(true)}
               >
                 <User className="w-4 h-4 mr-2" /> Add New Contact
