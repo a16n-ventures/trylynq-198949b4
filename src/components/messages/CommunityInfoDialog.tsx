@@ -24,7 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { SelectedChat, CommunityMember, ModerationType } from '@/types/messages';
-import { ModerationDialog } from './ModerationDialog';
+import { ModerationDialog } from '@/ModerationDialog';
 
 interface CommunityInfoDialogProps {
   isOpen: boolean;
