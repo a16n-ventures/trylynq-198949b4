@@ -1057,7 +1057,7 @@ export default function Discover() {
       if (document.getElementById('flutterwave-script')) { resolve(); return; }
       const script = document.createElement('script');
       script.id = 'flutterwave-script';
-      script.src = '[https://checkout.flutterwave.com/v3.js](https://checkout.flutterwave.com/v3.js)';
+      script.src = 'https://checkout.flutterwave.com/v3.js';
       script.async = true;
       script.onload = () => resolve();
       script.onerror = () => reject(new Error('Failed to load Flutterwave script'));
@@ -1093,7 +1093,7 @@ export default function Discover() {
         currency: paymentData.currency,
         payment_options: "card, banktransfer, ussd",
         customer: { email: paymentData.email, name: paymentData.name, phone_number: paymentData.phone || '' },
-        customizations: { title: "Event Ticket Purchase", description: paymentData.event_title, logo: "[https://try.usecorridor.xyz/ahmia/logo.png](https://try.usecorridor.xyz/ahmia/logo.png)" },
+        customizations: { title: "Event Ticket Purchase", description: paymentData.event_title, logo: "https://try.usecorridor.xyz/ahmia/logo.png" },
         callback: async function(response: any) {
           if (response.status === "successful" || response.status === "completed") {
             const toastId = toast.loading("Confirming your ticket purchase...");
@@ -1617,6 +1617,7 @@ export default function Discover() {
               </>
             )}
           </TabsContent>
+        </Tabs>
       </div>
       
       {selectedStory && <StoryViewer user={selectedStory} onClose={() => setSelectedStory(null)} />}
