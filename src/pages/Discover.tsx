@@ -1316,10 +1316,10 @@ export default function Discover() {
         <h1 className="text-2xl font-bold mb-4 tracking-tight">Discover</h1>
         <Tabs defaultValue="communities">
           <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
-            <TabsTrigger value="communities" className="rounded-lg text-xs">Communities</TabsTrigger>
-            <TabsTrigger value="events" className="rounded-lg text-xs">Events</TabsTrigger>
+            <TabsTrigger value="communities" className="rounded-lg">Communities</TabsTrigger>
+            <TabsTrigger value="events" className="rounded-lg">Events</TabsTrigger>
             {/* ✅ FIXED: Reduced icon size */}
-            <TabsTrigger value="foryou" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-blue-600 data-[state=active]:text-white rounded-lg text-xs"><Sparkles className="w-3 h-3 mr-1" /> For You</TabsTrigger>
+            <TabsTrigger value="foryou" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-blue-600 data-[state=active]:text-white rounded-lg"><Sparkles className="w-3 h-3 mr-1" /> For You</TabsTrigger>
           </TabsList>
 
           <TabsContent value="communities" className="mt-6 space-y-3 animate-in fade-in-50">
@@ -1369,9 +1369,9 @@ export default function Discover() {
             )}
           </TabsContent>
 
-          <TabsContent value="events" className="mt-6 space-y-4 animate-in fade-in-50">
+          <TabsContent value="events" className="mt-6 space-y-4 animate-in fade-in-50 mx-auto">
             {/* Active/Past Events Sub-tabs */}
-            <div className="flex items-center gap-2 mb-4 bg-muted/30 p-1 rounded-lg w-fit mx-auto">
+            <div className="flex items-center gap-2 mb-4 bg-muted/30 p-1 rounded-lg w-fit">
               <button
                 onClick={() => setEventsFilter('active')}
                 className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${eventsFilter === 'active' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
@@ -1465,10 +1465,8 @@ export default function Discover() {
                     <EmptyState icon={Clock} title="No Past Events" desc="You haven't attended any events yet." />
                   ) : (
                     pastEvents.map(e => (
-                      <Card 
-                        key={e.id} 
+                      <Card
                         className="hover:shadow-md transition-all border-border/50 cursor-pointer opacity-80"
-                        onClick={() => setSelectedEvent(e)}
                       >
                         <CardContent className="p-4 flex items-center gap-4">
                           <div className="w-14 h-16 rounded-xl bg-muted border border-muted-foreground/10 flex flex-col items-center justify-center text-muted-foreground flex-shrink-0">
