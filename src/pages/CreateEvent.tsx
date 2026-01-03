@@ -238,7 +238,7 @@ const CreateEvent = () => {
   // Generate share links
   const getInAppLink = () => {
     if (!createdEventId) return '';
-    return `${window.location.origin}/events/${createdEventId}`;
+    return `${window.location.origin}/app/events/${createdEventId}`;
   };
 
   const getShareText = () => {
