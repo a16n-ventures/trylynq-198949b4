@@ -1370,23 +1370,19 @@ export default function Discover() {
 
           <TabsContent value="events" className="mt-6 space-y-4 animate-in fade-in-50">
             {/* Active/Past Events Sub-tabs */}
-            <div className="flex items-center gap-2 mb-4 p-1 rounded-lg w-fit mx-auto">
-              <Button
-                size="sm"
-                variant={eventsFilter === 'active' ? 'default' : 'outline'}
-                className="text-xs font-medium px-3 py-1.5 rounded-md transition-all"
+            <div className="flex items-center gap-2 mb-4 bg-muted/30 p-1 rounded-lg w-fit mx-auto">
+              <button
                 onClick={() => setEventsFilter('active')}
+                className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${eventsFilter === 'active' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
               >
                 Active ({events.length})
-              </Button>
-              <Button
-                size="sm"
-                variant={eventsFilter === 'past' ? 'default' : 'outline'}
-                className="text-xs font-medium px-3 py-1.5 rounded-md transition-all"
+              </button>
+              <button
                 onClick={() => setEventsFilter('past')}
+                className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${eventsFilter === 'past' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
               >
                 Past ({pastEvents.length})
-              </Button>
+              </button>
             </div>
 
             {loading ? <FeedSkeleton /> : (
