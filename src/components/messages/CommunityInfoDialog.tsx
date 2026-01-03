@@ -53,27 +53,48 @@ export const CommunityInfoDialog: React.FC<CommunityInfoDialogProps> = ({
   const [selectedMember, setSelectedMember] = useState<CommunityMember | null>(null);
   const [modAction, setModAction] = useState<ModerationType>('kick');
 
+  // ✅ FIXED: Robust fetching strategy (Manual Join)
   const { data: members = [] } = useQuery({
     queryKey: ['comm_members', community?.id],
     queryFn: async () => {
       if (!community || community.type !== 'community') return [];
-      const { data, error } = await supabase
+      
+      // 1. Get Members
+      const { data: memberData, error: memberError } = await supabase
         .from('community_members')
-        .select('user_id, role, joined_at, profile:profiles(display_name, avatar_url)')
+        .select('user_id, role, joined_at')
         .eq('community_id', community.id)
         .order('role', { ascending: true });
-      if (error) throw error;
-      return data as unknown as CommunityMember[];
+        
+      if (memberError) throw memberError;
+      if (!memberData || memberData.length === 0) return [];
+
+      // 2. Get Profiles for those members
+      const userIds = memberData.map(m => m.user_id);
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', userIds);
+        
+      if (profileError) throw profileError;
+
+      // 3. Merge Data
+      const profileMap = new Map(profileData?.map(p => [p.user_id, p]));
+      
+      return memberData.map(m => ({
+        ...m,
+        profile: profileMap.get(m.user_id) || { display_name: 'Unknown User', avatar_url: null }
+      })) as CommunityMember[];
     },
-    enabled: isOpen && !!community
+    enabled: isOpen && !!community && community.type === 'community'
   });
 
   const canModerate = community?.type === 'community' && (community.my_role === 'admin' || community.my_role === 'moderator');
   const isAdmin = community?.type === 'community' && community.my_role === 'admin';
 
-  const validMembers = members.filter(m => m.profile);
-  const activeMembers = validMembers.filter(m => 
-    m.profile.display_name.toLowerCase().includes(memberSearch.toLowerCase())
+  // Filter members based on search
+  const activeMembers = members.filter(m => 
+    m.profile?.display_name?.toLowerCase().includes(memberSearch.toLowerCase())
   );
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,8 +124,6 @@ export const CommunityInfoDialog: React.FC<CommunityInfoDialogProps> = ({
 
       const { data } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
       
-      // Note: avatar_url may not exist in schema, store cover URL elsewhere or skip
-      // For now, just invalidate to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['comm_list'] });
       onCoverUpdate?.(data.publicUrl);
       toast.success("Cover image updated!");
@@ -181,10 +200,8 @@ export const CommunityInfoDialog: React.FC<CommunityInfoDialogProps> = ({
               <div className="w-full h-full bg-gradient-to-br from-primary/20 via-primary/10 to-muted" />
             )}
             
-            {/* Cover overlay gradient */}
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
             
-            {/* Upload cover button for admins */}
             {isAdmin && (
               <div className="absolute top-3 right-3">
                 <input 
@@ -211,7 +228,6 @@ export const CommunityInfoDialog: React.FC<CommunityInfoDialogProps> = ({
               </div>
             )}
             
-            {/* Community avatar */}
             <div className="absolute -bottom-6 left-6 flex items-end gap-4">
               <Avatar className="h-20 w-20 ring-4 ring-background shadow-xl rounded-2xl">
                 <AvatarImage src={community.avatar} />
@@ -227,7 +243,7 @@ export const CommunityInfoDialog: React.FC<CommunityInfoDialogProps> = ({
             <h2 className="text-2xl font-bold">{community.name}</h2>
             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
               <span className="flex items-center gap-1">
-                <Users className="w-4 h-4" /> {validMembers.length} Members
+                <Users className="w-4 h-4" /> {members.length} Members
               </span>
               {community.my_role !== 'member' && community.my_role !== 'none' && (
                 <Badge variant="secondary" className="capitalize">{community.my_role}</Badge>
@@ -270,15 +286,14 @@ export const CommunityInfoDialog: React.FC<CommunityInfoDialogProps> = ({
                   <p className="text-sm leading-relaxed">{community.description || "No description provided."}</p>
                 </div>
                 
-                {/* Admin quick stats */}
                 {canModerate && (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-muted/50 rounded-lg">
-                      <p className="text-2xl font-bold">{validMembers.length}</p>
+                      <p className="text-2xl font-bold">{members.length}</p>
                       <p className="text-xs text-muted-foreground">Total Members</p>
                     </div>
                     <div className="p-4 bg-muted/50 rounded-lg">
-                      <p className="text-2xl font-bold">{validMembers.filter(m => m.role === 'moderator' || m.role === 'admin').length}</p>
+                      <p className="text-2xl font-bold">{members.filter(m => m.role === 'moderator' || m.role === 'admin').length}</p>
                       <p className="text-xs text-muted-foreground">Moderators</p>
                     </div>
                   </div>
@@ -307,16 +322,20 @@ export const CommunityInfoDialog: React.FC<CommunityInfoDialogProps> = ({
               </div>
               <ScrollArea className="flex-1">
                 <div className="divide-y">
-                  {activeMembers.map(m => (
+                  {activeMembers.length === 0 ? (
+                    <div className="p-8 text-center text-muted-foreground text-sm">
+                      No members found.
+                    </div>
+                  ) : activeMembers.map(m => (
                     <div key={m.user_id} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10">
-                          <AvatarImage src={m.profile?.avatar_url} />
-                          <AvatarFallback>{m.profile?.display_name?.[0]}</AvatarFallback>
+                          <AvatarImage src={m.profile?.avatar_url || undefined} />
+                          <AvatarFallback>{m.profile?.display_name?.[0] || '?'}</AvatarFallback>
                         </Avatar>
                         <div>
                           <p className="font-medium text-sm flex items-center gap-2">
-                            {m.profile?.display_name}
+                            {m.profile?.display_name || 'Unknown User'}
                             {getRoleIcon(m.role)}
                             {m.user_id === user?.id && (
                               <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">You</span>
