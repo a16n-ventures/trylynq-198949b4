@@ -87,7 +87,7 @@ type Event = {
   image_url?: string | null;
   event_type: 'physical' | 'virtual';
   meeting_link?: string | null;
-  is_sponsored?: boolean; // [MODIFIED: Added is_sponsored]
+  is_sponsored?: boolean; 
   creator: {
     user_id: string;
     display_name: string;
@@ -99,18 +99,18 @@ type Attendee = {
   user_id: string;
   display_name: string;
   avatar_url?: string;
+  is_premium?: boolean; // Added for verification
 };
 
 // [MODIFIED: Added Friend Type]
 type Friend = {
-  user_id?: string; // Handle possible inconsistent naming from previous files
+  user_id?: string; 
   id: string;
   display_name: string | null;
   avatar_url: string | null;
 };
 
 const EventDetail = () => {
-  // FIXED: Handle both 'id' (standard) and 'eventId' (custom) parameter names
   const params = useParams();
   const eventId = params.eventId || params.id;
   
@@ -179,11 +179,10 @@ const EventDetail = () => {
         const { data: profile } = await supabase
           .from('profiles')
           .select('id, display_name, avatar_url')
-          .eq('id', eventData.creator_id) // check against id
-          .maybeSingle(); // maybeSingle prevents error if profile missing
+          .eq('id', eventData.creator_id) 
+          .maybeSingle(); 
         
         if (!profile) {
-             // Fallback check for user_id if id didn't match
              const { data: profileAlt } = await supabase
               .from('profiles')
               .select('user_id, display_name, avatar_url')
@@ -263,7 +262,25 @@ const EventDetail = () => {
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, user_id, display_name, avatar_url')
-        .or(`id.in.(${userIds.join(',')}),user_id.in.(${userIds.join(',')})`); // Check both ID columns
+        .or(`id.in.(${userIds.join(',')}),user_id.in.(${userIds.join(',')})`); 
+
+      // 3. Fetch Premium Status for Attendees
+      const { data: premiumFeatures } = await supabase
+        .from('premium_features')
+        .select('user_id')
+        .in('user_id', userIds)
+        .eq('is_active', true)
+        .gt('expires_at', new Date().toISOString());
+
+      const { data: subscriptions } = await supabase
+        .from('subscriptions')
+        .select('user_id')
+        .in('user_id', userIds)
+        .eq('status', 'active');
+
+      const premiumSet = new Set<string>();
+      premiumFeatures?.forEach(p => premiumSet.add(p.user_id));
+      subscriptions?.forEach(s => premiumSet.add(s.user_id));
 
       // Map back to format
       return userIds.map(uid => {
@@ -271,7 +288,8 @@ const EventDetail = () => {
         return {
             user_id: uid,
             display_name: profile?.display_name || 'Attendee',
-            avatar_url: profile?.avatar_url
+            avatar_url: profile?.avatar_url,
+            is_premium: premiumSet.has(uid)
         };
       });
     },
@@ -991,7 +1009,11 @@ const filteredFriends = useMemo(() => {
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <p className="font-semibold text-sm">{attendee.display_name || 'Unknown User'}</p>
+                      <p className="font-semibold text-sm flex items-center gap-1">
+                        {attendee.display_name || 'Unknown User'}
+                        {/* ✅ Added Badge */}
+                        {attendee.is_premium && <PremiumBadge />}
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
