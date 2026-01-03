@@ -233,7 +233,7 @@ const MainLayout = () => {
     <Button 
       size="sm" 
       variant="destructive" 
-      className="h-7 text-[10px] px-2 ml-2"
+      className="h-7 text-[10px] px-2 mr-0"
       onClick={() => navigate('/admin')}
     >
       <ShieldCheck className="w-3 h-3 mr-1" /> Admin
@@ -263,7 +263,6 @@ const MainLayout = () => {
       </span>
     </div>
   </div>
-</div>
               
             </Button>
           <Button
