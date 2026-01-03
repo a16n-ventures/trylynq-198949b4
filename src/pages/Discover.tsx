@@ -1460,7 +1460,7 @@ export default function Discover() {
                   )
                 )}
 
-{eventsFilter === 'past' && (
+                {eventsFilter === 'past' && (
                   pastEvents.length === 0 ? (
                     <EmptyState icon={Clock} title="No Past Events" desc="You haven't attended any events yet." />
                   ) : (
@@ -1617,7 +1617,6 @@ export default function Discover() {
               </>
             )}
           </TabsContent>
-        </tabs>
       </div>
       
       {selectedStory && <StoryViewer user={selectedStory} onClose={() => setSelectedStory(null)} />}
