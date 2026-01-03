@@ -242,11 +242,11 @@ const MainLayout = () => {
 </div>
 
           {/* Marketplace & Notification */}
-          <div className="flex items-center">
+          <div className="flex items-center relative inline-block">
             <Button
               variant="ghost"
               size="icon"
-              className="relative inline-block hover:bg-muted/50 rounded-full h-10 w-10"
+              className="hover:bg-muted/50 rounded-full h-10 w-10"
               onClick={() => navigate('/app/marketplace')}
             >
   <ShoppingBasket className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
