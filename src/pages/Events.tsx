@@ -243,7 +243,7 @@ export default function Events() {
     staleTime: 30000,
   });
 
-  // 2. Fetch Attending Events
+// 2. Fetch Attending Events
   const { data: attendingEvents = [], isLoading: loadingAttending } = useQuery({
     queryKey: ["events", "attending", userId],
     queryFn: async (): Promise<EventWithStats[]> => {
@@ -257,7 +257,6 @@ export default function Events() {
         `)
         .eq("user_id", userId)
         .in("status", ["confirmed", "pending"])
-        .order("start_date", { ascending: false })
         .not("event", "is", null);
       
       if (error) throw error;
@@ -285,11 +284,24 @@ export default function Events() {
       const countMap: Record<string, number> = {};
       attendees.forEach(a => countMap[a.event_id] = (countMap[a.event_id] || 0) + 1);
 
-      return events.map((event: any) => ({
+      const processedEvents = events.map((event: any) => ({
         ...event,
         attendee_count: countMap[event.id] || 0,
         is_boosted: checkBoostPermission(event.creator_id, premiums, subs)
-      })).sort((a: any, b: any) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+      }));
+
+      // ✅ SORTING LOGIC: Active First (Ascending), then Past (Descending)
+      const now = new Date();
+      
+      const active = processedEvents
+        .filter((e: any) => isEventActive(e.start_date))
+        .sort((a: any, b: any) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()); // Closest upcoming first
+        
+      const past = processedEvents
+        .filter((e: any) => !isEventActive(e.start_date))
+        .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()); // Most recent past first
+
+      return [...active, ...past];
     },
     enabled: !!userId,
     staleTime: 30000,
@@ -422,7 +434,7 @@ export default function Events() {
       console.error('Share failed:', err);
     }
   };
-
+  
 const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     const status = getEventStatus(event.start_date);
     const eventDate = new Date(event.start_date);
@@ -431,7 +443,6 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     const isEventPast = !isStillActive;
     const isPending = event.my_status === 'pending';
 
-    // Adopted "Compact Row" styling from Discover.tsx
     return (
       <Card 
         key={event.id} 
@@ -497,24 +508,8 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             
             <div className="flex items-center gap-3 mt-1">
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                {/* ✅ FIXED: Dynamic Label based on isEventPast */}
+                {/* ✅ FIXED: Logic to switch between 'attended' and 'attending' */}
                 <Users className="w-3 h-3" /> {event.attendee_count || 0} {isEventPast ? 'attended' : 'attending'}
-              </div>
-              {event.ticket_price > 0 && (
-                <div className="flex items-center gap-1 text-xs font-semibold text-primary">
-                   <Ticket className="w-3 h-3" /> ₦{event.ticket_price.toLocaleString()}
-                </div>
-              )}
-            </div>
-          </div>
-            
-            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-              <MapPin className="w-3 h-3" /> <span className="truncate">{event.location}</span>
-            </div>
-            
-            <div className="flex items-center gap-3 mt-1">
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Users className="w-3 h-3" /> {event.attendee_count || 0} attending
               </div>
               {event.ticket_price > 0 && (
                 <div className="flex items-center gap-1 text-xs font-semibold text-primary">
