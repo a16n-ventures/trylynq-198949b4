@@ -507,9 +507,9 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                                 Awaiting Approval
                             </Badge>
                         )}
-                        {/* ✅ Display 'Happening Now' or 'Expiring' badges if active but started */}
-                        {isStillActive && isPast(eventDate) && (
-                            <Badge className={`text-[10px] px-1.5 py-0 border-0 text-white ${status.color}`}>
+                        {/* Status badge - always show for active events */}
+                        {isStillActive && !isPending && (
+                            <Badge className={`text-[10px] px-1.5 py-0 border-0 text-white ${status.color} ${status.label === 'Happening Now' || status.label === 'Expiring Soon' ? 'animate-pulse' : ''}`}>
                                 {status.label === 'Expiring Soon' && <Hourglass className="w-3 h-3 mr-1" />}
                                 {status.label}
                             </Badge>

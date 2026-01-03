@@ -10,7 +10,7 @@ import {
   Ticket, Megaphone, MessageSquare,
   MoreVertical, Trash2, Copy, Eye, Clock
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns"; 
+import { formatDistanceToNow, isPast, isFuture, isToday, addHours, differenceInMinutes } from "date-fns"; 
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -56,6 +56,30 @@ interface Event {
 }
 
 type ProfileWithStoryInner = { id: string; display_name: string | null; avatar_url: string | null; stories: Story[]; };
+
+// --- EVENT STATUS HELPER ---
+const getEventStatus = (startDate: string) => {
+  const date = new Date(startDate);
+  const now = new Date();
+  const expirationTime = addHours(date, 3); // 3-hour duration assumption
+
+  // If start date is past but still within active window
+  if (isPast(date) && now < expirationTime) {
+    if (differenceInMinutes(expirationTime, now) < 30) {
+      return { label: 'Ending Soon', color: 'bg-orange-500' };
+    }
+    return { label: 'Happening Now', color: 'bg-green-600' };
+  }
+
+  if (isToday(date)) return { label: 'Today', color: 'bg-blue-500' };
+  if (isFuture(date)) {
+    const hoursUntil = differenceInMinutes(date, now) / 60;
+    if (hoursUntil <= 24) return { label: 'Starting Soon', color: 'bg-amber-500' };
+    return { label: 'Upcoming', color: 'bg-primary' };
+  }
+  
+  return { label: 'Past', color: 'bg-muted-foreground' };
+};
 
 // --- EVENT DETAIL MODAL ---
 function EventDetailModal({ event, isOpen, onClose, onRSVP }: { 
@@ -1342,23 +1366,21 @@ export default function Discover() {
 
           <TabsContent value="events" className="mt-6 space-y-4 animate-in fade-in-50">
             {/* Active/Past Events Sub-tabs */}
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-4 mx-auto justify-center">
               <Button
                 size="sm"
                 variant={eventsFilter === 'active' ? 'default' : 'outline'}
-                className="rounded-full flex items-center gap-1.5"
+                className="rounded-full"
                 onClick={() => setEventsFilter('active')}
               >
-                <Calendar className="w-3.5 h-3.5" />
                 Active ({events.length})
               </Button>
               <Button
                 size="sm"
                 variant={eventsFilter === 'past' ? 'default' : 'outline'}
-                className="rounded-full flex items-center gap-1.5"
+                className="rounded-full"
                 onClick={() => setEventsFilter('past')}
               >
-                <Clock className="w-3.5 h-3.5" />
                 Past ({pastEvents.length})
               </Button>
             </div>
@@ -1369,52 +1391,61 @@ export default function Discover() {
                   events.length === 0 ? (
                     <EmptyState icon={Calendar} title="No Upcoming Events" desc="It's quiet... too quiet. Host a party!" action="Create Event" onAction={() => navigate('/create-event')} />
                   ) : (
-                    events.map(e => (
-                      <Card 
-                        key={e.id} 
-                        className="hover:shadow-md transition-all border-border/50 cursor-pointer"
-                        onClick={() => setSelectedEvent(e)}
-                      >
-                        <CardContent className="p-4 flex items-center gap-4">
-                          <div className="w-14 h-16 rounded-xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-primary flex-shrink-0">
-                            <span className="text-[10px] font-black uppercase tracking-wider opacity-60">
-                              {new Date(e.start_date).toLocaleString('default', {month:'short'})}
-                            </span>
-                            <span className="text-xl font-bold leading-none">
-                              {new Date(e.start_date).getDate()}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-base truncate">{e.title}</h3>
-                              {e.is_attending && <Badge className="bg-green-600 text-xs"><Check className="w-3 h-3 mr-1" /> Going</Badge>}
-                              {e.is_sponsored && <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">Sponsored</Badge>}
+                    events.map(e => {
+                      const status = getEventStatus(e.start_date);
+                      return (
+                        <Card 
+                          key={e.id} 
+                          className="hover:shadow-md transition-all border-border/50 cursor-pointer"
+                          onClick={() => setSelectedEvent(e)}
+                        >
+                          <CardContent className="p-4 flex items-center gap-4">
+                            <div className="w-14 h-16 rounded-xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-primary flex-shrink-0 relative">
+                              <span className="text-[10px] font-black uppercase tracking-wider opacity-60">
+                                {new Date(e.start_date).toLocaleString('default', {month:'short'})}
+                              </span>
+                              <span className="text-xl font-bold leading-none">
+                                {new Date(e.start_date).getDate()}
+                              </span>
+                              {/* Status indicator dot */}
+                              <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${status.color} ${status.label === 'Happening Now' ? 'animate-pulse' : ''}`} />
                             </div>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                              <MapPin className="w-3.5 h-3.5" /> <span className="truncate">{e.location}</span>
-                            </div>
-                            <div className="flex items-center gap-3 mt-1">
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Users className="w-3 h-3" /> {e.attendee_count || 0} attending
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center flex-wrap gap-1.5">
+                                <h3 className="font-bold text-base truncate">{e.title}</h3>
+                                {/* Status badge */}
+                                <Badge className={`text-[10px] px-1.5 py-0 border-0 text-white ${status.color} ${status.label === 'Happening Now' ? 'animate-pulse' : ''}`}>
+                                  {status.label}
+                                </Badge>
+                                {e.is_attending && <Badge className="bg-green-600 text-xs"><Check className="w-3 h-3 mr-1" /> Going</Badge>}
+                                {e.is_sponsored && <Badge variant="outline" className="text-[10px] h-5 border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20 px-1.5">Sponsored</Badge>}
                               </div>
-                              {e.price !== undefined && (
-                                <div className="flex items-center gap-1 text-xs font-semibold text-primary">
-                                  <Ticket className="w-3 h-3" /> {e.price === 0 ? 'Free' : `₦${e.price.toLocaleString()}`}
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                <MapPin className="w-3.5 h-3.5" /> <span className="truncate">{e.location}</span>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1">
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Users className="w-3 h-3" /> {e.attendee_count || 0} attending
                                 </div>
-                              )}
+                                {e.price !== undefined && (
+                                  <div className="flex items-center gap-1 text-xs font-semibold text-primary">
+                                    <Ticket className="w-3 h-3" /> {e.price === 0 ? 'Free' : `₦${e.price.toLocaleString()}`}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                          <Button 
-                            size="sm" 
-                            variant={e.is_attending ? "default" : "outline"}
-                            className="rounded-full"
-                            onClick={(evt) => { evt.stopPropagation(); setSelectedEvent(e); }}
-                          >
-                            View
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ))
+                            <Button 
+                              size="sm" 
+                              variant={e.is_attending ? "default" : "outline"}
+                              className="rounded-full"
+                              onClick={(evt) => { evt.stopPropagation(); setSelectedEvent(e); }}
+                            >
+                              View
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
                   )
                 )}
 
