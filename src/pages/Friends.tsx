@@ -625,13 +625,14 @@ export default function Friends() {
           {discoverView === 'contacts' && (
             <div className="space-y-3">
               {/* ✅ FIXED: Render Button and Modal separately */}
-              <Button 
-                className="w-auto bg-gradient-to-r from-blue-500 to-purple-500 text-white" 
-                onClick={() => setShowAddContact(true)}
-              >
-                <User className="w-4 h-4 mr-2" /> Add New Contact
-              </Button>
-
+              <div className="flex justify-center w-full">
+                <Button 
+                  className="w-fit px-8 bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-sm" 
+                  onClick={() => setShowAddContact(true)}
+                >
+                  <User className="w-4 h-4 mr-2" /> Add New Contact
+                </Button>
+              </div>
               {/* The Modal controls its own visibility via props */}
               <ContactImportModal 
                 open={showAddContact} 
