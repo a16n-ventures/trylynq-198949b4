@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -9,19 +9,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Heart, MessageCircle, Share2, MapPin, Calendar, Users, Plus, 
-  Image as ImageIcon, Video, X, Loader2, MoreVertical, Trash2, Copy, Eye, Send,
-  UserPlus, Check, Search
+  Image as ImageIcon, Video, X, Loader2, MoreVertical, Trash2, Edit2, Repeat, Send,
+  UserPlus, Check
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from "date-fns";
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useNavigate } from 'react-router-dom';
+import { FriendProfilePreview } from './FriendProfilePreview';
 
 // --- TYPES ---
-interface Profile { id: string; display_name: string | null; avatar_url: string | null; }
+interface Profile { id: string; display_name: string | null; avatar_url: string | null; user_id: string; }
 interface Story { 
   id: string; 
   content: string | null; 
@@ -31,19 +32,19 @@ interface Story {
   media_type?: 'image' | 'video' | string | null; 
   view_count?: number;
 }
-type ProfileWithStoryInner = { id: string; display_name: string | null; avatar_url: string | null; stories: Story[]; };
+type ProfileWithStoryInner = { id: string; display_name: string | null; avatar_url: string | null; user_id: string; stories: Story[]; };
 
 interface Post {
   id: string;
   user_id: string;
   content: string;
   image_url?: string;
-  video_url?: string; 
-  post_type: 'status' | 'image' | 'video' | 'event';
+  post_type: 'status' | 'image' | 'video' | 'event' | 'repost';
   likes_count: number;
   comments_count: number;
+  location?: string;
   created_at: string;
-  profiles: { display_name: string; avatar_url: string; };
+  profiles: { display_name: string; avatar_url: string; user_id: string; };
   is_liked_by_user?: boolean;
 }
 
@@ -102,7 +103,6 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
   const current = stories[index];
   const isMyStory = currentUser?.id === user.id; 
   
-  // Realtime Logic
   useEffect(() => {
     if (!current || !currentUser) return;
 
@@ -139,13 +139,10 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
 
   const handleSendReply = async () => {
     if(!msg.trim() || !currentUser) return;
-    // Send message via existing 'messages' table or a specific story reply function
-    // Assuming standard messages table
     await supabase.from('messages').insert({
         sender_id: currentUser.id,
         receiver_id: user.id,
         content: `Replied to story: ${msg}`,
-        // story_id: current.id // If you have this column
     });
     setMsg("");
     toast.success("Reply sent");
@@ -180,7 +177,6 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
     <Dialog open={true} onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-md p-0 border-0 bg-transparent shadow-none gap-0 outline-none h-full sm:h-auto flex flex-col justify-center items-center">
         <div className="relative w-full h-full sm:h-[75vh] max-h-[800px] bg-black sm:rounded-2xl overflow-hidden flex flex-col border border-white/10 shadow-2xl">
-          {/* Progress Bar */}
           <div className="absolute top-0 w-full z-20 flex gap-1 p-2">
             {stories.map((_, i) => (
               <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm">
@@ -189,7 +185,6 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
             ))}
           </div>
           
-          {/* User Info */}
           <div className="absolute top-6 left-0 w-full p-4 z-20 flex items-center gap-3 bg-gradient-to-b from-black/60 to-transparent">
             <img src={user.avatar_url || '/default-avatar.png'} className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" />
             <div className="flex-1">
@@ -202,21 +197,18 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
             <button onClick={onClose} className="text-white/80 hover:text-white p-2"><X className="w-6 h-6" /></button>
           </div>
           
-          {/* Delete Option */}
           {isMyStory && (
             <div className="absolute top-6 right-16 z-50">
                <button onClick={handleDeleteStory} className="text-white/80 hover:text-red-500 p-2"><Trash2 className="w-5 h-5" /></button>
             </div>
           )}
 
-          {/* Hearts Animation */}
           <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden">
             {incomingHearts.map((h) => (
               <div key={h.id} className="absolute bottom-20 text-4xl animate-float-up" style={{ left: `${h.left}%`, transition: 'transform 2s ease-out' }}>❤️</div>
             ))}
           </div>
           
-          {/* Content */}
           <div className="flex-1 flex items-center justify-center bg-black relative" onClick={next}>
             <div className="w-full h-full flex items-center justify-center p-4">
               {current.media_url ? (
@@ -236,7 +228,6 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
             )}
           </div>
           
-          {/* Controls */}
           {!isMyStory && (
             <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
               <Input 
@@ -247,7 +238,7 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
                 onClick={(e) => e.stopPropagation()} 
               />
               {msg.trim().length > 0 && (
-                  <Button size="icon" className="bg-primary text-white rounded-full" onClick={handleSendReply}>
+                  <Button size="icon" className="bg-primary text-white rounded-full ml-2" onClick={handleSendReply}>
                       <Send className="w-4 h-4" />
                   </Button>
               )}
@@ -297,7 +288,12 @@ const SocialFeed = () => {
   // Post Upload State
   const [postMedia, setPostMedia] = useState<{ file: File, url: string, type: 'image' | 'video' } | null>(null);
   const [uploadingPost, setUploadingPost] = useState(false);
+  const [locationData, setLocationData] = useState<string | null>(null);
   const postFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Edit Post State
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [editContent, setEditContent] = useState("");
 
   // Story Upload State
   const [storyPreview, setStoryPreview] = useState<{ file: File, url: string } | null>(null);
@@ -305,13 +301,14 @@ const SocialFeed = () => {
   const [uploadingStory, setUploadingStory] = useState(false);
   const storyFileRef = useRef<HTMLInputElement>(null);
 
-  // Comment Dialog State
+  // Comment & Share States
   const [activeCommentPost, setActiveCommentPost] = useState<string | null>(null);
   const [commentText, setCommentText] = useState("");
   const [postComments, setPostComments] = useState<any[]>([]);
-
-  // Share Dialog State
   const [sharePost, setSharePost] = useState<Post | null>(null);
+  
+  // Profile Preview
+  const [previewProfile, setPreviewProfile] = useState<any | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -322,7 +319,6 @@ const SocialFeed = () => {
     supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle()
       .then(({ data }) => { if (data) setCurrentUserProfile(data); });
 
-    // Fetch friends for tagging
     const fetchMyFriends = async () => {
         const { data } = await supabase.from('friendships').select('requester_id, addressee_id').or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).eq('status', 'accepted');
         if (data) {
@@ -334,9 +330,8 @@ const SocialFeed = () => {
     };
     fetchMyFriends();
 
-    // Subscribe to realtime posts
     const channel = supabase.channel('social-feed')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'social_posts' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'social_posts' }, () => {
          fetchPosts(); 
       })
       .subscribe();
@@ -350,7 +345,6 @@ const SocialFeed = () => {
       if(reqs) setSentRequests(reqs.map(r => r.addressee_id));
   };
 
-  // --- STORY FUNCTIONS ---
   const fetchStories = async () => {
     if (!user) return;
     setStoriesLoading(true);
@@ -370,7 +364,7 @@ const SocialFeed = () => {
         const profile = profileMap.get(story.author_id);
         if (!profile) return;
         if (!storyMap.has(profile.user_id)) {
-          storyMap.set(profile.user_id, { id: profile.user_id, display_name: profile.display_name, avatar_url: profile.avatar_url, stories: [] });
+          storyMap.set(profile.user_id, { id: profile.user_id, user_id: profile.user_id, display_name: profile.display_name, avatar_url: profile.avatar_url, stories: [] });
         }
         storyMap.get(profile.user_id).stories.push(story);
       });
@@ -381,6 +375,33 @@ const SocialFeed = () => {
     setStoriesLoading(false);
   };
 
+  const fetchPosts = async () => {
+    // Requires a 'post_likes' table for accurate is_liked_by_user logic
+    // We try to join post_likes to check if the current user liked it
+    // If post_likes table is missing, this might fail or return partial data
+    const { data: posts, error } = await supabase
+      .from('social_posts')
+      .select(`
+        *,
+        profiles (display_name, avatar_url, user_id),
+        post_likes (user_id)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (error) {
+      console.error("Error fetching posts:", error);
+    } else if (posts) {
+      const formattedPosts = posts.map((p: any) => ({
+          ...p,
+          is_liked_by_user: p.post_likes && p.post_likes.some((l: any) => l.user_id === user?.id)
+      }));
+      setFeedPosts(formattedPosts as Post[]);
+    }
+    setLoading(false);
+  };
+
+  // --- HANDLERS ---
   const handleStoryFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) setStoryPreview({ file: e.target.files[0], url: URL.createObjectURL(e.target.files[0]) });
   };
@@ -412,22 +433,6 @@ const SocialFeed = () => {
     }
   };
 
-  // --- POST FUNCTIONS ---
-  const fetchPosts = async () => {
-    const { data: posts, error } = await supabase
-      .from('social_posts')
-      .select(`*, profiles(display_name, avatar_url)`)
-      .order('created_at', { ascending: false })
-      .limit(30);
-
-    if (error) {
-      console.error("Error fetching posts:", error);
-    } else if (posts) {
-      setFeedPosts(posts as Post[]);
-    }
-    setLoading(false);
-  };
-
   const handlePostMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
@@ -439,8 +444,6 @@ const SocialFeed = () => {
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const val = e.target.value;
       setPostText(val);
-      
-      // Tagging Logic
       const lastWord = val.split(' ').pop();
       if(lastWord && lastWord.startsWith('@')) {
           setTagQuery(lastWord.substring(1));
@@ -455,6 +458,15 @@ const SocialFeed = () => {
       words.pop();
       setPostText(words.join(' ') + ` @${username} `);
       setShowTagList(false);
+  };
+
+  const getLocation = () => {
+      if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+              (pos) => setLocationData(`${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`),
+              (err) => toast.error("Could not get location")
+          );
+      }
   };
 
   const handleCreatePost = async () => {
@@ -483,7 +495,8 @@ const SocialFeed = () => {
         user_id: user?.id,
         content: postText.trim(),
         post_type: postType,
-        image_url: publicUrl 
+        image_url: publicUrl,
+        location: locationData 
       });
 
       if (error) throw error;
@@ -491,9 +504,9 @@ const SocialFeed = () => {
       toast.success('Post created!');
       setPostText('');
       setPostMedia(null);
+      setLocationData(null);
       fetchPosts();
     } catch (error: any) {
-      console.error(error);
       toast.error('Failed to create post');
     } finally {
       setUploadingPost(false);
@@ -507,19 +520,55 @@ const SocialFeed = () => {
     toast.success("Post deleted");
   };
 
+  const openEditPost = (post: Post) => {
+      setEditingPost(post);
+      setEditContent(post.content);
+  };
+
+  const submitEditPost = async () => {
+      if(!editingPost) return;
+      const { error } = await supabase.from('social_posts').update({ content: editContent }).eq('id', editingPost.id);
+      if(!error) {
+          toast.success("Post updated");
+          setEditingPost(null);
+          fetchPosts();
+      } else {
+          toast.error("Failed to update post");
+      }
+  };
+
   const handleConnect = async (targetId: string) => {
       await supabase.from('friendships').insert({ requester_id: user?.id, addressee_id: targetId });
       setSentRequests(prev => [...prev, targetId]);
       toast.success("Request sent");
   };
 
-  // --- POST INTERACTIONS ---
-  const handleLikePost = async (postId: string) => {
-    // Instant UI update
-    setFeedPosts(prev => prev.map(p => p.id === postId ? { ...p, likes_count: (p.likes_count || 0) + 1 } : p));
-    // DB Update
-    const { error } = await supabase.rpc('increment_post_likes', { post_id: postId });
-    if(error) console.error(error);
+  const handleLikePost = async (post: Post) => {
+    const isLiked = post.is_liked_by_user;
+    // Optimistic Update
+    setFeedPosts(prev => prev.map(p => p.id === post.id ? { 
+        ...p, 
+        likes_count: isLiked ? p.likes_count - 1 : p.likes_count + 1,
+        is_liked_by_user: !isLiked
+    } : p));
+
+    if (isLiked) {
+        await supabase.from('post_likes').delete().match({ post_id: post.id, user_id: user?.id });
+        await supabase.rpc('decrement_post_likes', { post_id: post.id });
+    } else {
+        await supabase.from('post_likes').insert({ post_id: post.id, user_id: user?.id });
+        await supabase.rpc('increment_post_likes', { post_id: post.id });
+    }
+  };
+
+  const handleRepost = async (post: Post) => {
+      const { error } = await supabase.from('social_posts').insert({
+          user_id: user?.id,
+          content: `Reposted from ${post.profiles.display_name}: \n\n${post.content}`,
+          image_url: post.image_url,
+          post_type: 'repost'
+      });
+      if(!error) toast.success("Reposted!");
   };
 
   const handleShareToDM = async (friendId: string) => {
@@ -527,13 +576,12 @@ const SocialFeed = () => {
       await supabase.from('messages').insert({
           sender_id: user.id,
           receiver_id: friendId,
-          content: `Shared a post: ${window.location.origin}/post/${sharePost.id}`, // or simply just the content preview
+          content: `Shared a post: ${window.location.origin}/post/${sharePost.id}`, 
       });
       setSharePost(null);
       toast.success("Sent to DM");
   };
 
-  // --- COMMENTS LOGIC ---
   const openComments = async (postId: string) => {
     setActiveCommentPost(postId);
     const { data } = await supabase
@@ -547,7 +595,6 @@ const SocialFeed = () => {
   const submitComment = async () => {
     if (!activeCommentPost || !commentText.trim()) return;
     
-    // Optimistic UI could go here, but waiting for DB is safer for comments ordering
     const { error } = await supabase.from('post_comments').insert({
         post_id: activeCommentPost,
         user_id: user?.id,
@@ -562,6 +609,7 @@ const SocialFeed = () => {
             .eq('post_id', activeCommentPost)
             .order('created_at', { ascending: true });
         setPostComments(data || []);
+        // Also update the feed item locally
         setFeedPosts(prev => prev.map(p => p.id === activeCommentPost ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p));
     }
   };
@@ -657,8 +705,8 @@ const SocialFeed = () => {
                 <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => postFileInputRef.current?.click()}>
                     <ImageIcon className="w-5 h-5 mr-2 text-green-500" /> Photo/Video
                 </Button>
-                <Button variant="ghost" size="sm" className="text-muted-foreground">
-                    <MapPin className="w-5 h-5 mr-2 text-red-500" /> Location
+                <Button variant="ghost" size="sm" className={locationData ? "text-blue-500" : "text-muted-foreground"} onClick={getLocation}>
+                    <MapPin className="w-5 h-5 mr-2" /> {locationData ? "Location Added" : "Location"}
                 </Button>
               </div>
               <Button size="sm" className="bg-primary text-white rounded-full px-6" onClick={handleCreatePost} disabled={uploadingPost}>
@@ -678,16 +726,21 @@ const SocialFeed = () => {
             feedPosts.map((post) => (
               <Card key={post.id} className="border-0 shadow-sm overflow-hidden">
                 <CardHeader className="p-4 flex flex-row items-start gap-3 space-y-0">
-                  <Avatar>
-                    <AvatarImage src={post.profiles?.avatar_url} />
-                    <AvatarFallback>{post.profiles?.display_name?.[0]}</AvatarFallback>
-                  </Avatar>
+                  <div className="cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
+                    <Avatar>
+                      <AvatarImage src={post.profiles?.avatar_url} />
+                      <AvatarFallback>{post.profiles?.display_name?.[0]}</AvatarFallback>
+                    </Avatar>
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate flex items-center">
+                    <p className="font-semibold text-sm truncate flex items-center cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
                         {post.profiles?.display_name}
                         <VerifiedBadge userId={post.user_id} />
                     </p>
-                    <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
+                        {post.location && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {post.location}</span>}
+                    </div>
                   </div>
                   
                   {/* Connect / Message Button */}
@@ -707,14 +760,17 @@ const SocialFeed = () => {
                       )
                   )}
 
-                  {post.user_id === user?.id && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger><MoreVertical className="w-5 h-5 text-muted-foreground" /></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="text-red-600" onClick={() => handleDeletePost(post.id)}><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+                  <DropdownMenu>
+                      <DropdownMenuTrigger><MoreVertical className="w-5 h-5 text-muted-foreground" /></DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                          {post.user_id === user?.id && (
+                              <DropdownMenuItem onClick={() => openEditPost(post)}><Edit2 className="w-4 h-4 mr-2" /> Edit Post</DropdownMenuItem>
+                          )}
+                          {post.user_id === user?.id && (
+                              <DropdownMenuItem className="text-red-600" onClick={() => handleDeletePost(post.id)}><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
+                          )}
+                      </DropdownMenuContent>
+                  </DropdownMenu>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 space-y-3">
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
@@ -729,11 +785,14 @@ const SocialFeed = () => {
                   )}
                 </CardContent>
                 <CardFooter className="p-2 border-t flex justify-between">
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleLikePost(post.id)}>
+                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleLikePost(post)}>
                         <Heart className={`w-5 h-5 mr-2 ${post.is_liked_by_user ? 'text-red-500 fill-red-500' : ''}`} /> {post.likes_count || 0}
                     </Button>
                     <Button variant="ghost" size="sm" className="flex-1" onClick={() => openComments(post.id)}>
                         <MessageCircle className="w-5 h-5 mr-2" /> {post.comments_count || 0}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleRepost(post)}>
+                        <Repeat className="w-5 h-5 mr-2" /> Repost
                     </Button>
                     <Button variant="ghost" size="sm" className="flex-1" onClick={() => setSharePost(post)}>
                         <Share2 className="w-5 h-5 mr-2" /> Share
@@ -760,6 +819,18 @@ const SocialFeed = () => {
             </DialogFooter>
           </div>
         </DialogContent>
+      </Dialog>
+
+      {/* Edit Post Dialog */}
+      <Dialog open={!!editingPost} onOpenChange={() => setEditingPost(null)}>
+          <DialogContent>
+              <DialogHeader><DialogTitle>Edit Post</DialogTitle></DialogHeader>
+              <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} />
+              <DialogFooter>
+                  <Button variant="outline" onClick={() => setEditingPost(null)}>Cancel</Button>
+                  <Button onClick={submitEditPost}>Save Changes</Button>
+              </DialogFooter>
+          </DialogContent>
       </Dialog>
 
       {/* Story Viewer */}
@@ -807,6 +878,13 @@ const SocialFeed = () => {
               </ScrollArea>
           </DialogContent>
       </Dialog>
+
+      {/* Profile Preview */}
+      <FriendProfilePreview 
+        profile={previewProfile}
+        open={!!previewProfile}
+        onClose={() => setPreviewProfile(null)}
+      />
     </div>
   );
 };
