@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Heart, MessageCircle, Share2, MapPin, Calendar, Users, Plus, 
-  Image as ImageIcon, Video, X, Loader2, MoreVertical, Trash2, Copy, Eye, Send
+  Image as ImageIcon, Video, X, Loader2, MoreVertical, Trash2, Copy, Eye, Send,
+  UserPlus, Check, Search
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +18,7 @@ import { toast } from 'sonner';
 import { formatDistanceToNow } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useNavigate } from 'react-router-dom';
 
 // --- TYPES ---
 interface Profile { id: string; display_name: string | null; avatar_url: string | null; }
@@ -36,21 +38,37 @@ interface Post {
   user_id: string;
   content: string;
   image_url?: string;
-  video_url?: string; // Derived from image_url if type is video
+  video_url?: string; 
   post_type: 'status' | 'image' | 'video' | 'event';
   likes_count: number;
   comments_count: number;
   created_at: string;
   profiles: { display_name: string; avatar_url: string; };
-  is_liked_by_user?: boolean; // For UI state
+  is_liked_by_user?: boolean;
 }
 
-// --- VERIFIED BADGE ---
-const VerifiedBadge = () => (
-  <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 ml-1" viewBox="0 0 22 22" fill="currentColor">
-    <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
-  </svg>
-);
+// --- SMART VERIFIED BADGE ---
+const VerifiedBadge = ({ userId }: { userId?: string }) => {
+  const [isPremium, setIsPremium] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    const checkStatus = async () => {
+        const { data: pf } = await supabase.from('premium_features').select('is_active').eq('user_id', userId).eq('is_active', true).gt('expires_at', new Date().toISOString()).maybeSingle();
+        const { data: sub } = await supabase.from('subscriptions').select('status').eq('user_id', userId).eq('status', 'active').maybeSingle();
+        if (pf || sub) setIsPremium(true);
+    };
+    checkStatus();
+  }, [userId]);
+
+  if (!isPremium) return null;
+
+  return (
+    <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 ml-1" viewBox="0 0 22 22" fill="currentColor">
+      <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
+    </svg>
+  );
+};
 
 // --- STORY VIEWER ---
 function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose: () => void; onStoryChange?: () => void }) {
@@ -58,18 +76,8 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
   const [stories, setStories] = useState<Story[]>([]);
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState("");
   const [incomingHearts, setIncomingHearts] = useState<{ id: number, left: number }[]>([]);
-
-  // Check premium status for badge
-  const { data: isVerified } = useQuery({
-    queryKey: ['story-author-premium', user.id],
-    queryFn: async () => {
-      const { data: pf } = await supabase.from('premium_features').select('is_active').eq('user_id', user.id).eq('is_active', true).gt('expires_at', new Date().toISOString()).maybeSingle();
-      const { data: sub } = await supabase.from('subscriptions').select('status').eq('user_id', user.id).eq('status', 'active').maybeSingle();
-      return !!pf || !!sub;
-    },
-    enabled: !!user.id
-  });
 
   useEffect(() => {
     const load = async () => {
@@ -123,10 +131,24 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
     else onClose();
   };
 
-  const handleLike = async () => {
+  const handleLike = () => {
     if (!current || !currentUser) return;
     setIncomingHearts(prev => [...prev, { id: Date.now(), left: 50 }]);
-    await supabase.from('story_likes').insert({ story_id: current.id, user_id: currentUser.id });
+    supabase.from('story_likes').insert({ story_id: current.id, user_id: currentUser.id });
+  };
+
+  const handleSendReply = async () => {
+    if(!msg.trim() || !currentUser) return;
+    // Send message via existing 'messages' table or a specific story reply function
+    // Assuming standard messages table
+    await supabase.from('messages').insert({
+        sender_id: currentUser.id,
+        receiver_id: user.id,
+        content: `Replied to story: ${msg}`,
+        // story_id: current.id // If you have this column
+    });
+    setMsg("");
+    toast.success("Reply sent");
   };
 
   const handleDeleteStory = async () => {
@@ -173,7 +195,7 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
             <div className="flex-1">
               <span className="text-white font-bold text-sm drop-shadow-md flex items-center gap-1">
                 {isMyStory ? 'Your Story' : user.display_name}
-                {isVerified && !isMyStory && <VerifiedBadge />}
+                <VerifiedBadge userId={user.id} />
               </span>
               <span className="text-white/70 text-xs block">{formatDistanceToNow(new Date(current.created_at), { addSuffix: true })}</span>
             </div>
@@ -217,7 +239,19 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
           {/* Controls */}
           {!isMyStory && (
             <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
-              <Button size="icon" variant="ghost" className="text-white rounded-full hover:bg-white/10" onClick={(e) => { e.stopPropagation(); handleLike(); }}>
+              <Input 
+                value={msg} 
+                onChange={(e) => setMsg(e.target.value)} 
+                placeholder="Reply..." 
+                className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0" 
+                onClick={(e) => e.stopPropagation()} 
+              />
+              {msg.trim().length > 0 && (
+                  <Button size="icon" className="bg-primary text-white rounded-full" onClick={handleSendReply}>
+                      <Send className="w-4 h-4" />
+                  </Button>
+              )}
+              <Button size="icon" variant="ghost" className="text-white rounded-full hover:bg-white/10 active:scale-125 transition-transform" onClick={(e) => { e.stopPropagation(); handleLike(); }}>
                 <Heart className="w-7 h-7" />
               </Button>
             </div>
@@ -240,11 +274,20 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
 // --- SOCIAL FEED COMPONENT ---
 const SocialFeed = () => {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [postText, setPostText] = useState('');
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Tagging
+  const [friends, setFriends] = useState<any[]>([]);
+  const [showTagList, setShowTagList] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
+  
+  // Connection State
+  const [myFriends, setMyFriends] = useState<string[]>([]);
+  const [sentRequests, setSentRequests] = useState<string[]>([]);
+
   // Story States
   const [storyUsers, setStoryUsers] = useState<ProfileWithStoryInner[]>([]);
   const [selectedStory, setSelectedStory] = useState<Profile | null>(null);
@@ -267,24 +310,45 @@ const SocialFeed = () => {
   const [commentText, setCommentText] = useState("");
   const [postComments, setPostComments] = useState<any[]>([]);
 
+  // Share Dialog State
+  const [sharePost, setSharePost] = useState<Post | null>(null);
+
   useEffect(() => {
     if (!user) return;
     fetchPosts();
     fetchStories();
+    fetchRelationships();
     
     supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle()
       .then(({ data }) => { if (data) setCurrentUserProfile(data); });
 
+    // Fetch friends for tagging
+    const fetchMyFriends = async () => {
+        const { data } = await supabase.from('friendships').select('requester_id, addressee_id').or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).eq('status', 'accepted');
+        if (data) {
+            const friendIds = data.map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id);
+            setMyFriends(friendIds);
+            const { data: profiles } = await supabase.from('profiles').select('user_id, display_name, avatar_url').in('user_id', friendIds);
+            setFriends(profiles || []);
+        }
+    };
+    fetchMyFriends();
+
     // Subscribe to realtime posts
     const channel = supabase.channel('social-feed')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'social_posts' }, (payload) => {
-         // Optionally refresh or prepend
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'social_posts' }, () => {
          fetchPosts(); 
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [user]);
+
+  const fetchRelationships = async () => {
+      if(!user) return;
+      const {data: reqs} = await supabase.from('friendships').select('addressee_id').eq('requester_id', user.id).eq('status', 'pending');
+      if(reqs) setSentRequests(reqs.map(r => r.addressee_id));
+  };
 
   // --- STORY FUNCTIONS ---
   const fetchStories = async () => {
@@ -352,11 +416,15 @@ const SocialFeed = () => {
   const fetchPosts = async () => {
     const { data: posts, error } = await supabase
       .from('social_posts')
-      .select(`*, profiles!social_posts_user_id_fkey(display_name, avatar_url)`)
+      .select(`*, profiles(display_name, avatar_url)`)
       .order('created_at', { ascending: false })
       .limit(30);
 
-    if (!error && posts) setFeedPosts(posts as Post[]);
+    if (error) {
+      console.error("Error fetching posts:", error);
+    } else if (posts) {
+      setFeedPosts(posts as Post[]);
+    }
     setLoading(false);
   };
 
@@ -366,6 +434,27 @@ const SocialFeed = () => {
       const type = file.type.startsWith('video') ? 'video' : 'image';
       setPostMedia({ file, url: URL.createObjectURL(file), type });
     }
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const val = e.target.value;
+      setPostText(val);
+      
+      // Tagging Logic
+      const lastWord = val.split(' ').pop();
+      if(lastWord && lastWord.startsWith('@')) {
+          setTagQuery(lastWord.substring(1));
+          setShowTagList(true);
+      } else {
+          setShowTagList(false);
+      }
+  };
+
+  const addTag = (username: string) => {
+      const words = postText.split(' ');
+      words.pop();
+      setPostText(words.join(' ') + ` @${username} `);
+      setShowTagList(false);
   };
 
   const handleCreatePost = async () => {
@@ -394,7 +483,7 @@ const SocialFeed = () => {
         user_id: user?.id,
         content: postText.trim(),
         post_type: postType,
-        image_url: publicUrl // Store video URL here too for simplicity or use a separate column if schema allows
+        image_url: publicUrl 
       });
 
       if (error) throw error;
@@ -418,39 +507,35 @@ const SocialFeed = () => {
     toast.success("Post deleted");
   };
 
-  // --- POST INTERACTIONS ---
-  const handleLikePost = async (postId: string) => {
-    // Optimistic UI update could be done here, but simpler to just call RPC or insert
-    // Assuming a 'post_likes' table exists. If not, just increment counter directly (less robust)
-    // Here we assume basic counter increment for simplicity unless robust table exists
-    // Ideally: await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
-    // Fallback simple increment:
-    const { error } = await supabase.rpc('increment_post_likes', { post_id: postId });
-    if (!error) {
-        setFeedPosts(prev => prev.map(p => p.id === postId ? { ...p, likes_count: (p.likes_count || 0) + 1 } : p));
-    }
+  const handleConnect = async (targetId: string) => {
+      await supabase.from('friendships').insert({ requester_id: user?.id, addressee_id: targetId });
+      setSentRequests(prev => [...prev, targetId]);
+      toast.success("Request sent");
   };
 
-  const handleSharePost = async (post: Post) => {
-    const shareData = {
-        title: `Post by ${post.profiles?.display_name}`,
-        text: post.content,
-        url: window.location.href // Or deep link to post
-    };
-    if (navigator.share) {
-        await navigator.share(shareData);
-    } else {
-        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}`);
-        toast.success("Copied to clipboard");
-    }
+  // --- POST INTERACTIONS ---
+  const handleLikePost = async (postId: string) => {
+    // Instant UI update
+    setFeedPosts(prev => prev.map(p => p.id === postId ? { ...p, likes_count: (p.likes_count || 0) + 1 } : p));
+    // DB Update
+    const { error } = await supabase.rpc('increment_post_likes', { post_id: postId });
+    if(error) console.error(error);
+  };
+
+  const handleShareToDM = async (friendId: string) => {
+      if(!sharePost || !user) return;
+      await supabase.from('messages').insert({
+          sender_id: user.id,
+          receiver_id: friendId,
+          content: `Shared a post: ${window.location.origin}/post/${sharePost.id}`, // or simply just the content preview
+      });
+      setSharePost(null);
+      toast.success("Sent to DM");
   };
 
   // --- COMMENTS LOGIC ---
   const openComments = async (postId: string) => {
     setActiveCommentPost(postId);
-    // Fetch comments
-    // Assuming 'post_comments' table: id, post_id, user_id, content, created_at
-    // If not exists, this part needs SQL setup. Assuming standard structure:
     const { data } = await supabase
         .from('post_comments')
         .select('*, profiles(display_name, avatar_url)')
@@ -462,6 +547,7 @@ const SocialFeed = () => {
   const submitComment = async () => {
     if (!activeCommentPost || !commentText.trim()) return;
     
+    // Optimistic UI could go here, but waiting for DB is safer for comments ordering
     const { error } = await supabase.from('post_comments').insert({
         post_id: activeCommentPost,
         user_id: user?.id,
@@ -470,14 +556,12 @@ const SocialFeed = () => {
 
     if (!error) {
         setCommentText("");
-        // Refresh comments
         const { data } = await supabase
             .from('post_comments')
             .select('*, profiles(display_name, avatar_url)')
             .eq('post_id', activeCommentPost)
             .order('created_at', { ascending: true });
         setPostComments(data || []);
-        // Update count in feed
         setFeedPosts(prev => prev.map(p => p.id === activeCommentPost ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p));
     }
   };
@@ -486,7 +570,7 @@ const SocialFeed = () => {
     <div className="min-h-screen bg-background pb-20">
       <div className="container-mobile py-4 space-y-4">
         
-        {/* STORY TRAY - REPLACED BANNER */}
+        {/* STORY TRAY */}
         <div className="w-full overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 pt-2">
           {storiesLoading ? (
             <div className="flex gap-4">
@@ -494,7 +578,6 @@ const SocialFeed = () => {
             </div>
           ) : (
             <div className="flex gap-4 items-start">
-              {/* My Story Bubble */}
               {(() => {
                 const myStory = storyUsers.find(u => u.id === user?.id);
                 return (
@@ -512,7 +595,6 @@ const SocialFeed = () => {
                 );
               })()}
               
-              {/* Friends Stories */}
               {storyUsers.filter(u => u.id !== user?.id).map(u => (
                 <div key={u.id} className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0" onClick={() => setSelectedStory(u)}>
                   <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-orange-500 to-purple-600">
@@ -532,7 +614,7 @@ const SocialFeed = () => {
         </div>
 
         {/* Create Post */}
-        <Card className="border-0 shadow-sm bg-card/50">
+        <Card className="border-0 shadow-sm bg-card/50 relative">
           <CardContent className="p-4 space-y-4">
             <div className="flex gap-3">
               <Avatar className="w-10 h-10">
@@ -540,12 +622,23 @@ const SocialFeed = () => {
                 <AvatarFallback>U</AvatarFallback>
               </Avatar>
               <Textarea
-                placeholder="What's on your mind?"
+                placeholder="What's on your mind? Type @ to tag friends"
                 value={postText}
-                onChange={(e) => setPostText(e.target.value)}
+                onChange={handleTextChange}
                 className="min-h-[80px] bg-transparent border-0 resize-none focus-visible:ring-0 p-0 text-base"
               />
             </div>
+            
+            {/* Tagging Dropdown */}
+            {showTagList && (
+                <div className="absolute top-16 left-14 bg-popover border shadow-md rounded-md z-10 w-48 max-h-40 overflow-y-auto">
+                    {friends.filter(f => f.display_name.toLowerCase().includes(tagQuery.toLowerCase())).map(f => (
+                        <div key={f.user_id} className="p-2 hover:bg-muted cursor-pointer text-sm flex items-center gap-2" onClick={() => addTag(f.display_name)}>
+                            <Avatar className="w-6 h-6"><AvatarImage src={f.avatar_url}/></Avatar> {f.display_name}
+                        </div>
+                    ))}
+                </div>
+            )}
             
             {postMedia && (
                 <div className="relative rounded-xl overflow-hidden bg-black/5">
@@ -590,9 +683,30 @@ const SocialFeed = () => {
                     <AvatarFallback>{post.profiles?.display_name?.[0]}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate">{post.profiles?.display_name}</p>
+                    <p className="font-semibold text-sm truncate flex items-center">
+                        {post.profiles?.display_name}
+                        <VerifiedBadge userId={post.user_id} />
+                    </p>
                     <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</p>
                   </div>
+                  
+                  {/* Connect / Message Button */}
+                  {post.user_id !== user?.id && (
+                      myFriends.includes(post.user_id) ? (
+                          <Button size="sm" variant="ghost" className="text-blue-600 h-8" onClick={() => navigate(`/app/messages?userId=${post.user_id}`)}>
+                              <MessageCircle className="w-4 h-4 mr-1" /> Message
+                          </Button>
+                      ) : sentRequests.includes(post.user_id) ? (
+                          <Button size="sm" variant="ghost" disabled className="text-muted-foreground h-8">
+                              <Check className="w-4 h-4 mr-1" /> Sent
+                          </Button>
+                      ) : (
+                          <Button size="sm" variant="outline" className="h-8" onClick={() => handleConnect(post.user_id)}>
+                              <UserPlus className="w-4 h-4 mr-1" /> Connect
+                          </Button>
+                      )
+                  )}
+
                   {post.user_id === user?.id && (
                     <DropdownMenu>
                         <DropdownMenuTrigger><MoreVertical className="w-5 h-5 text-muted-foreground" /></DropdownMenuTrigger>
@@ -616,12 +730,12 @@ const SocialFeed = () => {
                 </CardContent>
                 <CardFooter className="p-2 border-t flex justify-between">
                     <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleLikePost(post.id)}>
-                        <Heart className="w-5 h-5 mr-2" /> {post.likes_count || 0}
+                        <Heart className={`w-5 h-5 mr-2 ${post.is_liked_by_user ? 'text-red-500 fill-red-500' : ''}`} /> {post.likes_count || 0}
                     </Button>
                     <Button variant="ghost" size="sm" className="flex-1" onClick={() => openComments(post.id)}>
                         <MessageCircle className="w-5 h-5 mr-2" /> {post.comments_count || 0}
                     </Button>
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleSharePost(post)}>
+                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => setSharePost(post)}>
                         <Share2 className="w-5 h-5 mr-2" /> Share
                     </Button>
                 </CardFooter>
@@ -673,6 +787,25 @@ const SocialFeed = () => {
                 <Button size="icon" onClick={submitComment}><Send className="w-4 h-4" /></Button>
             </div>
         </DialogContent>
+      </Dialog>
+
+      {/* Share Dialog */}
+      <Dialog open={!!sharePost} onOpenChange={() => setSharePost(null)}>
+          <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>Share to...</DialogTitle></DialogHeader>
+              <ScrollArea className="h-60">
+                  {friends.map(f => (
+                      <div key={f.user_id} className="flex items-center justify-between p-3 hover:bg-muted rounded-lg cursor-pointer" onClick={() => handleShareToDM(f.user_id)}>
+                          <div className="flex items-center gap-3">
+                              <Avatar><AvatarImage src={f.avatar_url}/></Avatar>
+                              <span>{f.display_name}</span>
+                          </div>
+                          <Send className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                  ))}
+                  {friends.length === 0 && <p className="text-center text-muted-foreground py-4">No friends found.</p>}
+              </ScrollArea>
+          </DialogContent>
       </Dialog>
     </div>
   );
