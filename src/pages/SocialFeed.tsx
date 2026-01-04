@@ -458,7 +458,7 @@ const SocialFeed = () => {
       setShowTagList(false);
   };
 
-  // ✅ FIXED: Location Resolution
+  // ✅ FIXED: Location Resolution & Error Handling
   const getLocation = () => {
       if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
@@ -469,7 +469,6 @@ const SocialFeed = () => {
                       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
                       const data = await response.json();
                       
-                      // Construct a readable location string
                       const address = data.address;
                       const city = address.city || address.town || address.village || address.hamlet;
                       const country = address.country;
@@ -479,7 +478,6 @@ const SocialFeed = () => {
                       toast.success("Location added");
                   } catch (error) {
                       console.error("Geocoding error:", error);
-                      // Fallback
                       setLocationData(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
                       toast.success("Location coordinates added");
                   }
@@ -724,24 +722,24 @@ const SocialFeed = () => {
                 </div>
             )}
 
-            <div className="flex items-center justify-between pt-2 border-t flex-wrap gap-y-2">
-              <div className="flex gap-2 items-center overflow-hidden">
+            {/* ✅ FIXED: Layout to prevent overflow */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex gap-1 items-center">
                 <input type="file" ref={postFileInputRef} className="hidden" accept="image/*,video/*" onChange={handlePostMediaSelect} />
-                <Button variant="ghost" size="sm" className="text-muted-foreground shrink-0" onClick={() => postFileInputRef.current?.click()}>
+                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => postFileInputRef.current?.click()}>
                     <ImageIcon className="w-5 h-5 mr-2 text-green-500" /> Photo/Video
                 </Button>
-                {/* ✅ FIXED: Location Button with Truncation */}
+                {/* Compact Location Button */}
                 <Button 
                     variant="ghost" 
                     size="sm" 
-                    className={`shrink-0 truncate max-w-[150px] ${locationData ? "text-blue-500" : "text-muted-foreground"}`} 
+                    className={locationData ? "text-blue-500" : "text-muted-foreground"} 
                     onClick={getLocation}
                 >
-                    <MapPin className="w-5 h-5 mr-2" /> 
-                    {locationData ? locationData : "Location"}
+                    <MapPin className="w-5 h-5" /> 
                 </Button>
               </div>
-              <Button size="sm" className="bg-primary text-white rounded-full px-6 shrink-0" onClick={handleCreatePost} disabled={uploadingPost}>
+              <Button size="sm" className="bg-primary text-white rounded-full px-6" onClick={handleCreatePost} disabled={uploadingPost}>
                 {uploadingPost ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post'}
               </Button>
             </div>
