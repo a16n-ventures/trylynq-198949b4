@@ -5,8 +5,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Heart, MessageCircle, Share2, MapPin, Calendar, Users, Plus, 
   Image as ImageIcon, Video, X, Loader2, MoreVertical, Trash2, Edit2, Repeat, Send,
@@ -15,7 +15,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useNavigate } from 'react-router-dom';
@@ -377,8 +377,6 @@ const SocialFeed = () => {
 
   const fetchPosts = async () => {
     // Requires a 'post_likes' table for accurate is_liked_by_user logic
-    // We try to join post_likes to check if the current user liked it
-    // If post_likes table is missing, this might fail or return partial data
     const { data: posts, error } = await supabase
       .from('social_posts')
       .select(`
@@ -460,12 +458,39 @@ const SocialFeed = () => {
       setShowTagList(false);
   };
 
+  // ✅ FIXED: Location Resolution
   const getLocation = () => {
       if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
-              (pos) => setLocationData(`${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`),
-              (err) => toast.error("Could not get location")
+              async (pos) => {
+                  const { latitude, longitude } = pos.coords;
+                  try {
+                      // Reverse Geocoding using Nominatim (OpenStreetMap)
+                      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                      const data = await response.json();
+                      
+                      // Construct a readable location string
+                      const address = data.address;
+                      const city = address.city || address.town || address.village || address.hamlet;
+                      const country = address.country;
+                      const locationName = city && country ? `${city}, ${country}` : data.display_name.split(',')[0]; 
+                      
+                      setLocationData(locationName);
+                      toast.success("Location added");
+                  } catch (error) {
+                      console.error("Geocoding error:", error);
+                      // Fallback
+                      setLocationData(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+                      toast.success("Location coordinates added");
+                  }
+              },
+              (err) => {
+                  console.error(err);
+                  toast.error("Could not get location");
+              }
           );
+      } else {
+          toast.error("Geolocation not supported");
       }
   };
 
@@ -699,17 +724,24 @@ const SocialFeed = () => {
                 </div>
             )}
 
-            <div className="flex items-center justify-between pt-2 border-t">
-              <div className="flex gap-2">
+            <div className="flex items-center justify-between pt-2 border-t flex-wrap gap-y-2">
+              <div className="flex gap-2 items-center overflow-hidden">
                 <input type="file" ref={postFileInputRef} className="hidden" accept="image/*,video/*" onChange={handlePostMediaSelect} />
-                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => postFileInputRef.current?.click()}>
+                <Button variant="ghost" size="sm" className="text-muted-foreground shrink-0" onClick={() => postFileInputRef.current?.click()}>
                     <ImageIcon className="w-5 h-5 mr-2 text-green-500" /> Photo/Video
                 </Button>
-                <Button variant="ghost" size="sm" className={locationData ? "text-blue-500" : "text-muted-foreground"} onClick={getLocation}>
-                    <MapPin className="w-5 h-5 mr-2" /> {locationData ? "Location Added" : "Location"}
+                {/* ✅ FIXED: Location Button with Truncation */}
+                <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className={`shrink-0 truncate max-w-[150px] ${locationData ? "text-blue-500" : "text-muted-foreground"}`} 
+                    onClick={getLocation}
+                >
+                    <MapPin className="w-5 h-5 mr-2" /> 
+                    {locationData ? locationData : "Location"}
                 </Button>
               </div>
-              <Button size="sm" className="bg-primary text-white rounded-full px-6" onClick={handleCreatePost} disabled={uploadingPost}>
+              <Button size="sm" className="bg-primary text-white rounded-full px-6 shrink-0" onClick={handleCreatePost} disabled={uploadingPost}>
                 {uploadingPost ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post'}
               </Button>
             </div>
