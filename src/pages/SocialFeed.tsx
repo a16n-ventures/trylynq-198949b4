@@ -17,9 +17,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from "date-fns";
 import { useQuery } from '@tanstack/react-query';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useNavigate } from 'react-router-dom';
-import { FriendProfilePreview } from './FriendProfilePreview';
+import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 
 // --- TYPES ---
 interface Profile { id: string; display_name: string | null; avatar_url: string | null; user_id: string; }
