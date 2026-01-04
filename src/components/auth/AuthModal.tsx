@@ -8,6 +8,7 @@ import { Mail, Eye, EyeOff, Chrome, Lock, Loader2, ArrowRight, ArrowLeft, User, 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AuthModalProps {
   open: boolean;
@@ -20,7 +21,8 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1); // ✅ ADDED: Track registration step
+  const [step, setStep] = useState(1); 
+  const [resetView, setResetView] = useState(false); // ✅ ADDED: Track reset view state
   const [formData, setFormData] = useState({ 
     fullName: '',
     email: '', 
@@ -162,13 +164,33 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
     return null;
   };
 
+  // ✅ ADDED: Password Reset Handler
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.email) {
+      toast({ title: "Email Required", description: "Please enter your email address.", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
+        redirectTo: window.location.origin + '/reset-password',
+      });
+      if (error) throw error;
+      toast({ title: "Check your email", description: "Password reset link has been sent." });
+      setResetView(false);
+    } catch (error: any) {
+      toast({ title: "Reset Failed", description: error.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // ✅ ADDED: Multi-step validation logic
     if (mode === 'signup') {
       if (step === 1) {
-        // Step 1 Validation: Identity
         const nameError = validateFullName();
         if (nameError) return toast({ title: "Invalid Name", description: nameError, variant: "destructive" });
 
@@ -178,12 +200,10 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
         const usernameError = validateUsername();
         if (usernameError) return toast({ title: "Invalid Username", description: usernameError, variant: "destructive" });
 
-        // Move to step 2
         setStep(2);
         return;
       }
 
-      // Step 2 Validation: Security & Phone
       const phoneError = validatePhone();
       if (phoneError) return toast({ title: "Invalid Phone", description: phoneError, variant: "destructive" });
 
@@ -193,7 +213,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
       const confirmPasswordError = validateConfirmPassword();
       if (confirmPasswordError) return toast({ title: "Password Confirmation Error", description: confirmPasswordError, variant: "destructive" });
     } else {
-      // Login Validation
       const usernameOrPhoneError = validateUsernameOrPhone();
       if (usernameOrPhoneError) return toast({ title: "Missing Credentials", description: usernameOrPhoneError, variant: "destructive" });
 
@@ -221,7 +240,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
           description: "Check your email to verify your account.", 
           className: "bg-green-500 text-white border-0" 
         });
-        // Clear form
         setFormData({ fullName: '', email: '', username: '', phone: '', password: '', confirmPassword: '' });
         setStep(1);
       } else {
@@ -248,304 +266,348 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
   };
 
   return (
-    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) setStep(1); }}>
+    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) { setStep(1); setResetView(false); } }}>
       <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto overflow-y-auto border-0 shadow-2xl bg-background/95 backdrop-blur-xl p-8">
         <DialogHeader className="text-center space-y-2">
+          {/* ✅ UPDATED: Dynamic Title and Description */}
           <DialogTitle className="text-2xl font-bold tracking-tight">
-            {mode === 'login' ? 'Welcome Back' : `Create Account ${step === 1 ? '(1/2)' : '(2/2)'}`}
+            {resetView ? 'Reset Password' : mode === 'login' ? 'Welcome Back' : `Create Account ${step === 1 ? '(1/2)' : '(2/2)'}`}
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            {mode === 'login' ? 'Enter your details to access your account' : (
+            {resetView ? 'Enter your email to receive a reset link' : mode === 'login' ? 'Enter your details to access your account' : (
               step === 1 ? 'Start by telling us a bit about yourself' : 'Secure your account with a password'
             )}
           </p>
         </DialogHeader>
 
         <div className="space-y-6 mt-4">
-          {/* Social Auth - Show only on Step 1 or Login to save space */}
-          {(mode === 'login' || step === 1) && (
-            <>
-              <Button variant="outline" className="w-full h-11 font-medium hover:bg-muted/50" onClick={handleGoogle} disabled={loading}>
-                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Chrome className="w-4 h-4 mr-2" />}
-                Continue with Google
+          {resetView ? (
+            /* ✅ ADDED: Password Reset Form */
+            <form onSubmit={handleResetPassword} className="space-y-4 animate-in fade-in zoom-in-95">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Email Address</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    id="reset-email" 
+                    type="email" 
+                    placeholder="name@example.com" 
+                    className="pl-10 h-11 bg-muted/30"
+                    value={formData.email}
+                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                    disabled={loading}
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <Button type="submit" className="w-full h-11 gradient-primary text-white font-semibold shadow-md" disabled={loading}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send Reset Link"}
               </Button>
+              <Button 
+                type="button" 
+                variant="ghost" 
+                className="w-full" 
+                onClick={() => setResetView(false)}
+                disabled={loading}
+              >
+                Back to Login
+              </Button>
+            </form>
+          ) : (
+            <>
+              {/* Social Auth */}
+              {(mode === 'login' || step === 1) && (
+                <>
+                  <Button variant="outline" className="w-full h-11 font-medium hover:bg-muted/50" onClick={handleGoogle} disabled={loading}>
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Chrome className="w-4 h-4 mr-2" />}
+                    Continue with Google
+                  </Button>
 
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center"><Separator /></div>
-                <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or continue with</span></div>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center"><Separator /></div>
+                    <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or continue with</span></div>
+                  </div>
+                </>
+              )}
+
+              {/* Auth Form */}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                
+                {/* --- STEP 1: IDENTITY --- */}
+                {mode === 'signup' && step === 1 && (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-left-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="fullName">Full Name *</Label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          id="fullName"
+                          type="text" 
+                          placeholder="Barack Musa" 
+                          className="pl-10 h-11 bg-muted/30" 
+                          value={formData.fullName}
+                          onChange={(e) => handleNameChange(e.target.value)}
+                          disabled={loading}
+                          maxLength={50}
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email *</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          id="email"
+                          type="email" 
+                          placeholder="name@example.com" 
+                          className="pl-10 h-11 bg-muted/30" 
+                          value={formData.email}
+                          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                          disabled={loading}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="username">Username *</Label>
+                      <div className="relative">
+                        <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          id="username"
+                          type="text" 
+                          placeholder={autoGeneratedUsername || "username_1234"}
+                          className="pl-10 h-11 bg-muted/30" 
+                          value={formData.username}
+                          onChange={(e) => setFormData(prev => ({ 
+                            ...prev, 
+                            username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') 
+                          }))}
+                          disabled={loading}
+                          maxLength={30}
+                        />
+                      </div>
+                      {autoGeneratedUsername && !formData.username && (
+                        <p className="text-xs text-muted-foreground">
+                          Suggested: <span className="font-mono text-primary">{autoGeneratedUsername}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* --- STEP 2: CREDENTIALS --- */}
+                {mode === 'signup' && step === 2 && (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone Number *</Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          id="phone"
+                          type="tel" 
+                          placeholder="08012345678 or +2348012345678" 
+                          className="pl-10 h-11 bg-muted/30" 
+                          value={formData.phone}
+                          onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                          disabled={loading}
+                          maxLength={20}
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password *</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          id="password"
+                          type={showPassword ? "text" : "password"} 
+                          placeholder="••••••••" 
+                          className="pl-10 pr-10 h-11 bg-muted/30" 
+                          value={formData.password}
+                          onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                          disabled={loading}
+                          maxLength={72}
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => setShowPassword(!showPassword)} 
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      {formData.password && (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs">
+                            <div className={`h-1 flex-1 rounded-full transition-colors ${
+                              formData.password.length >= 6 && /[a-z]/.test(formData.password) && /[A-Z]/.test(formData.password) && /[0-9]/.test(formData.password)
+                                ? 'bg-green-500' 
+                                : formData.password.length >= 6 
+                                  ? 'bg-yellow-500' 
+                                  : 'bg-red-500'
+                            }`} />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Must contain: lowercase, uppercase, number (min. 6 chars)
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          id="confirmPassword"
+                          type={showConfirmPassword ? "text" : "password"} 
+                          placeholder="••••••••" 
+                          className="pl-10 pr-10 h-11 bg-muted/30" 
+                          value={formData.confirmPassword}
+                          onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                          disabled={loading}
+                          maxLength={72}
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)} 
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      {formData.confirmPassword && (
+                        <p className={`text-xs ${formData.password === formData.confirmPassword ? 'text-green-600' : 'text-red-600'}`}>
+                          {formData.password === formData.confirmPassword ? '✓ Passwords match' : '✗ Passwords do not match'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* --- LOGIN MODE --- */}
+                {mode === 'login' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="username">Username or Phone *</Label>
+                      <div className="relative">
+                        <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          id="username"
+                          type="text" 
+                          placeholder="username or phone"
+                          className="pl-10 h-11 bg-muted/30" 
+                          value={formData.username}
+                          onChange={(e) => setFormData(prev => ({ 
+                            ...prev, 
+                            username: e.target.value
+                          }))}
+                          disabled={loading}
+                          maxLength={30}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password *</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          id="password"
+                          type={showPassword ? "text" : "password"} 
+                          placeholder="••••••••" 
+                          className="pl-10 pr-10 h-11 bg-muted/30" 
+                          value={formData.password}
+                          onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                          disabled={loading}
+                          maxLength={72}
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => setShowPassword(!showPassword)} 
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* ✅ ADDED: Forgot Password Link */}
+                    <div className="flex justify-end">
+                      <button 
+                        type="button" 
+                        onClick={() => setResetView(true)}
+                        className="text-xs text-primary hover:underline font-medium"
+                        disabled={loading}
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex gap-2">
+                  {/* Back Button for Step 2 */}
+                  {mode === 'signup' && step === 2 && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      className="w-1/3 h-11" 
+                      onClick={() => setStep(1)} 
+                      disabled={loading}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                    </Button>
+                  )}
+
+                  {/* Submit / Next Button */}
+                  <Button 
+                    type="submit" 
+                    className={`h-11 gradient-primary text-white font-semibold shadow-md hover:shadow-lg transition-all ${mode === 'signup' && step === 2 ? 'w-2/3' : 'w-full'}`} 
+                    disabled={loading}
+                  >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                      <span className="flex items-center justify-center">
+                        {mode === 'login' 
+                          ? <>Sign In <ArrowRight className="w-4 h-4 ml-2" /></>
+                          : step === 1 
+                            ? <>Next Step <ArrowRight className="w-4 h-4 ml-2" /></>
+                            : <>Create Account <ArrowRight className="w-4 h-4 ml-2" /></>
+                        } 
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              </form>
+
+              {/* Footer Switch */}
+              <div className="text-center text-sm">
+                <span className="text-muted-foreground">
+                  {mode === 'login' ? "Don't have an account?" : "Already have an account?"}
+                </span>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    onModeChange(mode === 'login' ? 'signup' : 'login');
+                    setStep(1); 
+                    setResetView(false); // ✅ Reset on mode change
+                    setFormData({ fullName: '', email: '', username: '', phone: '', password: '', confirmPassword: '' });
+                  }}
+                  className="ml-2 font-semibold text-primary hover:underline"
+                  disabled={loading}
+                >
+                  {mode === 'login' ? 'Sign up' : 'Log in'}
+                </button>
               </div>
             </>
           )}
-
-          {/* Auth Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            
-            {/* --- STEP 1: IDENTITY --- */}
-            {mode === 'signup' && step === 1 && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-left-4">
-                {/* Full Name */}
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Full Name *</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      id="fullName"
-                      type="text" 
-                      placeholder="Barack Musa" 
-                      className="pl-10 h-11 bg-muted/30" 
-                      value={formData.fullName}
-                      onChange={(e) => handleNameChange(e.target.value)}
-                      disabled={loading}
-                      maxLength={50}
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                {/* Email */}
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      id="email"
-                      type="email" 
-                      placeholder="name@example.com" 
-                      className="pl-10 h-11 bg-muted/30" 
-                      value={formData.email}
-                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-
-                {/* Username */}
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username *</Label>
-                  <div className="relative">
-                    <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      id="username"
-                      type="text" 
-                      placeholder={autoGeneratedUsername || "username_1234"}
-                      className="pl-10 h-11 bg-muted/30" 
-                      value={formData.username}
-                      onChange={(e) => setFormData(prev => ({ 
-                        ...prev, 
-                        username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') 
-                      }))}
-                      disabled={loading}
-                      maxLength={30}
-                    />
-                  </div>
-                  {autoGeneratedUsername && !formData.username && (
-                    <p className="text-xs text-muted-foreground">
-                      Suggested: <span className="font-mono text-primary">{autoGeneratedUsername}</span>
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* --- STEP 2: CREDENTIALS --- */}
-            {mode === 'signup' && step === 2 && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
-                {/* Phone */}
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number *</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      id="phone"
-                      type="tel" 
-                      placeholder="08012345678 or +2348012345678" 
-                      className="pl-10 h-11 bg-muted/30" 
-                      value={formData.phone}
-                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                      disabled={loading}
-                      maxLength={20}
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                {/* Password */}
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password *</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      id="password"
-                      type={showPassword ? "text" : "password"} 
-                      placeholder="••••••••" 
-                      className="pl-10 pr-10 h-11 bg-muted/30" 
-                      value={formData.password}
-                      onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                      disabled={loading}
-                      maxLength={72}
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowPassword(!showPassword)} 
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {formData.password && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs">
-                        <div className={`h-1 flex-1 rounded-full transition-colors ${
-                          formData.password.length >= 6 && /[a-z]/.test(formData.password) && /[A-Z]/.test(formData.password) && /[0-9]/.test(formData.password)
-                            ? 'bg-green-500' 
-                            : formData.password.length >= 6 
-                              ? 'bg-yellow-500' 
-                              : 'bg-red-500'
-                        }`} />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Must contain: lowercase, uppercase, number (min. 6 chars)
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Confirm Password */}
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password *</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      id="confirmPassword"
-                      type={showConfirmPassword ? "text" : "password"} 
-                      placeholder="••••••••" 
-                      className="pl-10 pr-10 h-11 bg-muted/30" 
-                      value={formData.confirmPassword}
-                      onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                      disabled={loading}
-                      maxLength={72}
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)} 
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {formData.confirmPassword && (
-                    <p className={`text-xs ${formData.password === formData.confirmPassword ? 'text-green-600' : 'text-red-600'}`}>
-                      {formData.password === formData.confirmPassword ? '✓ Passwords match' : '✗ Passwords do not match'}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* --- LOGIN MODE --- */}
-            {mode === 'login' && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username or Phone *</Label>
-                  <div className="relative">
-                    <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      id="username"
-                      type="text" 
-                      placeholder="username or phone"
-                      className="pl-10 h-11 bg-muted/30" 
-                      value={formData.username}
-                      onChange={(e) => setFormData(prev => ({ 
-                        ...prev, 
-                        username: e.target.value
-                      }))}
-                      disabled={loading}
-                      maxLength={30}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password *</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      id="password"
-                      type={showPassword ? "text" : "password"} 
-                      placeholder="••••••••" 
-                      className="pl-10 pr-10 h-11 bg-muted/30" 
-                      value={formData.password}
-                      onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                      disabled={loading}
-                      maxLength={72}
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowPassword(!showPassword)} 
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className="flex gap-2">
-              {/* Back Button for Step 2 */}
-              {mode === 'signup' && step === 2 && (
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  className="w-1/3 h-11" 
-                  onClick={() => setStep(1)} 
-                  disabled={loading}
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                </Button>
-              )}
-
-              {/* Submit / Next Button */}
-              <Button 
-                type="submit" 
-                className={`h-11 gradient-primary text-white font-semibold shadow-md hover:shadow-lg transition-all ${mode === 'signup' && step === 2 ? 'w-2/3' : 'w-full'}`} 
-                disabled={loading}
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                  <span className="flex items-center justify-center">
-                    {mode === 'login' 
-                      ? <>Sign In <ArrowRight className="w-4 h-4 ml-2" /></>
-                      : step === 1 
-                        ? <>Next Step <ArrowRight className="w-4 h-4 ml-2" /></>
-                        : <>Create Account <ArrowRight className="w-4 h-4 ml-2" /></>
-                    } 
-                  </span>
-                )}
-              </Button>
-            </div>
-          </form>
-
-          {/* Footer Switch */}
-          <div className="text-center text-sm">
-            <span className="text-muted-foreground">
-              {mode === 'login' ? "Don't have an account?" : "Already have an account?"}
-            </span>
-            <button 
-              type="button"
-              onClick={() => {
-                onModeChange(mode === 'login' ? 'signup' : 'login');
-                setStep(1); // Reset step on mode switch
-                setFormData({ fullName: '', email: '', username: '', phone: '', password: '', confirmPassword: '' });
-              }}
-              className="ml-2 font-semibold text-primary hover:underline"
-              disabled={loading}
-            >
-              {mode === 'login' ? 'Sign up' : 'Log in'}
-            </button>
-          </div>
         </div>
       </DialogContent>
     </Dialog>
