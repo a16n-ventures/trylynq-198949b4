@@ -28,6 +28,7 @@ export default function Onboarding() {
             onComplete={() => {
               // Redirect to the Discover page with the 'foryou' tab active
               navigate('/app/socialfeed', { replace: true});
+            }}
           />
         </CardContent>
       </Card>
