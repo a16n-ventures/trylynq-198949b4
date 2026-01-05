@@ -1023,6 +1023,35 @@ export type Database = {
         }
         Relationships: []
       }
+      post_likes: {
+        Row: {
+          created_at: string | null
+          id: string
+          post_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          post_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          post_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       premium_features: {
         Row: {
           amount_paid: number | null
@@ -1232,49 +1261,52 @@ export type Database = {
       }
       social_posts: {
         Row: {
-          content: string
-          created_at: string
-          event_id: string | null
+          comments_count: number | null
+          content: string | null
+          created_at: string | null
           id: string
           image_url: string | null
           likes_count: number | null
-          updated_at: string
-          user_id: string
+          location: string | null
+          post_type: string | null
+          user_id: string | null
         }
         Insert: {
-          content: string
-          created_at?: string
-          event_id?: string | null
+          comments_count?: number | null
+          content?: string | null
+          created_at?: string | null
           id?: string
           image_url?: string | null
           likes_count?: number | null
-          updated_at?: string
-          user_id: string
+          location?: string | null
+          post_type?: string | null
+          user_id?: string | null
         }
         Update: {
-          content?: string
-          created_at?: string
-          event_id?: string | null
+          comments_count?: number | null
+          content?: string | null
+          created_at?: string | null
           id?: string
           image_url?: string | null
           likes_count?: number | null
-          updated_at?: string
-          user_id?: string
+          location?: string | null
+          post_type?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "social_posts_event_id_fkey"
-            columns: ["event_id"]
+            foreignKeyName: "social_posts_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "event_stats"
-            referencedColumns: ["event_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
           },
           {
-            foreignKeyName: "social_posts_event_id_fkey"
-            columns: ["event_id"]
+            foreignKeyName: "social_posts_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "events"
-            referencedColumns: ["id"]
+            referencedRelation: "public_profiles"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1384,6 +1416,7 @@ export type Database = {
           id: string
           media_type: string | null
           media_url: string | null
+          user_id: string | null
           view_count: number | null
         }
         Insert: {
@@ -1393,6 +1426,7 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          user_id?: string | null
           view_count?: number | null
         }
         Update: {
@@ -1402,6 +1436,7 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          user_id?: string | null
           view_count?: number | null
         }
         Relationships: []
@@ -1873,6 +1908,7 @@ export type Database = {
         Args: { event_id: string }
         Returns: undefined
       }
+      decrement_post_likes: { Args: { post_id: string }; Returns: undefined }
       deduct_from_wallet: {
         Args: { amount: number; user_id: string }
         Returns: undefined
@@ -1961,6 +1997,7 @@ export type Database = {
         Args: { event_id: string }
         Returns: undefined
       }
+      increment_post_likes: { Args: { post_id: string }; Returns: undefined }
       increment_story_view: {
         Args: { story_id: string; viewer_id: string }
         Returns: undefined

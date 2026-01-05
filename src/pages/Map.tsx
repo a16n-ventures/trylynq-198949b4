@@ -192,7 +192,8 @@ const { data: userProfile } = useQuery({
 
 // Extract discovery radius (in meters), default to 10km if not set
 const discoveryRadiusMeters = useMemo(() => {
-  const savedRadius = userProfile?.preferences?.discovery_radius;
+  const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
+  const savedRadius = prefs?.discovery_radius;
   return savedRadius ?? 10000; // Default 10km in meters
 }, [userProfile]);
 

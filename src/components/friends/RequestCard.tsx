@@ -35,12 +35,12 @@ export function RequestCard({
       <Avatar className="w-12 h-12 border border-border/50">
         <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
         <AvatarFallback className="bg-muted text-muted-foreground">
-          {profile.display_name?.[0]?.toUpperCase() || profile.username?.[0]?.toUpperCase() || 'U'}
+          {profile.display_name?.[0]?.toUpperCase() || 'U'}
         </AvatarFallback>
       </Avatar>
       
       <div className="flex-1 min-w-0 text-left">
-        <div className="font-semibold truncate">{profile.display_name || profile.username || 'Unknown User'}</div>
+        <div className="font-semibold truncate">{profile.display_name || 'Unknown User'}</div>
         <div className={`text-xs ${statusColor} font-medium flex items-center gap-1`}>
           <Clock className="w-3 h-3" /> Pending
         </div>

@@ -67,11 +67,11 @@ export const useContactImport = () => {
 
       if (!matchedUsers || !userContacts) return;
 
-      // Match contacts with users
+      // Match contacts with users by phone
       const matches = userContacts
         .map(contact => {
           const match = matchedUsers.find(
-            u => u.email === contact.email
+            u => u.email && contact.phone && u.email.includes(contact.phone.slice(-4))
           );
           return match ? { contact_id: contact.id, matched_user_id: match.user_id } : null;
         })

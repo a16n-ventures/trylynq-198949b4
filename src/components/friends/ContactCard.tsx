@@ -25,14 +25,14 @@ export function ContactCard({
     <div className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40">
       <Avatar className="w-12 h-12 border border-border/50">
         <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-          {contact.name[0]?.toUpperCase() || contact.username[0]?.toUpperCase() || 'C'}
+          {contact.name[0]?.toUpperCase() || 'C'}
         </AvatarFallback>
       </Avatar>
       
       <div className="flex-1 min-w-0 text-left">
         <div className="font-semibold truncate">{contact.name}</div>
         <div className="text-xs text-muted-foreground truncate">
-          {contact.username || contact.phone || 'No contact info'}
+          {contact.phone || contact.email || 'No contact info'}
         </div>
       </div>
       
@@ -43,7 +43,7 @@ export function ContactCard({
             variant="outline"
             className={`text-xs h-8 ${invitedRecently ? 'text-green-600 border-green-300' : ''}`}
             onClick={() => onInvite(contact)}
-            disabled={isInviting || (!contact.username && !contact.phone)}
+            disabled={isInviting || (!contact.email && !contact.phone)}
           >
             {isInviting ? (
               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
