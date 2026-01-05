@@ -414,7 +414,7 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
       setLoading(false);
     };
     load();
-  }, [user]);
+  }, [user.id]);
 
   const current = stories[index];
   const isMyStory = currentUser?.id === (user.user_id || user.id); 
@@ -734,7 +734,7 @@ const Feed = () => {
     const { data: comms } = await supabase.from('communities').select('*').limit(20);
     if (comms) setCommunities(comms);
 
-    const { data: evts } = await supabase.from('events').select('*').gt('start_date', new Date().toISOString()).order('start_date', { ascending: true }).limit(20);
+    const { data: evts } = await supabase.from('events').select('*').gt('start_date', new Date().toISOString()).order('start_date', { ascending: false }).limit(20);
     if (evts) setEvents(evts);
   };
 
@@ -971,26 +971,165 @@ const Feed = () => {
   // ✅ ADDED: Handlers for Modals
   const handleJoinCommunity = async (communityId: string) => {
     if (!user) return;
-    const { error } = await supabase.from('community_members').insert({ community_id: communityId, user_id: user.id, role: 'member' });
-    if (!error) {
-        await supabase.rpc('increment_community_members', { community_id: communityId });
-        toast.success("Joined community!");
-        // Refresh spotlight data to update UI
-        fetchSpotlightData();
-    } else {
-        toast.error("Failed to join");
+    try {
+      const { error } = await supabase.from('community_members').insert({
+        community_id: communityId,
+        user_id: user.id,
+        role: 'member'
+      });
+      if (error) throw error;
+      
+      await supabase.rpc('increment_community_members', { community_id: communityId });
+      toast.success("Joined community!");
+      
+      // Update both normal and smart lists
+      const updateList = (list: Community[]) => list.map(c => 
+        c.id === communityId 
+          ? { ...c, is_member: true, my_role: 'member', member_count: (c.member_count || 0) + 1 }
+          : c
+      );
+      
+      setCommunities(prev => updateList(prev));
+      setSmartCommunities(prev => updateList(prev));
+
+    } catch (e: any) {
+      toast.error(e.message || "Failed to join");
+    }
+  };
+
+  // Payment Logic
+  const FLUTTERWAVE_PUBLIC_KEY = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
+  const loadFlutterwaveScript = () => {
+    return new Promise<void>((resolve, reject) => {
+      if (document.getElementById('flutterwave-script')) { resolve(); return; }
+      const script = document.createElement('script');
+      script.id = 'flutterwave-script';
+      script.src = 'https://checkout.flutterwave.com/v3.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load Flutterwave script'));
+      document.body.appendChild(script);
+    });
+  };
+  
+  useEffect(() => {
+    if (!FLUTTERWAVE_PUBLIC_KEY) return;
+    loadFlutterwaveScript().then(() => setScriptLoaded(true)).catch(() => toast.error('Payment system unavailable'));
+  }, [FLUTTERWAVE_PUBLIC_KEY]);
+  
+  const initiateFlutterwavePayment = async (paymentData: any) => {
+    try {
+      if (!scriptLoaded || !FLUTTERWAVE_PUBLIC_KEY) throw new Error('Payment system not ready');
+      
+      const { error: transactionError } = await supabase.from('transactions').insert({
+        user_id: paymentData.user_id,
+        amount: paymentData.amount,
+        type: 'purchase',
+        status: 'pending',
+        description: `Event ticket: ${paymentData.event_title}`,
+        reference: paymentData.tx_ref,
+        related_id: paymentData.event_id
+      });
+      
+      if (transactionError) throw transactionError;
+  
+      const config = {
+        public_key: FLUTTERWAVE_PUBLIC_KEY,
+        tx_ref: paymentData.tx_ref,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        payment_options: "card, banktransfer, ussd",
+        customer: { email: paymentData.email, name: paymentData.name, phone_number: paymentData.phone || '' },
+        customizations: { title: "Event Ticket Purchase", description: paymentData.event_title, logo: "https://try.usecorridor.xyz/ahmia/logo.png" },
+        callback: async function(response: any) {
+          if (response.status === "successful" || response.status === "completed") {
+            const toastId = toast.loading("Confirming your ticket purchase...");
+            try {
+              const { error: verifyError } = await supabase.functions.invoke('verify-flutterwave-payment', {
+                body: { transaction_id: response.transaction_id, tx_ref: paymentData.tx_ref }
+              });
+              if (verifyError) throw verifyError;
+              
+              const { error: rsvpError } = await supabase.from('event_attendees').insert({
+                event_id: paymentData.event_id, user_id: paymentData.user_id, status: 'confirmed'
+              });
+              if (rsvpError) throw rsvpError;
+              
+              await supabase.rpc('increment_event_attendees', { event_id: paymentData.event_id });
+              await supabase.from('transactions').update({ status: 'completed', flutterwave_transaction_id: response.transaction_id }).eq('reference', paymentData.tx_ref);
+              
+              const updateEvents = (list: Event[]) => list.map(e => e.id === paymentData.event_id ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e);
+              setEvents(prev => updateEvents(prev));
+              setSmartEvents(prev => updateEvents(prev));
+
+              toast.success("Ticket purchased successfully! 🎉", { id: toastId });
+            } catch (error: any) {
+              toast.error("Payment received but confirmation failed. Contact support.", { id: toastId });
+              await supabase.from('transactions').update({ status: 'completed', flutterwave_transaction_id: response.transaction_id }).eq('reference', paymentData.tx_ref);
+            }
+          } else {
+            toast.error("Payment was not successful");
+            await supabase.from('transactions').update({ status: 'failed' }).eq('reference', paymentData.tx_ref);
+          }
+        },
+        onclose: function() {}
+      };
+  
+      if (window.FlutterwaveCheckout) window.FlutterwaveCheckout(config);
+      else throw new Error("Flutterwave checkout not available");
+      
+    } catch (error: any) {
+      toast.error(error.message || "Failed to initiate payment");
+      await supabase.from('transactions').update({ status: 'failed' }).eq('reference', paymentData.tx_ref);
+      throw error;
     }
   };
 
   const handleRSVP = async (eventId: string) => {
     if (!user) return;
-    const { error } = await supabase.from('event_attendees').insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
-    if (!error) {
-        await supabase.rpc('increment_event_attendees', { event_id: eventId });
-        toast.success("RSVP sent!");
-        fetchSpotlightData();
-    } else {
-        toast.error("Failed to RSVP");
+    try {
+      const event = events.find(e => e.id === eventId) || smartEvents.find(e => e.id === eventId);
+      
+      if (event?.is_attending) {
+        const { error } = await supabase.from('event_attendees').delete().match({ event_id: eventId, user_id: user.id });
+        if (error) throw error;
+        await supabase.rpc('decrement_event_attendees', { event_id: eventId });
+        toast.success("RSVP cancelled");
+        
+        const updateEvents = (list: Event[]) => list.map(e => e.id === eventId ? { ...e, is_attending: false, attendee_count: (e.attendee_count || 0) - 1 } : e);
+        setEvents(prev => updateEvents(prev));
+        setSmartEvents(prev => updateEvents(prev));
+      } else {
+        if (event?.price && event.price > 0) {
+          const { data: profile } = await supabase.from('profiles').select('email, display_name, phone').eq('user_id', user.id).single();
+          if (!profile) { toast.error("Unable to load your profile."); return; }
+          
+          const paymentData = {
+            amount: event.price,
+            currency: 'NGN',
+            email: profile.email || user.email || '',
+            name: profile.display_name || 'User',
+            phone: profile.phone || '',
+            tx_ref: `event_${eventId}_${Date.now()}`,
+            event_id: eventId,
+            event_title: event.title,
+            user_id: user.id
+          };
+          await initiateFlutterwavePayment(paymentData);
+          return;
+        } else {
+          const { error } = await supabase.from('event_attendees').insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
+          if (error) throw error;
+          await supabase.rpc('increment_event_attendees', { event_id: eventId });
+          toast.success("You're going! 🎉");
+          
+          const updateEvents = (list: Event[]) => list.map(e => e.id === eventId ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e);
+          setEvents(prev => updateEvents(prev));
+          setSmartEvents(prev => updateEvents(prev));
+        }
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to RSVP");
     }
   };
 
