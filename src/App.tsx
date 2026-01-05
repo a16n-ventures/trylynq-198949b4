@@ -12,7 +12,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import Onboarding from "./pages/Onboarding";
 import Discover from "./pages/Discover";
-import Home from "./pages/Home";
+import Feed from "./pages/Feed";
 import Map from "./pages/Map";
 import Messages from "./pages/Messages";
 import Friends from "./pages/Friends";
@@ -85,9 +85,9 @@ const App = () => {
                     <MainLayout />
                   </ProtectedRoute>
                 }>
-                  <Route index element={<SocialFeed />} />
+                  <Route index element={<Feed />} />
                   <Route path="discover" element={<Discover />} />
-                  <Route path="home" element={<Home />} />
+                  <Route path="feed" element={<Feed />} />
                   <Route path="friends" element={<Friends />} />
                   <Route path="map" element={<Map />} />
                   <Route path="messages" element={<Messages />} />
