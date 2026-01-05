@@ -5,19 +5,20 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Heart, MessageCircle, Share2, MapPin, Calendar, Users, Plus, 
   Image as ImageIcon, Video, X, Loader2, MoreVertical, Trash2, Edit2, Repeat, Send,
-  UserPlus, Check
+  UserPlus, Check, Search, SlidersHorizontal, Sparkles, Filter
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { formatDistanceToNow } from 'date-fns';
-import { useQuery } from '@tanstack/react-query';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { formatDistanceToNow } from "date-fns";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useNavigate } from 'react-router-dom';
 import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 
@@ -47,6 +48,9 @@ interface Post {
   profiles: { display_name: string; avatar_url: string; user_id: string; };
   is_liked_by_user?: boolean;
 }
+
+interface Community { id: string; name: string; description: string; avatar_url: string; member_count: number; }
+interface Event { id: string; title: string; start_date: string; location: string; image_url: string; }
 
 // --- SMART VERIFIED BADGE ---
 const VerifiedBadge = ({ userId }: { userId?: string }) => {
@@ -82,11 +86,13 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
 
   useEffect(() => {
     const load = async () => {
+      // Use the ID from the passed user object (which might be user_id or id depending on source)
+      const targetId = user.user_id || user.id; 
       const yesterday = new Date(Date.now() - 864e5).toISOString();
       const { data } = await supabase
         .from('stories')
         .select('*')
-        .eq('author_id', user.id) 
+        .eq('author_id', targetId) 
         .gte('created_at', yesterday)
         .order('created_at', { ascending: true });
       
@@ -98,10 +104,10 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
       setLoading(false);
     };
     load();
-  }, [user.id]);
+  }, [user]);
 
   const current = stories[index];
-  const isMyStory = currentUser?.id === user.id; 
+  const isMyStory = currentUser?.id === (user.user_id || user.id); 
   
   useEffect(() => {
     if (!current || !currentUser) return;
@@ -141,7 +147,7 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
     if(!msg.trim() || !currentUser) return;
     await supabase.from('messages').insert({
         sender_id: currentUser.id,
-        receiver_id: user.id,
+        receiver_id: user.user_id || user.id,
         content: `Replied to story: ${msg}`,
     });
     setMsg("");
@@ -177,6 +183,7 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
     <Dialog open={true} onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-md p-0 border-0 bg-transparent shadow-none gap-0 outline-none h-full sm:h-auto flex flex-col justify-center items-center">
         <div className="relative w-full h-full sm:h-[75vh] max-h-[800px] bg-black sm:rounded-2xl overflow-hidden flex flex-col border border-white/10 shadow-2xl">
+          {/* Progress Bar */}
           <div className="absolute top-0 w-full z-20 flex gap-1 p-2">
             {stories.map((_, i) => (
               <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm">
@@ -185,12 +192,13 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
             ))}
           </div>
           
+          {/* User Info */}
           <div className="absolute top-6 left-0 w-full p-4 z-20 flex items-center gap-3 bg-gradient-to-b from-black/60 to-transparent">
             <img src={user.avatar_url || '/default-avatar.png'} className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" />
             <div className="flex-1">
               <span className="text-white font-bold text-sm drop-shadow-md flex items-center gap-1">
                 {isMyStory ? 'Your Story' : user.display_name}
-                <VerifiedBadge userId={user.id} />
+                <VerifiedBadge userId={user.user_id || user.id} />
               </span>
               <span className="text-white/70 text-xs block">{formatDistanceToNow(new Date(current.created_at), { addSuffix: true })}</span>
             </div>
@@ -263,7 +271,7 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
 }
 
 // --- SOCIAL FEED COMPONENT ---
-const SocialFeed = () => {
+const Feed = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [postText, setPostText] = useState('');
@@ -310,11 +318,17 @@ const SocialFeed = () => {
   // Profile Preview
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
 
+  // Search & Spotlight States
+  const [searchQuery, setSearchQuery] = useState("");
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+
   useEffect(() => {
     if (!user) return;
     fetchPosts();
     fetchStories();
     fetchRelationships();
+    fetchSpotlightData(); // Fetch communities and events
     
     supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle()
       .then(({ data }) => { if (data) setCurrentUserProfile(data); });
@@ -376,7 +390,6 @@ const SocialFeed = () => {
   };
 
   const fetchPosts = async () => {
-    // Requires a 'post_likes' table for accurate is_liked_by_user logic
     const { data: posts, error } = await supabase
       .from('social_posts')
       .select(`
@@ -397,6 +410,16 @@ const SocialFeed = () => {
       setFeedPosts(formattedPosts as Post[]);
     }
     setLoading(false);
+  };
+
+  const fetchSpotlightData = async () => {
+    // Fetch Communities
+    const { data: comms } = await supabase.from('communities').select('*').limit(20);
+    if (comms) setCommunities(comms);
+
+    // Fetch Events
+    const { data: evts } = await supabase.from('events').select('*').gt('start_date', new Date().toISOString()).order('start_date', { ascending: true }).limit(20);
+    if (evts) setEvents(evts);
   };
 
   // --- HANDLERS ---
@@ -458,32 +481,26 @@ const SocialFeed = () => {
       setShowTagList(false);
   };
 
-  // ✅ FIXED: Location Resolution & Error Handling
   const getLocation = () => {
       if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
               async (pos) => {
                   const { latitude, longitude } = pos.coords;
                   try {
-                      // Reverse Geocoding using Nominatim (OpenStreetMap)
                       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
                       const data = await response.json();
-                      
                       const address = data.address;
                       const city = address.city || address.town || address.village || address.hamlet;
                       const country = address.country;
                       const locationName = city && country ? `${city}, ${country}` : data.display_name.split(',')[0]; 
-                      
                       setLocationData(locationName);
                       toast.success("Location added");
                   } catch (error) {
-                      console.error("Geocoding error:", error);
                       setLocationData(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
                       toast.success("Location coordinates added");
                   }
               },
               (err) => {
-                  console.error(err);
                   toast.error("Could not get location");
               }
           );
@@ -568,7 +585,6 @@ const SocialFeed = () => {
 
   const handleLikePost = async (post: Post) => {
     const isLiked = post.is_liked_by_user;
-    // Optimistic Update
     setFeedPosts(prev => prev.map(p => p.id === post.id ? { 
         ...p, 
         likes_count: isLiked ? p.likes_count - 1 : p.likes_count + 1,
@@ -632,10 +648,14 @@ const SocialFeed = () => {
             .eq('post_id', activeCommentPost)
             .order('created_at', { ascending: true });
         setPostComments(data || []);
-        // Also update the feed item locally
         setFeedPosts(prev => prev.map(p => p.id === activeCommentPost ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p));
     }
   };
+
+  // Filter content based on search query
+  const filteredPosts = feedPosts.filter(p => p.content.toLowerCase().includes(searchQuery.toLowerCase()) || p.profiles.display_name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredCommunities = communities.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredEvents = events.filter(e => e.title.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -650,7 +670,7 @@ const SocialFeed = () => {
           ) : (
             <div className="flex gap-4 items-start">
               {(() => {
-                const myStory = storyUsers.find(u => u.id === user?.id);
+                const myStory = storyUsers.find(u => u.user_id === user?.id || u.id === user?.id);
                 return (
                   <div 
                     className="flex flex-col items-center gap-2 flex-shrink-0 relative cursor-pointer group"
@@ -666,8 +686,8 @@ const SocialFeed = () => {
                 );
               })()}
               
-              {storyUsers.filter(u => u.id !== user?.id).map(u => (
-                <div key={u.id} className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0" onClick={() => setSelectedStory(u)}>
+              {storyUsers.filter(u => u.user_id !== user?.id && u.id !== user?.id).map(u => (
+                <div key={u.user_id} className="flex flex-col items-center gap-2 cursor-pointer flex-shrink-0" onClick={() => setSelectedStory(u)}>
                   <div className="w-16 h-16 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-orange-500 to-purple-600">
                     <img src={u.avatar_url || '/default-avatar.png'} className="w-full h-full rounded-full object-cover border-2 border-background" />
                   </div>
@@ -679,159 +699,232 @@ const SocialFeed = () => {
         </div>
 
         {/* Header Text */}
-        <div className="pb-2 border-b border-border/40">
+        <div className="pb-1">
           <h1 className="text-lg font-bold">Social Feed</h1>
           <p className="text-xs text-muted-foreground">What's happening around you</p>
         </div>
 
-        {/* Create Post */}
-        <Card className="border-0 shadow-sm bg-card/50 relative">
-          <CardContent className="p-4 space-y-4">
-            <div className="flex gap-3">
-              <Avatar className="w-10 h-10">
-                <AvatarImage src={currentUserProfile?.avatar_url || undefined} />
-                <AvatarFallback>U</AvatarFallback>
-              </Avatar>
-              <Textarea
-                placeholder="What's on your mind? Type @ to tag friends"
-                value={postText}
-                onChange={handleTextChange}
-                className="min-h-[80px] bg-transparent border-0 resize-none focus-visible:ring-0 p-0 text-base"
-              />
-            </div>
-            
-            {/* Tagging Dropdown */}
-            {showTagList && (
-                <div className="absolute top-16 left-14 bg-popover border shadow-md rounded-md z-10 w-48 max-h-40 overflow-y-auto">
-                    {friends.filter(f => f.display_name.toLowerCase().includes(tagQuery.toLowerCase())).map(f => (
-                        <div key={f.user_id} className="p-2 hover:bg-muted cursor-pointer text-sm flex items-center gap-2" onClick={() => addTag(f.display_name)}>
-                            <Avatar className="w-6 h-6"><AvatarImage src={f.avatar_url}/></Avatar> {f.display_name}
-                        </div>
-                    ))}
-                </div>
-            )}
-            
-            {postMedia && (
-                <div className="relative rounded-xl overflow-hidden bg-black/5">
-                    <button onClick={() => setPostMedia(null)} className="absolute top-2 right-2 bg-black/50 p-1 rounded-full text-white"><X className="w-4 h-4" /></button>
-                    {postMedia.type === 'video' ? (
-                        <video src={postMedia.url} controls className="max-h-60 w-full object-contain" />
-                    ) : (
-                        <img src={postMedia.url} className="max-h-60 w-full object-cover" />
-                    )}
-                </div>
-            )}
-
-            {/* ✅ FIXED: Layout to prevent overflow */}
-            <div className="flex items-center justify-between pt-2 border-t">
-              <div className="flex gap-1 items-center">
-                <input type="file" ref={postFileInputRef} className="hidden" accept="image/*,video/*" onChange={handlePostMediaSelect} />
-                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => postFileInputRef.current?.click()}>
-                    <ImageIcon className="w-5 h-5 mr-2 text-green-500" /> Photo/Video
-                </Button>
-                {/* Compact Location Button */}
-                <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className={locationData ? "text-blue-500" : "text-muted-foreground"} 
-                    onClick={getLocation}
-                >
-                    <MapPin className="w-5 h-5" /> 
-                </Button>
-              </div>
-              <Button size="sm" className="bg-primary text-white rounded-full px-6" onClick={handleCreatePost} disabled={uploadingPost}>
-                {uploadingPost ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Feed Posts */}
-        <div className="space-y-4">
-          {loading ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-          ) : feedPosts.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">No posts yet.</div>
-          ) : (
-            feedPosts.map((post) => (
-              <Card key={post.id} className="border-0 shadow-sm overflow-hidden">
-                <CardHeader className="p-4 flex flex-row items-start gap-3 space-y-0">
-                  <div className="cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
-                    <Avatar>
-                      <AvatarImage src={post.profiles?.avatar_url} />
-                      <AvatarFallback>{post.profiles?.display_name?.[0]}</AvatarFallback>
-                    </Avatar>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate flex items-center cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
-                        {post.profiles?.display_name}
-                        <VerifiedBadge userId={post.user_id} />
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
-                        {post.location && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {post.location}</span>}
-                    </div>
-                  </div>
-                  
-                  {/* Connect / Message Button */}
-                  {post.user_id !== user?.id && (
-                      myFriends.includes(post.user_id) ? (
-                          <Button size="sm" variant="ghost" className="text-blue-600 h-8" onClick={() => navigate(`/app/messages?userId=${post.user_id}`)}>
-                              <MessageCircle className="w-4 h-4 mr-1" /> Message
-                          </Button>
-                      ) : sentRequests.includes(post.user_id) ? (
-                          <Button size="sm" variant="ghost" disabled className="text-muted-foreground h-8">
-                              <Check className="w-4 h-4 mr-1" /> Sent
-                          </Button>
-                      ) : (
-                          <Button size="sm" variant="outline" className="h-8" onClick={() => handleConnect(post.user_id)}>
-                              <UserPlus className="w-4 h-4 mr-1" /> Connect
-                          </Button>
-                      )
-                  )}
-
-                  <DropdownMenu>
-                      <DropdownMenuTrigger><MoreVertical className="w-5 h-5 text-muted-foreground" /></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                          {post.user_id === user?.id && (
-                              <DropdownMenuItem onClick={() => openEditPost(post)}><Edit2 className="w-4 h-4 mr-2" /> Edit Post</DropdownMenuItem>
-                          )}
-                          {post.user_id === user?.id && (
-                              <DropdownMenuItem className="text-red-600" onClick={() => handleDeletePost(post.id)}><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
-                          )}
-                      </DropdownMenuContent>
-                  </DropdownMenu>
-                </CardHeader>
-                <CardContent className="p-4 pt-0 space-y-3">
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                  {post.image_url && (
-                    <div className="rounded-xl overflow-hidden bg-muted">
-                        {post.post_type === 'video' || post.image_url.includes('.mp4') || post.image_url.includes('.webm') ? (
-                            <video src={post.image_url} controls className="w-full max-h-[500px] object-contain" />
-                        ) : (
-                            <img src={post.image_url} alt="Post content" className="w-full h-auto object-cover" />
-                        )}
-                    </div>
-                  )}
-                </CardContent>
-                <CardFooter className="p-2 border-t flex justify-between">
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleLikePost(post)}>
-                        <Heart className={`w-5 h-5 mr-2 ${post.is_liked_by_user ? 'text-red-500 fill-red-500' : ''}`} /> {post.likes_count || 0}
-                    </Button>
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => openComments(post.id)}>
-                        <MessageCircle className="w-5 h-5 mr-2" /> {post.comments_count || 0}
-                    </Button>
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleRepost(post)}>
-                        <Repeat className="w-5 h-5 mr-2" /> Repost
-                    </Button>
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => setSharePost(post)}>
-                        <Share2 className="w-5 h-5 mr-2" /> Share
-                    </Button>
-                </CardFooter>
-              </Card>
-            ))
-          )}
+        {/* Search Bar */}
+        <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+                placeholder="Search posts, communities, events..." 
+                className="pl-9 pr-12 bg-muted/50 border-0 h-11 rounded-xl focus-visible:ring-1"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+            />
+            <Button size="icon" variant="ghost" className="absolute right-1 top-1 h-9 w-9 text-muted-foreground hover:text-primary">
+                <SlidersHorizontal className="w-4 h-4" />
+            </Button>
         </div>
+
+        {/* MAIN TABS */}
+        <Tabs defaultValue="feed" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 bg-muted/50 p-1 rounded-xl mb-4">
+                <TabsTrigger value="feed" className="rounded-lg">Feed</TabsTrigger>
+                <TabsTrigger value="spotlight" className="rounded-lg">Spotlight</TabsTrigger>
+            </TabsList>
+
+            {/* FEED CONTENT */}
+            <TabsContent value="feed" className="space-y-4">
+                {/* Create Post */}
+                <Card className="border-0 shadow-sm bg-card/50 relative">
+                  <CardContent className="p-4 space-y-4">
+                    <div className="flex gap-3">
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage src={currentUserProfile?.avatar_url || undefined} />
+                        <AvatarFallback>U</AvatarFallback>
+                      </Avatar>
+                      <Textarea
+                        placeholder="What's on your mind? Type @ to tag friends"
+                        value={postText}
+                        onChange={handleTextChange}
+                        className="min-h-[80px] bg-transparent border-0 resize-none focus-visible:ring-0 p-0 text-base"
+                      />
+                    </div>
+                    
+                    {/* Tagging Dropdown */}
+                    {showTagList && (
+                        <div className="absolute top-16 left-14 bg-popover border shadow-md rounded-md z-10 w-48 max-h-40 overflow-y-auto">
+                            {friends.filter(f => f.display_name.toLowerCase().includes(tagQuery.toLowerCase())).map(f => (
+                                <div key={f.user_id} className="p-2 hover:bg-muted cursor-pointer text-sm flex items-center gap-2" onClick={() => addTag(f.display_name)}>
+                                    <Avatar className="w-6 h-6"><AvatarImage src={f.avatar_url}/></Avatar> {f.display_name}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {postMedia && (
+                        <div className="relative rounded-xl overflow-hidden bg-black/5">
+                            <button onClick={() => setPostMedia(null)} className="absolute top-2 right-2 bg-black/50 p-1 rounded-full text-white"><X className="w-4 h-4" /></button>
+                            {postMedia.type === 'video' ? (
+                                <video src={postMedia.url} controls className="max-h-60 w-full object-contain" />
+                            ) : (
+                                <img src={postMedia.url} className="max-h-60 w-full object-cover" />
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="flex gap-1 items-center">
+                        <input type="file" ref={postFileInputRef} className="hidden" accept="image/*,video/*" onChange={handlePostMediaSelect} />
+                        <Button variant="ghost" size="sm" className="text-muted-foreground shrink-0" onClick={() => postFileInputRef.current?.click()}>
+                            <ImageIcon className="w-5 h-5 mr-2 text-green-500" /> Photo/Video
+                        </Button>
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className={`shrink-0 ${locationData ? "text-blue-500" : "text-muted-foreground"}`} 
+                            onClick={getLocation}
+                        >
+                            <MapPin className="w-5 h-5" /> 
+                        </Button>
+                      </div>
+                      <Button size="sm" className="bg-primary text-white rounded-full px-6 shrink-0" onClick={handleCreatePost} disabled={uploadingPost}>
+                        {uploadingPost ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Posts List */}
+                <div className="space-y-4">
+                  {loading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+                  ) : filteredPosts.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">No posts found.</div>
+                  ) : (
+                    filteredPosts.map((post) => (
+                      <Card key={post.id} className="border-0 shadow-sm overflow-hidden">
+                        <CardHeader className="p-4 flex flex-row items-start gap-3 space-y-0">
+                          <div className="cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
+                            <Avatar>
+                              <AvatarImage src={post.profiles?.avatar_url} />
+                              <AvatarFallback>{post.profiles?.display_name?.[0]}</AvatarFallback>
+                            </Avatar>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm truncate flex items-center cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
+                                {post.profiles?.display_name}
+                                <VerifiedBadge userId={post.user_id} />
+                            </p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
+                                {post.location && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {post.location}</span>}
+                            </div>
+                          </div>
+                          
+                          {post.user_id !== user?.id && (
+                              myFriends.includes(post.user_id) ? (
+                                  <Button size="sm" variant="ghost" className="text-blue-600 h-8" onClick={() => navigate(`/app/messages?userId=${post.user_id}`)}>
+                                      <MessageCircle className="w-4 h-4 mr-1" /> Message
+                                  </Button>
+                              ) : sentRequests.includes(post.user_id) ? (
+                                  <Button size="sm" variant="ghost" disabled className="text-muted-foreground h-8">
+                                      <Check className="w-4 h-4 mr-1" /> Sent
+                                  </Button>
+                              ) : (
+                                  <Button size="sm" variant="outline" className="h-8" onClick={() => handleConnect(post.user_id)}>
+                                      <UserPlus className="w-4 h-4 mr-1" /> Connect
+                                  </Button>
+                              )
+                          )}
+
+                          <DropdownMenu>
+                              <DropdownMenuTrigger><MoreVertical className="w-5 h-5 text-muted-foreground" /></DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                  {post.user_id === user?.id && (
+                                      <DropdownMenuItem onClick={() => openEditPost(post)}><Edit2 className="w-4 h-4 mr-2" /> Edit Post</DropdownMenuItem>
+                                  )}
+                                  {post.user_id === user?.id && (
+                                      <DropdownMenuItem className="text-red-600" onClick={() => handleDeletePost(post.id)}><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
+                                  )}
+                              </DropdownMenuContent>
+                          </DropdownMenu>
+                        </CardHeader>
+                        <CardContent className="p-4 pt-0 space-y-3">
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                          {post.image_url && (
+                            <div className="rounded-xl overflow-hidden bg-muted">
+                                {post.post_type === 'video' || post.image_url.includes('.mp4') || post.image_url.includes('.webm') ? (
+                                    <video src={post.image_url} controls className="w-full max-h-[500px] object-contain" />
+                                ) : (
+                                    <img src={post.image_url} alt="Post content" className="w-full h-auto object-cover" />
+                                )}
+                            </div>
+                          )}
+                        </CardContent>
+                        <CardFooter className="p-2 border-t flex justify-between">
+                            <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleLikePost(post)}>
+                                <Heart className={`w-5 h-5 mr-2 ${post.is_liked_by_user ? 'text-red-500 fill-red-500' : ''}`} /> {post.likes_count || 0}
+                            </Button>
+                            <Button variant="ghost" size="sm" className="flex-1" onClick={() => openComments(post.id)}>
+                                <MessageCircle className="w-5 h-5 mr-2" /> {post.comments_count || 0}
+                            </Button>
+                            <Button variant="ghost" size="sm" className="flex-1" onClick={() => handleRepost(post)}>
+                                <Repeat className="w-5 h-5 mr-2" /> Repost
+                            </Button>
+                            <Button variant="ghost" size="sm" className="flex-1" onClick={() => setSharePost(post)}>
+                                <Share2 className="w-5 h-5 mr-2" /> Share
+                            </Button>
+                        </CardFooter>
+                      </Card>
+                    ))
+                  )}
+                </div>
+            </TabsContent>
+
+            {/* SPOTLIGHT CONTENT */}
+            <TabsContent value="spotlight">
+                <Tabs defaultValue="communities" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 bg-transparent p-0 mb-4 gap-2">
+                        <TabsTrigger value="communities" className="rounded-full border border-border data-[state=active]:bg-primary data-[state=active]:text-white">Communities</TabsTrigger>
+                        <TabsTrigger value="events" className="rounded-full border border-border data-[state=active]:bg-primary data-[state=active]:text-white">Events</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="communities" className="space-y-4">
+                        {filteredCommunities.map(c => (
+                            <Card key={c.id} className="overflow-hidden border-border/60 hover:border-primary/50 transition-colors cursor-pointer" onClick={() => navigate(`/app/messages?tab=community`)}>
+                                <div className="flex items-center p-4 gap-4">
+                                    <Avatar className="h-14 w-14 rounded-xl">
+                                        <AvatarImage src={c.avatar_url} className="object-cover" />
+                                        <AvatarFallback>{c.name[0]}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="font-bold text-base truncate">{c.name}</h3>
+                                        <p className="text-sm text-muted-foreground line-clamp-1">{c.description}</p>
+                                        <div className="flex items-center gap-1 mt-1 text-xs text-primary font-medium">
+                                            <Users className="w-3 h-3" /> {c.member_count} members
+                                        </div>
+                                    </div>
+                                    <Button size="sm" variant="secondary" className="rounded-full">View</Button>
+                                </div>
+                            </Card>
+                        ))}
+                    </TabsContent>
+
+                    <TabsContent value="events" className="space-y-4">
+                        {filteredEvents.map(e => (
+                            <Card key={e.id} className="overflow-hidden border-border/60 hover:border-primary/50 transition-colors">
+                                <div className="h-32 w-full bg-muted relative">
+                                    <img src={e.image_url} className="w-full h-full object-cover" />
+                                    <div className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">
+                                        {new Date(e.start_date).getDate()} {new Date(e.start_date).toLocaleString('default', { month: 'short' })}
+                                    </div>
+                                </div>
+                                <div className="p-4">
+                                    <h3 className="font-bold truncate">{e.title}</h3>
+                                    <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                                        <MapPin className="w-3 h-3" /> {e.location}
+                                    </p>
+                                    <Button className="w-full mt-3 rounded-full" size="sm" variant="outline">View Details</Button>
+                                </div>
+                            </Card>
+                        ))}
+                    </TabsContent>
+                </Tabs>
+            </TabsContent>
+        </Tabs>
       </div>
 
       {/* Story Upload Dialog */}
@@ -919,4 +1012,4 @@ const SocialFeed = () => {
   );
 };
 
-export default SocialFeed;
+export default Feed;
