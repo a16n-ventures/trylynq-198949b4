@@ -25,7 +25,7 @@ const MainLayout = () => {
 
   // Navigation Configuration
   const tabs = [
-    { id: 'discover', icon: Compass, label: 'Discover', path: '/app/home' },
+    { id: 'discover', icon: Compass, label: 'Discover', path: '/app/feed' },
     { id: 'friends', icon: Users, label: 'Friends', path: '/app/friends' },
     { id: 'map', icon: MapPin, label: 'Map', path: '/app/map' },
     { id: 'messages', icon: MessageSquare, label: 'Chats', path: '/app/messages' },
