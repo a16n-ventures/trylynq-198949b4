@@ -22,7 +22,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1); 
-  const [resetView, setResetView] = useState(false); // ✅ ADDED: Track reset view state
+  const [resetView, setResetView] = useState(false);
   const [formData, setFormData] = useState({ 
     fullName: '',
     email: '', 
@@ -164,19 +164,44 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
     return null;
   };
 
-  // ✅ ADDED: Password Reset Handler
+  // ✅ FIXED: NUCLEAR OPTION Password Reset Handler
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email) {
+    const email = formData.email.trim();
+
+    if (!email) {
       toast({ title: "Email Required", description: "Please enter your email address.", variant: "destructive" });
       return;
     }
+    
     setLoading(true);
+    
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
+      // 1. NUCLEAR CHECK: Verify user exists in public profiles first
+      // This bypasses the default Supabase security feature that hides user existence
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (!profile) {
+        toast({ 
+          title: "Account Not Found", 
+          description: "No account exists with this email address.", 
+          variant: "destructive" 
+        });
+        setLoading(false);
+        return; // STOP HERE
+      }
+
+      // 2. Only if profile exists, send the actual reset email
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/reset-password',
       });
+      
       if (error) throw error;
+      
       toast({ title: "Check your email", description: "Password reset link has been sent." });
       setResetView(false);
     } catch (error: any) {
@@ -269,7 +294,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
     <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) { setStep(1); setResetView(false); } }}>
       <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto overflow-y-auto border-0 shadow-2xl bg-background/95 backdrop-blur-xl p-8">
         <DialogHeader className="text-center space-y-2">
-          {/* ✅ UPDATED: Dynamic Title and Description */}
           <DialogTitle className="text-2xl font-bold tracking-tight">
             {resetView ? 'Reset Password' : mode === 'login' ? 'Welcome Back' : `Create Account ${step === 1 ? '(1/2)' : '(2/2)'}`}
           </DialogTitle>
@@ -282,7 +306,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
 
         <div className="space-y-6 mt-4">
           {resetView ? (
-            /* ✅ ADDED: Password Reset Form */
             <form onSubmit={handleResetPassword} className="space-y-4 animate-in fade-in zoom-in-95">
               <div className="space-y-2">
                 <Label htmlFor="reset-email">Email Address</Label>
@@ -315,7 +338,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
             </form>
           ) : (
             <>
-              {/* Social Auth */}
               {(mode === 'login' || step === 1) && (
                 <>
                   <Button variant="outline" className="w-full h-11 font-medium hover:bg-muted/50" onClick={handleGoogle} disabled={loading}>
@@ -330,10 +352,8 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                 </>
               )}
 
-              {/* Auth Form */}
               <form onSubmit={handleSubmit} className="space-y-4">
                 
-                {/* --- STEP 1: IDENTITY --- */}
                 {mode === 'signup' && step === 1 && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-left-4">
                     <div className="space-y-2">
@@ -397,7 +417,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                   </div>
                 )}
 
-                {/* --- STEP 2: CREDENTIALS --- */}
                 {mode === 'signup' && step === 2 && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
                     <div className="space-y-2">
@@ -491,7 +510,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                   </div>
                 )}
 
-                {/* --- LOGIN MODE --- */}
                 {mode === 'login' && (
                   <>
                     <div className="space-y-2">
@@ -539,7 +557,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                       </div>
                     </div>
 
-                    {/* ✅ ADDED: Forgot Password Link */}
                     <div className="flex justify-end">
                       <button 
                         type="button" 
@@ -554,7 +571,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                 )}
 
                 <div className="flex gap-2">
-                  {/* Back Button for Step 2 */}
                   {mode === 'signup' && step === 2 && (
                     <Button 
                       type="button" 
@@ -567,7 +583,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                     </Button>
                   )}
 
-                  {/* Submit / Next Button */}
                   <Button 
                     type="submit" 
                     className={`h-11 gradient-primary text-white font-semibold shadow-md hover:shadow-lg transition-all ${mode === 'signup' && step === 2 ? 'w-2/3' : 'w-full'}`} 
@@ -587,7 +602,6 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                 </div>
               </form>
 
-              {/* Footer Switch */}
               <div className="text-center text-sm">
                 <span className="text-muted-foreground">
                   {mode === 'login' ? "Don't have an account?" : "Already have an account?"}
@@ -597,7 +611,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
                   onClick={() => {
                     onModeChange(mode === 'login' ? 'signup' : 'login');
                     setStep(1); 
-                    setResetView(false); // ✅ Reset on mode change
+                    setResetView(false); 
                     setFormData({ fullName: '', email: '', username: '', phone: '', password: '', confirmPassword: '' });
                   }}
                   className="ml-2 font-semibold text-primary hover:underline"
