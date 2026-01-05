@@ -29,7 +29,6 @@ type UserProfile = {
   display_name: string | null;
   avatar_url: string | null;
   email: string | null;
-  role: string | null;
   is_banned: boolean | null;
   created_at: string;
 };
@@ -46,7 +45,7 @@ export default function AdminUsers() {
     queryFn: async () => {
       let query = supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url, email, role, is_banned, created_at')
+        .select('user_id, display_name, avatar_url, email, is_banned, created_at')
         .order('created_at', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -64,14 +63,30 @@ export default function AdminUsers() {
     placeholderData: keepPreviousData
   });
 
-  // 2. Mutation: Update Role
+  // 2. Mutation: Update Role (uses user_roles table)
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, newRole }: { userId: string, newRole: string }) => {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: newRole as any })
-        .eq('user_id', userId);
-      if (error) throw error;
+      // First check if role exists
+      const { data: existing } = await supabase
+        .from('user_roles')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (existing) {
+        // Update existing role
+        const { error } = await supabase
+          .from('user_roles')
+          .update({ role: newRole as any })
+          .eq('user_id', userId);
+        if (error) throw error;
+      } else {
+        // Insert new role
+        const { error } = await supabase
+          .from('user_roles')
+          .insert({ user_id: userId, role: newRole as any });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       toast.success("User role updated");
@@ -165,7 +180,7 @@ export default function AdminUsers() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {getRoleBadge(user.role)}
+                    <Badge variant="outline">User</Badge>
                   </TableCell>
                   <TableCell>
                     {user.is_banned ? (

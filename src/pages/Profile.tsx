@@ -41,7 +41,7 @@ interface ProfileData {
   display_name: string;
   username: string;
   email: string;
-  phone?: string; // Added phone field
+  phone?: string | number | null; // Allow both for DB compatibility
   bio: string;
   avatar_url: string;
   created_at: string;
@@ -215,7 +215,7 @@ const Profile = () => {
         fullName: profile.display_name || '',
         username: profile.username || '',
         email: profile.email || user?.email || '',
-        phone: profile.phone || ''
+        phone: profile.phone?.toString() || ''
       });
     }
   }, [profile, user?.email]);
@@ -1031,7 +1031,7 @@ const Profile = () => {
               <Switch 
                 checked={!!location?.is_sharing_location}
                 onCheckedChange={handleLocationToggle}
-                enabled={toggleLocationMutation.isPending || locationLoading}
+                disabled={toggleLocationMutation.isPending || locationLoading}
                 aria-label="Toggle location sharing"
               />
             </div>

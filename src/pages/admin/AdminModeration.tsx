@@ -43,9 +43,9 @@ const ContentPreview = ({ type, id }: { type: 'user' | 'event', id: string }) =>
     queryKey: ['content_preview', type, id],
     queryFn: async () => {
       if (type === 'user') {
-        const { data } = await supabase.from('profiles').select('avatar_url, display_name, bio, is_banned, role').eq('user_id', id).maybeSingle();
+        const { data } = await supabase.from('profiles').select('avatar_url, display_name, bio, is_banned').eq('user_id', id).maybeSingle();
         if (!data) return null;
-        return { ...data, _kind: 'user' as const };
+        return { ...data, _kind: 'user' as const, role: null };
       } else {
         const { data } = await supabase.from('events').select('title, location, description, image_url').eq('id', id).maybeSingle();
         if (!data) return null;

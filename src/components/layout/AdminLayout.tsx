@@ -32,7 +32,7 @@ export default function AdminLayout() {
       
       const { data: hasRole, error } = await supabase.rpc('has_role', { 
         _user_id: user.id, 
-        _role: 'super_admin' || 'admin' 
+        _role: 'admin' 
       });
 
       if (error) {

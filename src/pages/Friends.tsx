@@ -106,9 +106,10 @@ export default function Friends() {
   });
 
   const NEARBY_RADIUS_KM = useMemo(() => {
-    const savedRadius = userProfile?.preferences?.discovery_radius;
+    const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
+    const savedRadius = prefs?.discovery_radius;
     return savedRadius ? savedRadius / 1000 : 10;
-  }, [userProfile]); 
+  }, [userProfile]);
   
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, DEBOUNCE_DELAY);
@@ -204,31 +205,31 @@ export default function Friends() {
     return ids;
   }, [friends, userId]);
 
-  const contactUsernames = useMemo(() => 
+  const contactEmails = useMemo(() => 
     contacts
-      .map(c => c.username)
-      .filter((u): u is string => !!u), 
+      .map(c => c.email)
+      .filter((e): e is string => !!e), 
     [contacts]
   );
 
   const { data: contactProfiles } = useQuery({
-    queryKey: ['contact-profiles', contactUsernames],
+    queryKey: ['contact-profiles', contactEmails],
     queryFn: async () => {
-      if (contactUsernames.length === 0) return [];
+      if (contactEmails.length === 0) return [];
       const { data } = await supabase
         .from('profiles')
-        .select('user_id, username, display_name, avatar_url')
-        .in('username', contactUsernames);
+        .select('user_id, display_name, avatar_url, email')
+        .in('email', contactEmails);
       return data || [];
     },
-    enabled: contactUsernames.length > 0,
+    enabled: contactEmails.length > 0,
     staleTime: 300000 // 5 minutes
   });
 
   const registeredContactMap = useMemo(() => {
     const map = new Map<string, { user_id: string; avatar_url?: string; display_name?: string }>();
     contactProfiles?.forEach(p => {
-      if (p.username) map.set(p.username, { user_id: p.user_id, avatar_url: p.avatar_url || undefined, display_name: p.display_name || undefined });
+      if (p.email) map.set(p.email, { user_id: p.user_id, avatar_url: p.avatar_url || undefined, display_name: p.display_name || undefined });
     });
     return map;
   }, [contactProfiles]);
@@ -256,7 +257,7 @@ export default function Friends() {
     if (!contactProfiles || !contactFriendships) return counts;
 
     contactProfiles.forEach(p => {
-      if (!p.username) return;
+      if (!p.email) return;
       
       const theirFriendIds = new Set<string>();
       contactFriendships.forEach(f => {
@@ -269,7 +270,7 @@ export default function Friends() {
         if (myFriendIds.has(id)) mutual++;
       });
       
-      counts[p.username] = mutual;
+      counts[p.email] = mutual;
     });
     return counts;
   }, [contactProfiles, contactFriendships, myFriendIds]);
@@ -440,7 +441,8 @@ export default function Friends() {
     if (!debouncedSearch) return contacts;
     return contacts.filter(c => 
       c.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      c.username?.toLowerCase().includes(debouncedSearch.toLowerCase())
+      c.phone?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      c.email?.toLowerCase().includes(debouncedSearch.toLowerCase())
     );
   }, [contacts, debouncedSearch]);
 
@@ -650,9 +652,9 @@ export default function Friends() {
                   {filteredContacts.map(contact => {
                      const isDeleting = deleteContact.isPending;
                      
-                     // Check if contact is a registered user
-                     const registeredUser = contact.username ? registeredContactMap.get(contact.username) : null;
-                     const mutualCount = contact.username ? mutualCounts[contact.username] : 0;
+                     // Check if contact is a registered user by email
+                     const registeredUser = contact.email ? registeredContactMap.get(contact.email) : null;
+                     const mutualCount = contact.email ? mutualCounts[contact.email] : 0;
                      
                      return (
                       <Card key={contact.id}>
@@ -665,7 +667,7 @@ export default function Friends() {
                                 </Avatar>
                             ) : (
                                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                                    {contact.name?.[0]?.toUpperCase() || contact.username?.[0]?.toUpperCase()}
+                                    {contact.name?.[0]?.toUpperCase() || 'C'}
                                 </div>
                             )}
                             
@@ -675,7 +677,7 @@ export default function Friends() {
                                 {registeredUser && premiumStatus[registeredUser.user_id] && <VerifiedBadge />}
                               </div>
                               <p className="text-xs text-muted-foreground truncate mb-0.5">
-                                {contact.username ? `@${contact.username}` : contact.phone}
+                                {contact.phone || contact.email || 'No contact info'}
                               </p>
                               {mutualCount > 0 && (
                                 <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -836,7 +838,7 @@ export default function Friends() {
                           {isVerified && <VerifiedBadge />}
                         </div>
                         <p className="text-xs text-muted-foreground truncate">
-                          {friend?.username ? `@${friend.username}` : 'Friend'}
+                          {friend?.display_name || 'Friend'}
                         </p>
                       </div>
 

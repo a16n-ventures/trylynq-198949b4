@@ -1086,21 +1086,22 @@ export default function Discover() {
     try {
       if (!scriptLoaded || !FLUTTERWAVE_PUBLIC_KEY) throw new Error('Payment system not ready');
       
-      const { error: transactionError } = await supabase.from('transactions').insert({
+      const tx_ref = paymentData.tx_ref;
+      
+      // Record pending payment in payments table
+      const { error: paymentError } = await supabase.from('payments').insert({
         user_id: paymentData.user_id,
         amount: paymentData.amount,
-        type: 'purchase',
+        currency: paymentData.currency || 'NGN',
         status: 'pending',
-        description: `Event ticket: ${paymentData.event_title}`,
-        reference: paymentData.tx_ref,
-        related_id: paymentData.event_id
+        tx_ref: tx_ref
       });
       
-      if (transactionError) throw transactionError;
+      if (paymentError) throw paymentError;
   
       const config = {
         public_key: FLUTTERWAVE_PUBLIC_KEY,
-        tx_ref: paymentData.tx_ref,
+        tx_ref: tx_ref,
         amount: paymentData.amount,
         currency: paymentData.currency,
         payment_options: "card, banktransfer, ussd",
@@ -1111,7 +1112,7 @@ export default function Discover() {
             const toastId = toast.loading("Confirming your ticket purchase...");
             try {
               const { error: verifyError } = await supabase.functions.invoke('verify-flutterwave-payment', {
-                body: { transaction_id: response.transaction_id, tx_ref: paymentData.tx_ref }
+                body: { transaction_id: response.transaction_id, tx_ref: tx_ref }
               });
               if (verifyError) throw verifyError;
               
@@ -1121,7 +1122,7 @@ export default function Discover() {
               if (rsvpError) throw rsvpError;
               
               await supabase.rpc('increment_event_attendees', { event_id: paymentData.event_id });
-              await supabase.from('transactions').update({ status: 'completed', flutterwave_transaction_id: response.transaction_id }).eq('reference', paymentData.tx_ref);
+              await supabase.from('payments').update({ status: 'completed', flw_ref: response.transaction_id }).eq('tx_ref', tx_ref);
               
               const updateEvents = (list: Event[]) => list.map(e => e.id === paymentData.event_id ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e);
               setEvents(prev => updateEvents(prev));
@@ -1130,11 +1131,11 @@ export default function Discover() {
               toast.success("Ticket purchased successfully! 🎉", { id: toastId });
             } catch (error: any) {
               toast.error("Payment received but confirmation failed. Contact support.", { id: toastId });
-              await supabase.from('transactions').update({ status: 'completed', flutterwave_transaction_id: response.transaction_id }).eq('reference', paymentData.tx_ref);
+              await supabase.from('payments').update({ status: 'completed', flw_ref: response.transaction_id }).eq('tx_ref', tx_ref);
             }
           } else {
             toast.error("Payment was not successful");
-            await supabase.from('transactions').update({ status: 'failed' }).eq('reference', paymentData.tx_ref);
+            await supabase.from('payments').update({ status: 'failed' }).eq('tx_ref', tx_ref);
           }
         },
         onclose: function() {}
@@ -1145,7 +1146,6 @@ export default function Discover() {
       
     } catch (error: any) {
       toast.error(error.message || "Failed to initiate payment");
-      await supabase.from('transactions').update({ status: 'failed' }).eq('reference', paymentData.tx_ref);
       throw error;
     }
   };
