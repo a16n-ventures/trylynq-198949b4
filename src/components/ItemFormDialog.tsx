@@ -37,22 +37,22 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
 
   // Fetch only stores owned by the current user
   const { data: stores = [], isLoading: storesLoading } = useQuery({
-  queryKey: ['user_stores'],
-  queryFn: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    queryKey: ['user_stores'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
-    const { data, error } = await (supabase.from('stores') as any)
-      .select('*')
-      .eq('owner_id', user.id)  // ← FILTERS BY CURRENT USER
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    return data as Store[];
-  },
-  enabled: open // Only fetch when dialog is open
-});
+      const { data, error } = await (supabase.from('stores') as any)
+        .select('*')
+        .eq('owner_id', user.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data as Store[];
+    },
+    enabled: open // Only fetch when dialog is open
+  });
 
   const resetForm = () => {
     setItemForm({ store_id: '', name: '', description: '', image_url: '', price: 0, discount_percent: 0, delivery_mode: 'onsite', max_delivery_days: 3 });
@@ -102,7 +102,6 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
 
   const createItemMutation = useMutation({
     mutationFn: async (data: Partial<StoreItem>) => {
-      // Verify user owns the store before creating item
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -130,7 +129,6 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
 
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<StoreItem> }) => {
-      // Verify user owns the store before updating item
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -164,7 +162,6 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
       return;
     }
 
-    // Check if user has any stores
     if (stores.length === 0) {
       toast.error('You need to create a store first before adding items');
       return;
@@ -186,10 +183,8 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
   };
 
   const handleOpenChange = (isOpen: boolean) => {
-    if (isOpen && stores.length === 0) {
-      toast.error('You need to create a store first before adding items');
-      return;
-    }
+    // ✅ FIXED: Removed the premature stores.length check here.
+    // We let the dialog open first so useQuery can actually fetch the data.
     setOpen(isOpen);
     if (!isOpen) resetForm();
   };
@@ -203,8 +198,14 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
         <DialogHeader>
           <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
         </DialogHeader>
+        
         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-          {stores.length === 0 ? (
+          {/* ✅ ADDED: Loading state handling */}
+          {storesLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : stores.length === 0 ? (
             <div className="text-center py-6 text-muted-foreground">
               <p>You need to create a store first before adding items.</p>
             </div>
@@ -290,7 +291,9 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
             </>
           )}
         </div>
-        {stores.length > 0 && (
+        
+        {/* Only show Footer if not loading and stores exist */}
+        {!storesLoading && stores.length > 0 && (
           <DialogFooter>
             <Button onClick={handleSubmit} disabled={createItemMutation.isPending || updateItemMutation.isPending || uploading}>
               {(createItemMutation.isPending || updateItemMutation.isPending || uploading) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
