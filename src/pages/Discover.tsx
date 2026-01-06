@@ -1037,6 +1037,24 @@ export default function Discover() {
   const handleJoinCommunity = async (communityId: string) => {
     if (!user) return;
     try {
+      // Check if already a member
+      const { data: existing } = await supabase
+        .from('community_members')
+        .select('id')
+        .eq('community_id', communityId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (existing) {
+        toast.info("You're already a member of this community!");
+        const updateList = (list: Community[]) => list.map(c => 
+          c.id === communityId ? { ...c, is_member: true, my_role: 'member' } : c
+        );
+        setCommunities(prev => updateList(prev));
+        setSmartCommunities(prev => updateList(prev));
+        return;
+      }
+
       const { error } = await supabase.from('community_members').insert({
         community_id: communityId,
         user_id: user.id,
@@ -1155,13 +1173,22 @@ export default function Discover() {
     try {
       const event = events.find(e => e.id === eventId) || smartEvents.find(e => e.id === eventId);
       
-      if (event?.is_attending) {
+      // Check if already attending
+      const { data: existingRsvp } = await supabase
+        .from('event_attendees')
+        .select('id, status')
+        .eq('event_id', eventId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (event?.is_attending || existingRsvp) {
+        // Already attending - cancel RSVP
         const { error } = await supabase.from('event_attendees').delete().match({ event_id: eventId, user_id: user.id });
         if (error) throw error;
         await supabase.rpc('decrement_event_attendees', { event_id: eventId });
         toast.success("RSVP cancelled");
         
-        const updateEvents = (list: Event[]) => list.map(e => e.id === eventId ? { ...e, is_attending: false, attendee_count: (e.attendee_count || 0) - 1 } : e);
+        const updateEvents = (list: Event[]) => list.map(e => e.id === eventId ? { ...e, is_attending: false, attendee_count: Math.max((e.attendee_count || 0) - 1, 0) } : e);
         setEvents(prev => updateEvents(prev));
         setSmartEvents(prev => updateEvents(prev));
       } else {
