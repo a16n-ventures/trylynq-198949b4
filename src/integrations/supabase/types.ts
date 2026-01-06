@@ -1023,6 +1023,41 @@ export type Database = {
         }
         Relationships: []
       }
+      post_comments: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          post_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          post_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          post_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_comments_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_likes: {
         Row: {
           created_at: string | null
@@ -1908,6 +1943,7 @@ export type Database = {
         Args: { event_id: string }
         Returns: undefined
       }
+      decrement_post_comments: { Args: { post_id: string }; Returns: undefined }
       decrement_post_likes: { Args: { post_id: string }; Returns: undefined }
       deduct_from_wallet: {
         Args: { amount: number; user_id: string }
@@ -1997,6 +2033,7 @@ export type Database = {
         Args: { event_id: string }
         Returns: undefined
       }
+      increment_post_comments: { Args: { post_id: string }; Returns: undefined }
       increment_post_likes: { Args: { post_id: string }; Returns: undefined }
       increment_story_view: {
         Args: { story_id: string; viewer_id: string }

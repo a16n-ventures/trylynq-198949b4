@@ -733,11 +733,54 @@ const Feed = () => {
   };
 
   const fetchSpotlightData = async () => {
-    const { data: comms } = await supabase.from('communities').select('*').limit(20);
-    if (comms) setCommunities(comms.map(c => ({ ...c, avatar_url: c.cover_url || null })));
+    // Fetch communities sorted by latest created
+    const { data: comms } = await supabase
+      .from('communities')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (comms) {
+      // Check membership status
+      if (user) {
+        const { data: memberships } = await supabase
+          .from('community_members')
+          .select('community_id, role')
+          .eq('user_id', user.id);
+        
+        const membershipMap = new Map(memberships?.map(m => [m.community_id, m.role]) || []);
+        
+        setCommunities(comms.map(c => ({ 
+          ...c, 
+          avatar_url: c.cover_url || null,
+          is_member: membershipMap.has(c.id),
+          my_role: membershipMap.get(c.id) || null
+        })));
+      } else {
+        setCommunities(comms.map(c => ({ ...c, avatar_url: c.cover_url || null })));
+      }
+    }
 
-    const { data: evts } = await supabase.from('events').select('*').gt('start_date', new Date().toISOString()).order('start_date', { ascending: false }).limit(20);
-    if (evts) setEvents(evts);
+    // Fetch events sorted by latest created
+    const { data: evts } = await supabase
+      .from('events')
+      .select('*')
+      .gt('start_date', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(20);
+    
+    if (evts && user) {
+      const eventIds = evts.map(e => e.id);
+      const { data: rsvps } = await supabase
+        .from('event_attendees')
+        .select('event_id')
+        .eq('user_id', user.id)
+        .in('event_id', eventIds);
+      
+      const rsvpSet = new Set(rsvps?.map(r => r.event_id) || []);
+      setEvents(evts.map(e => ({ ...e, is_attending: rsvpSet.has(e.id) })));
+    } else if (evts) {
+      setEvents(evts);
+    }
   };
 
   // --- HANDLERS ---
@@ -941,21 +984,67 @@ const Feed = () => {
 
   const openComments = async (postId: string) => {
     setActiveCommentPost(postId);
-    // Note: post_comments table may need to be created - for now using toast
-    toast.info("Comments feature coming soon");
-    setPostComments([]);
+    const { data, error } = await supabase
+      .from('post_comments')
+      .select('*, profiles:user_id(display_name, avatar_url)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching comments:', error);
+      setPostComments([]);
+    } else {
+      setPostComments(data || []);
+    }
   };
 
   const submitComment = async () => {
-    if (!activeCommentPost || !commentText.trim()) return;
-    toast.info("Comments feature coming soon");
+    if (!activeCommentPost || !commentText.trim() || !user) return;
+    
+    const { data, error } = await supabase
+      .from('post_comments')
+      .insert({
+        post_id: activeCommentPost,
+        user_id: user.id,
+        content: commentText.trim()
+      })
+      .select('*, profiles:user_id(display_name, avatar_url)')
+      .single();
+    
+    if (error) {
+      toast.error('Failed to post comment');
+      return;
+    }
+    
+    await supabase.rpc('increment_post_comments', { post_id: activeCommentPost });
+    setPostComments(prev => [...prev, data]);
+    setFeedPosts(prev => prev.map(p => 
+      p.id === activeCommentPost ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p
+    ));
     setCommentText("");
+    toast.success("Comment posted!");
   };
 
   // ✅ ADDED: Handlers for Modals
   const handleJoinCommunity = async (communityId: string) => {
     if (!user) return;
     try {
+      // Check if already a member
+      const { data: existing } = await supabase
+        .from('community_members')
+        .select('id')
+        .eq('community_id', communityId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (existing) {
+        toast.info("You're already a member of this community!");
+        setCommunities(prev => prev.map(c => 
+          c.id === communityId ? { ...c, is_member: true, my_role: 'member' } : c
+        ));
+        return;
+      }
+
       const { error } = await supabase.from('community_members').insert({
         community_id: communityId,
         user_id: user.id,
@@ -966,15 +1055,11 @@ const Feed = () => {
       await supabase.rpc('increment_community_members', { community_id: communityId });
       toast.success("Joined community!");
       
-      // Update both normal and smart lists
-      const updateList = (list: Community[]) => list.map(c => 
+      setCommunities(prev => prev.map(c => 
         c.id === communityId 
           ? { ...c, is_member: true, my_role: 'member', member_count: (c.member_count || 0) + 1 }
           : c
-      );
-      
-      setCommunities(prev => updateList(prev));
-      setCommunities(prev => updateList(prev));
+      ));
 
     } catch (e: any) {
       toast.error(e.message || "Failed to join");
@@ -1074,15 +1159,22 @@ const Feed = () => {
     try {
       const event = events.find(e => e.id === eventId);
       
-      if (event?.is_attending) {
+      // Check if already attending
+      const { data: existingRsvp } = await supabase
+        .from('event_attendees')
+        .select('id, status')
+        .eq('event_id', eventId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (event?.is_attending || existingRsvp) {
+        // Already attending - cancel RSVP
         const { error } = await supabase.from('event_attendees').delete().match({ event_id: eventId, user_id: user.id });
         if (error) throw error;
         await supabase.rpc('decrement_event_attendees', { event_id: eventId });
         toast.success("RSVP cancelled");
         
-        const updateEvents = (list: Event[]) => list.map(e => e.id === eventId ? { ...e, is_attending: false, attendee_count: (e.attendee_count || 0) - 1 } : e);
-        setEvents(prev => updateEvents(prev));
-        setEvents(prev => updateEvents(prev));
+        setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: false, attendee_count: Math.max((e.attendee_count || 0) - 1, 0) } : e));
       } else {
         if (event?.price && event.price > 0) {
           const { data: profile } = await supabase.from('profiles').select('email, display_name, phone').eq('user_id', user.id).single();
@@ -1107,9 +1199,7 @@ const Feed = () => {
           await supabase.rpc('increment_event_attendees', { event_id: eventId });
           toast.success("You're going! 🎉");
           
-          const updateEvents = (list: Event[]) => list.map(e => e.id === eventId ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e);
-          setEvents(prev => updateEvents(prev));
-          setEvents(prev => updateEvents(prev));
+          setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e));
         }
       }
     } catch (e: any) {
