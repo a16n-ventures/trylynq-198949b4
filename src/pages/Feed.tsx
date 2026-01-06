@@ -635,6 +635,7 @@ const Feed = () => {
   const [commentText, setCommentText] = useState("");
   const [postComments, setPostComments] = useState<any[]>([]);
   const [sharePost, setSharePost] = useState<Post | null>(null);
+  const [replyingTo, setReplyingTo] = useState<{ id: string; name: string } | null>(null);
   
   // Profile Preview
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
@@ -984,6 +985,7 @@ const Feed = () => {
 
   const openComments = async (postId: string) => {
     setActiveCommentPost(postId);
+    setReplyingTo(null);
     const { data, error } = await supabase
       .from('post_comments')
       .select('*, profiles:user_id(display_name, avatar_url)')
@@ -1006,7 +1008,8 @@ const Feed = () => {
       .insert({
         post_id: activeCommentPost,
         user_id: user.id,
-        content: commentText.trim()
+        content: commentText.trim(),
+        parent_id: replyingTo?.id || null
       })
       .select('*, profiles:user_id(display_name, avatar_url)')
       .single();
@@ -1022,7 +1025,23 @@ const Feed = () => {
       p.id === activeCommentPost ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p
     ));
     setCommentText("");
+    setReplyingTo(null);
     toast.success("Comment posted!");
+  };
+
+  const handleReply = (commentId: string, authorName: string) => {
+    setReplyingTo({ id: commentId, name: authorName });
+  };
+
+  // Helper to organize comments into threads
+  const getThreadedComments = () => {
+    const topLevel = postComments.filter(c => !c.parent_id);
+    const replies = postComments.filter(c => c.parent_id);
+    
+    return topLevel.map(comment => ({
+      ...comment,
+      replies: replies.filter(r => r.parent_id === comment.id)
+    }));
   };
 
   // ✅ ADDED: Handlers for Modals
@@ -1513,25 +1532,73 @@ const Feed = () => {
       {selectedStory && <StoryViewer user={selectedStory} onClose={() => setSelectedStory(null)} onStoryChange={fetchStories} />}
 
       {/* Comments Dialog */}
-      <Dialog open={!!activeCommentPost} onOpenChange={() => setActiveCommentPost(null)}>
+      <Dialog open={!!activeCommentPost} onOpenChange={() => { setActiveCommentPost(null); setReplyingTo(null); }}>
         <DialogContent className="sm:max-w-[500px] h-[70vh] flex flex-col">
             <DialogHeader><DialogTitle>Comments</DialogTitle></DialogHeader>
             <ScrollArea className="flex-1 pr-4">
                 <div className="space-y-4">
-                    {postComments.length === 0 ? <p className="text-center text-muted-foreground py-10">No comments yet.</p> : postComments.map(c => (
-                        <div key={c.id} className="flex gap-3">
+                    {postComments.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-10">No comments yet.</p>
+                    ) : (
+                      getThreadedComments().map(c => (
+                        <div key={c.id} className="space-y-2">
+                          {/* Parent Comment */}
+                          <div className="flex gap-3">
                             <Avatar className="w-8 h-8"><AvatarImage src={c.profiles?.avatar_url} /><AvatarFallback>U</AvatarFallback></Avatar>
-                            <div className="bg-muted/50 p-3 rounded-xl rounded-tl-none flex-1">
+                            <div className="flex-1">
+                              <div className="bg-muted/50 p-3 rounded-xl rounded-tl-none">
                                 <p className="text-xs font-bold mb-1">{c.profiles?.display_name}</p>
                                 <p className="text-sm">{c.content}</p>
+                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-xs text-muted-foreground mt-1 h-6 px-2"
+                                onClick={() => handleReply(c.id, c.profiles?.display_name || 'User')}
+                              >
+                                Reply
+                              </Button>
                             </div>
+                          </div>
+                          {/* Replies */}
+                          {c.replies?.length > 0 && (
+                            <div className="ml-10 space-y-2 border-l-2 border-muted pl-3">
+                              {c.replies.map((reply: any) => (
+                                <div key={reply.id} className="flex gap-3">
+                                  <Avatar className="w-6 h-6"><AvatarImage src={reply.profiles?.avatar_url} /><AvatarFallback>U</AvatarFallback></Avatar>
+                                  <div className="flex-1">
+                                    <div className="bg-muted/30 p-2 rounded-lg rounded-tl-none">
+                                      <p className="text-xs font-bold mb-0.5">{reply.profiles?.display_name}</p>
+                                      <p className="text-sm">{reply.content}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                    ))}
+                      ))
+                    )}
                 </div>
             </ScrollArea>
-            <div className="flex gap-2 pt-2 border-t">
-                <Input placeholder="Write a comment..." value={commentText} onChange={e => setCommentText(e.target.value)} />
+            <div className="pt-2 border-t space-y-2">
+              {replyingTo && (
+                <div className="flex items-center justify-between bg-muted/50 px-3 py-1.5 rounded-lg text-sm">
+                  <span className="text-muted-foreground">Replying to <span className="font-medium text-foreground">{replyingTo.name}</span></span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setReplyingTo(null)}>
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input 
+                  placeholder={replyingTo ? `Reply to ${replyingTo.name}...` : "Write a comment..."} 
+                  value={commentText} 
+                  onChange={e => setCommentText(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && submitComment()}
+                />
                 <Button size="icon" onClick={submitComment}><Send className="w-4 h-4" /></Button>
+              </div>
             </div>
         </DialogContent>
       </Dialog>
