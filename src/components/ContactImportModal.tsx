@@ -110,15 +110,15 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
       await Promise.all(validContacts.map(async (contact) => {
         const conditions: string[] = [];
         
-        // 1. Check Name (Fuzzy)
-        if (contact.name) conditions.push(`display_name.ilike.%${contact.name.trim()}%`);
-        
-        // 2. Check Username (Exact)
+        // 1. Check Username (Exact)
         if (contact.username) conditions.push(`username.eq.${contact.username.trim()}`);
         
-        // 3. ✅ FIXED: Check Phone (Exact)
-        const cleanPhone = normalizePhone(contact.phone);
-        if (cleanPhone) conditions.push(`phone.eq.${cleanPhone}`);
+        // 2. ✅ FIXED: Check Phone (Last 9 Digits only)
+        const digits = contact.phone.replace(/\D/g, ''); // Remove non-digits
+        if (digits.length >= 9) {
+          const last9 = digits.slice(-9);
+          conditions.push(`phone.ilike.%${last9}`);
+        }
 
         let existingUser = null;
         
@@ -128,7 +128,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
             .from('profiles')
             .select('user_id, display_name, username, phone, avatar_url')
             .neq('user_id', user?.id)
-            .or(conditions.join(',')) // Checks Name OR Username OR Phone
+            .or(conditions.join(',')) // Checks Username OR Phone (Suffix)
             .limit(1)
             .maybeSingle();
 
@@ -170,7 +170,7 @@ export const ContactImportModal = ({ open, onOpenChange }: ContactImportModalPro
             .insert({
               user_id: user?.id,
               name: contact.name,
-              phone: cleanPhone || null,
+              phone: contact.phone || null,
               username: contact.username || null
             });
 
