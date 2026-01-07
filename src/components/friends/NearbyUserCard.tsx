@@ -77,7 +77,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
     return km < 1 ? `${Math.round(km * 1000)}m away` : `${km.toFixed(1)}km away`;
   };
 
-  const displayName = profile.display_name || profile.email || profile.username || `User${profile.user_id?.slice(-4) || ''}`;
+  const displayName = profile.display_name || profile.email || profile.username || `User${profile.user_id?.slice(4) || ''}`;
 
   return (
     <>
