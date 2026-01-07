@@ -22,6 +22,35 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
   const [mutuals, setMutuals] = useState<any[]>([]);
   const [showMutuals, setShowMutuals] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  
+  // ✅ ADDED: State to hold fetched profile details if props are missing
+  const [fetchedDetails, setFetchedDetails] = useState<{ display_name?: string; username?: string; avatar_url?: string } | null>(null);
+
+  // ✅ ADDED: Effect to fetch real user details if name is missing or generic
+  useEffect(() => {
+    // If we already have a good display name in props, don't fetch
+    if (profile.display_name && profile.display_name !== `User${profile.user_id?.slice(-4)}`) return;
+    
+    if (!profile.user_id) return;
+
+    const fetchRealProfileData = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('display_name, username, avatar_url')
+          .eq('user_id', profile.user_id)
+          .maybeSingle();
+
+        if (!error && data) {
+          setFetchedDetails(data);
+        }
+      } catch (err) {
+        console.error("Error fetching user details:", err);
+      }
+    };
+
+    fetchRealProfileData();
+  }, [profile.user_id, profile.display_name]);
 
   // Fetch mutual friends logic
   useEffect(() => {
@@ -55,7 +84,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         const mutualIds = [...myFriendIds].filter(id => theirFriendIds.has(id));
         setMutualsCount(mutualIds.length);
 
-        // 4. If expanded or count > 0, we can fetch details (lazy fetch on click is better, but fetching here for count display)
+        // 4. If expanded or count > 0, we can fetch details
         if (mutualIds.length > 0) {
           const { data: profiles } = await supabase
             .from('profiles')
@@ -77,7 +106,15 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
     return km < 1 ? `${Math.round(km * 1000)}m away` : `${km.toFixed(1)}km away`;
   };
 
-  const displayName = profile.display_name || profile.email || profile.username || `User${profile.user_id?.slice(4) || ''}`;
+  // ✅ UPDATED: Logic to prioritize fetched data over props, over generic fallback
+  const finalAvatar = fetchedDetails?.avatar_url || profile.avatar_url;
+  const finalDisplayName = 
+    fetchedDetails?.display_name || 
+    profile.display_name || 
+    fetchedDetails?.username || 
+    profile.username || 
+    profile.email || 
+    `User${profile.user_id?.slice(-4) || ''}`;
 
   return (
     <>
@@ -85,9 +122,9 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         {/* Clickable Avatar */}
         <div className="cursor-pointer" onClick={() => setShowProfile(true)}>
           <Avatar className="w-12 h-12 border border-border/50">
-            <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
+            <AvatarImage src={finalAvatar || undefined} className="object-cover" />
             <AvatarFallback className="bg-muted text-muted-foreground">
-              {displayName[0]?.toUpperCase() || 'U'}
+              {finalDisplayName[0]?.toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
         </div>
@@ -95,7 +132,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         <div className="flex-1 min-w-0 text-left">
           {/* Clickable Name */}
           <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setShowProfile(true)}>
-            <span className="font-semibold truncate group-hover:underline underline-offset-2">{displayName}</span>
+            <span className="font-semibold truncate group-hover:underline underline-offset-2">{finalDisplayName}</span>
             <PremiumBadge userId={profile.user_id} size="sm" />
           </div>
 
@@ -170,7 +207,6 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         profile={profile}
         open={showProfile}
         onClose={() => setShowProfile(false)}
-        // Pass dummy handlers or actual ones if you want actions inside the preview
         onRemoveFriend={() => {}} 
         onBlockUser={() => {}}
         onReportUser={() => {}}
