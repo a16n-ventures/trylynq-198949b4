@@ -368,6 +368,106 @@ function CommunityDetailModal({
   );
 }
 
+// --- COMMENT ITEM UI ---
+interface CommentItemUIProps {
+  comment: any;
+  currentUserId?: string;
+  isLiked: boolean;
+  postId: string;
+  onLike: (commentId: string) => void;
+  onReply: (commentId: string, authorName: string) => void;
+  onEdit: (commentId: string, newContent: string) => void;
+  onDelete: (commentId: string, postId: string) => void;
+  isReply: boolean;
+}
+
+function CommentItemUI({ comment, currentUserId, isLiked, postId, onLike, onReply, onEdit, onDelete, isReply }: CommentItemUIProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(comment.content);
+  
+  const isOwner = currentUserId === comment.user_id;
+  
+  const handleSaveEdit = () => {
+    if (editText.trim()) {
+      onEdit(comment.id, editText.trim());
+      setIsEditing(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-3 group">
+      <Avatar className={isReply ? "w-6 h-6" : "w-8 h-8"}>
+        <AvatarImage src={comment.profiles?.avatar_url} />
+        <AvatarFallback>U</AvatarFallback>
+      </Avatar>
+      <div className="flex-1">
+        <div className={`${isReply ? 'bg-muted/30 p-2 rounded-lg rounded-tl-none' : 'bg-muted/50 p-3 rounded-xl rounded-tl-none'} relative`}>
+          <div className="flex items-start justify-between gap-2">
+            <p className={`${isReply ? 'text-xs' : 'text-xs'} font-bold mb-1`}>{comment.profiles?.display_name}</p>
+            {isOwner && !isEditing && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <MoreVertical className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-32">
+                  <DropdownMenuItem onClick={() => { setIsEditing(true); setEditText(comment.content); }}>
+                    <Edit2 className="w-3 h-3 mr-2" /> Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onDelete(comment.id, postId)} className="text-destructive">
+                    <Trash2 className="w-3 h-3 mr-2" /> Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+          {isEditing ? (
+            <div className="space-y-2">
+              <Input 
+                value={editText} 
+                onChange={e => setEditText(e.target.value)} 
+                className="text-sm h-8"
+                onKeyDown={e => e.key === 'Enter' && handleSaveEdit()}
+              />
+              <div className="flex gap-1 justify-end">
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setIsEditing(false)}>Cancel</Button>
+                <Button size="sm" className="h-6 text-xs" onClick={handleSaveEdit}>Save</Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm">{comment.content}</p>
+          )}
+          {comment.updated_at && !isEditing && (
+            <span className="text-[10px] text-muted-foreground italic ml-1">(edited)</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-1">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className={`text-xs ${isReply ? 'h-5 px-1' : 'h-6 px-2'} ${isLiked ? 'text-red-500' : 'text-muted-foreground'}`}
+            onClick={() => onLike(comment.id)}
+          >
+            <Heart className={`w-3 h-3 mr-1 ${isLiked ? 'fill-red-500' : ''}`} />
+            {comment.likes_count || 0}
+          </Button>
+          {!isReply && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-xs text-muted-foreground h-6 px-2"
+              onClick={() => onReply(comment.id, comment.profiles?.display_name || 'User')}
+            >
+              Reply
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- STORY VIEWER ---
 function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose: () => void; onStoryChange?: () => void }) {
   const { user: currentUser } = useAuth();
@@ -1050,6 +1150,48 @@ const Feed = () => {
     setReplyingTo({ id: commentId, name: authorName });
   };
 
+  const handleEditComment = async (commentId: string, newContent: string) => {
+    if (!user || !newContent.trim()) return;
+    
+    const { error } = await supabase
+      .from('post_comments')
+      .update({ content: newContent.trim(), updated_at: new Date().toISOString() })
+      .eq('id', commentId)
+      .eq('user_id', user.id);
+    
+    if (error) {
+      toast.error('Failed to update comment');
+      return;
+    }
+    
+    setPostComments(prev => prev.map(c => 
+      c.id === commentId ? { ...c, content: newContent.trim(), updated_at: new Date().toISOString() } : c
+    ));
+    toast.success('Comment updated');
+  };
+
+  const handleDeleteComment = async (commentId: string, postId: string) => {
+    if (!user || !confirm('Delete this comment?')) return;
+    
+    const { error } = await supabase
+      .from('post_comments')
+      .delete()
+      .eq('id', commentId)
+      .eq('user_id', user.id);
+    
+    if (error) {
+      toast.error('Failed to delete comment');
+      return;
+    }
+    
+    await supabase.rpc('decrement_post_comments', { post_id: postId });
+    setPostComments(prev => prev.filter(c => c.id !== commentId && c.parent_id !== commentId));
+    setFeedPosts(prev => prev.map(p => 
+      p.id === postId ? { ...p, comments_count: Math.max((p.comments_count || 0) - 1, 0) } : p
+    ));
+    toast.success('Comment deleted');
+  };
+
   const handleLikeComment = async (commentId: string) => {
     if (!user) return;
     
@@ -1581,7 +1723,7 @@ const Feed = () => {
 
       {/* Comments Dialog */}
       <Dialog open={!!activeCommentPost} onOpenChange={() => { setActiveCommentPost(null); setReplyingTo(null); }}>
-        <DialogContent className="sm:max-w-[500px] h-[70vh] flex flex-col">
+        <DialogContent className="sm:max-w-[500px] h-[70vh] flex flex-col overflow-hidden">
             <DialogHeader><DialogTitle>Comments</DialogTitle></DialogHeader>
             <ScrollArea className="flex-1 pr-4">
                 <div className="space-y-4">
@@ -1591,56 +1733,33 @@ const Feed = () => {
                       getThreadedComments().map(c => (
                         <div key={c.id} className="space-y-2">
                           {/* Parent Comment */}
-                          <div className="flex gap-3">
-                            <Avatar className="w-8 h-8"><AvatarImage src={c.profiles?.avatar_url} /><AvatarFallback>U</AvatarFallback></Avatar>
-                            <div className="flex-1">
-                              <div className="bg-muted/50 p-3 rounded-xl rounded-tl-none">
-                                <p className="text-xs font-bold mb-1">{c.profiles?.display_name}</p>
-                                <p className="text-sm">{c.content}</p>
-                              </div>
-                              <div className="flex items-center gap-2 mt-1">
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className={`text-xs h-6 px-2 ${likedComments.has(c.id) ? 'text-red-500' : 'text-muted-foreground'}`}
-                                  onClick={() => handleLikeComment(c.id)}
-                                >
-                                  <Heart className={`w-3 h-3 mr-1 ${likedComments.has(c.id) ? 'fill-red-500' : ''}`} />
-                                  {c.likes_count || 0}
-                                </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="text-xs text-muted-foreground h-6 px-2"
-                                  onClick={() => handleReply(c.id, c.profiles?.display_name || 'User')}
-                                >
-                                  Reply
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
+                          <CommentItemUI
+                            comment={c}
+                            currentUserId={user?.id}
+                            isLiked={likedComments.has(c.id)}
+                            postId={activeCommentPost!}
+                            onLike={handleLikeComment}
+                            onReply={handleReply}
+                            onEdit={handleEditComment}
+                            onDelete={handleDeleteComment}
+                            isReply={false}
+                          />
                           {/* Replies */}
                           {c.replies?.length > 0 && (
                             <div className="ml-10 space-y-2 border-l-2 border-muted pl-3">
                               {c.replies.map((reply: any) => (
-                                <div key={reply.id} className="flex gap-3">
-                                  <Avatar className="w-6 h-6"><AvatarImage src={reply.profiles?.avatar_url} /><AvatarFallback>U</AvatarFallback></Avatar>
-                                  <div className="flex-1">
-                                    <div className="bg-muted/30 p-2 rounded-lg rounded-tl-none">
-                                      <p className="text-xs font-bold mb-0.5">{reply.profiles?.display_name}</p>
-                                      <p className="text-sm">{reply.content}</p>
-                                    </div>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm" 
-                                      className={`text-xs h-5 px-1 mt-0.5 ${likedComments.has(reply.id) ? 'text-red-500' : 'text-muted-foreground'}`}
-                                      onClick={() => handleLikeComment(reply.id)}
-                                    >
-                                      <Heart className={`w-3 h-3 mr-1 ${likedComments.has(reply.id) ? 'fill-red-500' : ''}`} />
-                                      {reply.likes_count || 0}
-                                    </Button>
-                                  </div>
-                                </div>
+                                <CommentItemUI
+                                  key={reply.id}
+                                  comment={reply}
+                                  currentUserId={user?.id}
+                                  isLiked={likedComments.has(reply.id)}
+                                  postId={activeCommentPost!}
+                                  onLike={handleLikeComment}
+                                  onReply={handleReply}
+                                  onEdit={handleEditComment}
+                                  onDelete={handleDeleteComment}
+                                  isReply={true}
+                                />
                               ))}
                             </div>
                           )}

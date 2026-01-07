@@ -7,16 +7,19 @@ import {
   DropdownMenu, 
   DropdownMenuContent, 
   DropdownMenuItem, 
-  DropdownMenuTrigger 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { 
   MoreVertical, MessageSquare, Edit2, Trash2, Pin, 
-  Check, CheckCheck, Loader2, X 
+  Check, CheckCheck, Loader2, X, Copy, Forward, Smile, Heart
 } from 'lucide-react';
 import { formatDistanceToNow } from "date-fns";
 import { Message } from '@/types/messages';
 import { formatMessageTime } from '@/utils/messageHelpers';
 import { LazyImage } from './LazyImage';
+import { UrlPreview, extractUrls, renderTextWithLinks } from './UrlPreview';
+import { QuickReactionBar } from './EmojiPicker';
 import { toast } from "sonner";
 
 interface MessageBubbleProps {
@@ -30,6 +33,8 @@ interface MessageBubbleProps {
   onPin?: (msg: Message) => void;
   onImageLoad?: () => void;
   scrollToId: (id: string) => void;
+  onForward?: (msg: Message) => void;
+  onReact?: (msgId: string, emoji: string) => void;
 }
 
 export const MessageBubble = memo(function MessageBubbleInner({
@@ -42,16 +47,24 @@ export const MessageBubble = memo(function MessageBubbleInner({
   onEdit,
   onPin,
   onImageLoad,
-  scrollToId
+  scrollToId,
+  onForward,
+  onReact
 }: MessageBubbleProps) {
   const [showFullImage, setShowFullImage] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(msg.content || "");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [showReactions, setShowReactions] = useState(false);
+  const [localReaction, setLocalReaction] = useState<string | null>(null);
 
   const isSequence = !!prevMsg && prevMsg.sender_id === msg.sender_id;
   const timeDiff = prevMsg ? new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() : 0;
   const showTimestamp = !prevMsg || timeDiff > 300000;
+
+  // Extract URLs from message content
+  const urls = msg.content ? extractUrls(msg.content) : [];
+  const hasUrlPreview = urls.length > 0 && !msg.image_url;
 
   const handleSaveEdit = async () => {
     if (!editContent.trim()) return;
@@ -64,6 +77,22 @@ export const MessageBubble = memo(function MessageBubbleInner({
     } finally {
       setIsSavingEdit(false);
     }
+  };
+
+  const handleCopyMessage = () => {
+    if (msg.content) {
+      navigator.clipboard.writeText(msg.content);
+      toast.success("Message copied!");
+    }
+  };
+
+  const handleReact = (emoji: string) => {
+    setLocalReaction(emoji);
+    setShowReactions(false);
+    if (onReact) {
+      onReact(msg.id, emoji);
+    }
+    toast.success(`Reacted with ${emoji}`);
   };
 
   if (msg.is_deleted) {
@@ -116,6 +145,13 @@ export const MessageBubble = memo(function MessageBubbleInner({
             )}
 
             <div className="relative group/message">
+              {/* Quick Reactions Popup */}
+              {showReactions && (
+                <div className={`absolute bottom-full mb-2 z-20 ${msg.is_me ? 'right-0' : 'left-0'}`}>
+                  <QuickReactionBar onReact={handleReact} />
+                </div>
+              )}
+
               <div 
                 className={`
                   relative overflow-hidden transition-all shadow-sm
@@ -127,6 +163,7 @@ export const MessageBubble = memo(function MessageBubbleInner({
                   ${msg.is_me ? 'rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm'}
                   ${msg.is_pinned ? 'ring-2 ring-primary/30' : ''}
                 `}
+                style={{ overflowX: 'hidden', wordBreak: 'break-word' }}
               >
                 {msg.image_url && (
                   <div className="relative group/image">
@@ -139,7 +176,9 @@ export const MessageBubble = memo(function MessageBubbleInner({
                     />
                     {msg.content && !isEditing && (
                       <div className={`p-3 mt-1 ${msg.is_me ? 'text-primary-foreground' : ''}`}>
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                          {renderTextWithLinks(msg.content)}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -164,13 +203,38 @@ export const MessageBubble = memo(function MessageBubbleInner({
                   </div>
                 ) : (
                   !msg.image_url && msg.content && (
-                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                    <>
+                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words" style={{ overflowWrap: 'anywhere' }}>
+                        {renderTextWithLinks(msg.content)}
+                      </p>
+                      {/* URL Preview */}
+                      {hasUrlPreview && (
+                        <UrlPreview url={urls[0]} className={msg.is_me ? 'border-primary-foreground/20' : ''} />
+                      )}
+                    </>
                   )
                 )}
               </div>
 
+              {/* Reaction display */}
+              {localReaction && (
+                <div className={`absolute -bottom-2 ${msg.is_me ? 'left-2' : 'right-2'} bg-background rounded-full border shadow-sm px-1.5 py-0.5 text-sm`}>
+                  {localReaction}
+                </div>
+              )}
+
               {!msg.pending && !isEditing && (
-                <div className={`absolute top-1/2 -translate-y-1/2 ${msg.is_me ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/message:opacity-100 transition-opacity z-10`}>
+                <div className={`absolute top-1/2 -translate-y-1/2 ${msg.is_me ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/message:opacity-100 transition-opacity z-10 flex items-center gap-1`}>
+                  {/* Quick React Button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-full bg-background/80 backdrop-blur-md border shadow-sm hover:bg-accent"
+                    onClick={() => setShowReactions(!showReactions)}
+                  >
+                    <Smile className="w-3.5 h-3.5" />
+                  </Button>
+                  
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button 
@@ -186,16 +250,40 @@ export const MessageBubble = memo(function MessageBubbleInner({
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Reply
                       </DropdownMenuItem>
+                      
+                      {msg.content && (
+                        <DropdownMenuItem onClick={handleCopyMessage}>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copy Text
+                        </DropdownMenuItem>
+                      )}
+                      
+                      {onForward && (
+                        <DropdownMenuItem onClick={() => onForward(msg)}>
+                          <Forward className="w-4 h-4 mr-2" />
+                          Forward
+                        </DropdownMenuItem>
+                      )}
+                      
+                      <DropdownMenuItem onClick={() => handleReact('❤️')}>
+                        <Heart className="w-4 h-4 mr-2" />
+                        React with ❤️
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuSeparator />
+                      
                       {msg.is_me && !msg.image_url && (
                         <DropdownMenuItem onClick={() => { setIsEditing(true); setEditContent(msg.content || ""); }}>
                           <Edit2 className="w-4 h-4 mr-2" /> Edit Message
                         </DropdownMenuItem>
                       )}
+                      
                       {canModerate && onPin && (
                         <DropdownMenuItem onClick={() => onPin(msg)}>
                           <Pin className="w-4 h-4 mr-2" /> {msg.is_pinned ? 'Unpin' : 'Pin'}
                         </DropdownMenuItem>
                       )}
+                      
                       {(msg.is_me || canModerate) && (
                         <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-destructive focus:text-destructive">
                           <Trash2 className="w-4 h-4 mr-2" />
