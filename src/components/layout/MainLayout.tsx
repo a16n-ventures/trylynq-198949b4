@@ -53,7 +53,7 @@ const MainLayout = () => {
       .from('user_roles')
       .select('id, user_id, role')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
       .then(({ data }) => setUserRole(data)); 
 
     // Check premium_features table instead of subscriptions
