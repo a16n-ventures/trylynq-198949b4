@@ -23,13 +23,13 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
   const [showMutuals, setShowMutuals] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
-  // Fetch mutual friends on mount
+  // Fetch mutual friends logic
   useEffect(() => {
     if (!user || !profile.user_id) return;
 
     const fetchMutuals = async () => {
       try {
-        // 1. Get my friends IDs
+        // 1. Get my accepted friends
         const { data: myFriendships } = await supabase
           .from('friendships')
           .select('requester_id, addressee_id')
@@ -40,7 +40,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
           myFriendships?.map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id)
         );
 
-        // 2. Get their friends IDs
+        // 2. Get their accepted friends
         const { data: theirFriendships } = await supabase
           .from('friendships')
           .select('requester_id, addressee_id')
@@ -51,21 +51,21 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
           theirFriendships?.map(f => f.requester_id === profile.user_id ? f.addressee_id : f.requester_id)
         );
 
-        // 3. Find intersection (Mutuals)
+        // 3. Calculate intersection
         const mutualIds = [...myFriendIds].filter(id => theirFriendIds.has(id));
-        
         setMutualsCount(mutualIds.length);
 
-        // 4. Fetch profiles for mutual friends if any exist
+        // 4. If expanded or count > 0, we can fetch details (lazy fetch on click is better, but fetching here for count display)
         if (mutualIds.length > 0) {
           const { data: profiles } = await supabase
             .from('profiles')
             .select('id, user_id, display_name, avatar_url')
-            .in('user_id', mutualIds);
+            .in('user_id', mutualIds)
+            .limit(10); // Limit to 10 for preview
           setMutuals(profiles || []);
         }
       } catch (err) {
-        console.error("Error calculating mutual friends:", err);
+        console.error("Error fetching mutuals:", err);
       }
     };
 
@@ -81,8 +81,8 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
 
   return (
     <>
-      <div className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 transition-colors hover:bg-muted/10">
-        {/* Clickable Avatar for Profile Preview */}
+      <div className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 transition-all hover:bg-muted/10">
+        {/* Clickable Avatar */}
         <div className="cursor-pointer" onClick={() => setShowProfile(true)}>
           <Avatar className="w-12 h-12 border border-border/50">
             <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
@@ -93,9 +93,9 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         </div>
         
         <div className="flex-1 min-w-0 text-left">
-          {/* Clickable Name for Profile Preview */}
+          {/* Clickable Name */}
           <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setShowProfile(true)}>
-            <span className="font-semibold truncate group-hover:underline decoration-primary/50 underline-offset-4">{displayName}</span>
+            <span className="font-semibold truncate group-hover:underline underline-offset-2">{displayName}</span>
             <PremiumBadge userId={profile.user_id} size="sm" />
           </div>
 
@@ -107,10 +107,10 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
               </div>
             )}
             
-            {/* Clickable Mutual Friends Count */}
+            {/* Mutual Friends Trigger */}
             {mutualsCount > 0 && (
-              <div 
-                className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer hover:text-primary transition-colors w-fit"
+              <button 
+                className="text-[11px] text-muted-foreground flex items-center gap-1 hover:text-primary transition-colors text-left"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowMutuals(true);
@@ -118,14 +118,14 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
               >
                 <Users className="w-3 h-3" />
                 {mutualsCount} mutual friend{mutualsCount !== 1 ? 's' : ''}
-              </div>
+              </button>
             )}
           </div>
         </div>
         
         <Button 
           size="sm" 
-          className="bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 shadow-sm"
+          className="bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 shadow-sm transition-transform active:scale-95"
           disabled={isAdding}
           onClick={() => onAddFriend(profile)}
         >
@@ -138,36 +138,42 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         </Button>
       </div>
 
-      {/* Mutual Friends Modal */}
+      {/* 1. Mutual Friends Modal */}
       <Dialog open={showMutuals} onOpenChange={setShowMutuals}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="w-5 h-5 text-primary" />
               Mutual Friends ({mutualsCount})
             </DialogTitle>
           </DialogHeader>
-          <ScrollArea className="h-64 mt-2 pr-4">
-            <div className="space-y-3">
-              {mutuals.map((friend) => (
-                <div key={friend.id || friend.user_id} className="flex items-center gap-3 p-2 hover:bg-muted/50 rounded-lg">
-                  <Avatar className="w-10 h-10 border border-border/50">
+          <ScrollArea className="h-64 mt-2 pr-2">
+            <div className="space-y-2">
+              {mutuals.length > 0 ? mutuals.map((friend) => (
+                <div key={friend.user_id} className="flex items-center gap-3 p-2 hover:bg-muted/50 rounded-lg transition-colors">
+                  <Avatar className="w-9 h-9 border border-border/50">
                     <AvatarImage src={friend.avatar_url} />
                     <AvatarFallback>{friend.display_name?.[0] || 'U'}</AvatarFallback>
                   </Avatar>
                   <span className="text-sm font-medium">{friend.display_name || 'Unknown User'}</span>
                 </div>
-              ))}
+              )) : (
+                <p className="text-sm text-muted-foreground text-center py-4">Loading mutuals...</p>
+              )}
             </div>
           </ScrollArea>
         </DialogContent>
       </Dialog>
 
-      {/* Profile Preview Modal */}
+      {/* 2. Profile Preview Modal */}
       <FriendProfilePreview 
         profile={profile}
         open={showProfile}
         onClose={() => setShowProfile(false)}
+        // Pass dummy handlers or actual ones if you want actions inside the preview
+        onRemoveFriend={() => {}} 
+        onBlockUser={() => {}}
+        onReportUser={() => {}}
       />
     </>
   );
