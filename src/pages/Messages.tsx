@@ -40,6 +40,7 @@ import { MediaGallery } from '@/components/messages/MediaGallery';
 import { CommunityInfoDialog } from '@/components/messages/CommunityInfoDialog';
 import { CommunitySettingsDialog } from '@/components/messages/CommunitySettingsDialog';
 import { CommunityModerationDialog } from '@/components/messages/CommunityModerationDialog';
+import { useMessageReactions } from '@/hooks/useMessageReactions';
 
 // Helper function to extract display name from profile
 const getDisplayName = (profile: any): string => {
@@ -994,6 +995,14 @@ const sendMessage = useMutation({
     return myMembership.muted_until && new Date(myMembership.muted_until) > new Date();
   }, [isComm, myMembership]);
 
+  // Message reactions hook
+  const messageIds = useMemo(() => messages.map(m => m.id), [messages]);
+  const { reactions, addReaction } = useMessageReactions(
+    messageIds,
+    user?.id,
+    selectedChat?.type === 'community'
+  );
+
   // Chat view
   if (selectedChat) {
     // ✅ FIXED: Use LIVE membership data for role checks if available
@@ -1290,6 +1299,8 @@ const sendMessage = useMutation({
                     onPin={canModerate ? (msg) => pinMessage.mutate({ messageId: msg.id, isPinned: !!msg.is_pinned }) : undefined}
                     onImageLoad={() => scrollToBottom(true)}
                     scrollToId={scrollToId}
+                    onReact={(msgId, emoji) => addReaction({ messageId: msgId, emoji })}
+                    reactions={reactions[m.id] || []}
                   />
                 ))}
                 {typingUsers.length > 0 && (

@@ -86,7 +86,6 @@ interface NearbyUser {
   avatar_url: string | null;
   distance_km: number;
   match_score: number;
-  // Add other properties if needed by NearbyUserCard
   email?: string;
   username?: string;
 }
@@ -290,8 +289,8 @@ export default function Friends() {
 
       if (profError) throw profError;
 
-      const formatted: NearbyUser[] = validCandidates
-        .map((candidate: any) => {
+      const formatted = validCandidates
+        .map((candidate: any): NearbyUser | null => {
           const profile = profiles?.find(p => p.user_id === candidate.user_id);
           const displayName = profile?.display_name || profile?.username || profile?.email?.split('@')[0] || `User${candidate.user_id.slice(-4)}`;
           
@@ -569,7 +568,7 @@ export default function Friends() {
                         isDeleting={deleteContact.isPending}
                         isInviting={inviteContact.isPending}
                         onDelete={(id) => deleteContact.mutate(id)}
-                        onInvite={(c) => inviteContact.mutate(c.id!)}
+                        onInvite={(c) => inviteContact.mutate(c)}
                      />
                   ))}
                 </div>

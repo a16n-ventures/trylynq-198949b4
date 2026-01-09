@@ -112,8 +112,8 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
     fetchedDetails?.display_name || 
     profile.display_name || 
     fetchedDetails?.username || 
-    profile.username || 
-    profile.email || 
+    (profile as any).username || 
+    (profile as any).email ||
     `User${profile.user_id?.slice(-4) || ''}`;
 
   return (

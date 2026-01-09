@@ -104,12 +104,12 @@ export function FriendCard({
         <Avatar className="w-12 h-12 border border-border/50">
           <AvatarImage src={friend.avatar_url || undefined} className="object-cover" />
           <AvatarFallback className="bg-muted text-muted-foreground">
-            {friend.display_name?.[0]?.toUpperCase() || friend.username?.[0]?.toUpperCase() || 'U'}
+            {friend.display_name?.[0]?.toUpperCase() || 'U'}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold truncate">{friend.display_name || friend.username || 'Unknown User'}</span>
+            <span className="font-semibold truncate">{friend.display_name || 'Unknown User'}</span>
             {/* ✅ FIXED: Using improved VerifiedBadge with loading state */}
             <VerifiedBadge userId={friend.user_id} />
           </div>
