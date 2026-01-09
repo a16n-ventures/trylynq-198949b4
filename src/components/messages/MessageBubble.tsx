@@ -22,6 +22,12 @@ import { UrlPreview, extractUrls, renderTextWithLinks } from './UrlPreview';
 import { QuickReactionBar } from './EmojiPicker';
 import { toast } from "sonner";
 
+export interface Reaction {
+  emoji: string;
+  count: number;
+  hasReacted: boolean;
+}
+
 interface MessageBubbleProps {
   msg: Message;
   prevMsg: Message | null;
@@ -35,6 +41,7 @@ interface MessageBubbleProps {
   scrollToId: (id: string) => void;
   onForward?: (msg: Message) => void;
   onReact?: (msgId: string, emoji: string) => void;
+  reactions?: Reaction[];
 }
 
 export const MessageBubble = memo(function MessageBubbleInner({
@@ -49,14 +56,14 @@ export const MessageBubble = memo(function MessageBubbleInner({
   onImageLoad,
   scrollToId,
   onForward,
-  onReact
+  onReact,
+  reactions = []
 }: MessageBubbleProps) {
   const [showFullImage, setShowFullImage] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(msg.content || "");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
-  const [localReaction, setLocalReaction] = useState<string | null>(null);
 
   const isSequence = !!prevMsg && prevMsg.sender_id === msg.sender_id;
   const timeDiff = prevMsg ? new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() : 0;
@@ -87,12 +94,10 @@ export const MessageBubble = memo(function MessageBubbleInner({
   };
 
   const handleReact = (emoji: string) => {
-    setLocalReaction(emoji);
     setShowReactions(false);
     if (onReact) {
       onReact(msg.id, emoji);
     }
-    toast.success(`Reacted with ${emoji}`);
   };
 
   if (msg.is_deleted) {
@@ -217,9 +222,22 @@ export const MessageBubble = memo(function MessageBubbleInner({
               </div>
 
               {/* Reaction display */}
-              {localReaction && (
-                <div className={`absolute -bottom-2 ${msg.is_me ? 'left-2' : 'right-2'} bg-background rounded-full border shadow-sm px-1.5 py-0.5 text-sm`}>
-                  {localReaction}
+              {reactions.length > 0 && (
+                <div className={`absolute -bottom-3 ${msg.is_me ? 'left-2' : 'right-2'} flex gap-0.5`}>
+                  {reactions.map(r => (
+                    <button
+                      key={r.emoji}
+                      onClick={() => handleReact(r.emoji)}
+                      className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border shadow-sm transition-colors ${
+                        r.hasReacted 
+                          ? 'bg-primary/10 border-primary/30' 
+                          : 'bg-background hover:bg-muted'
+                      }`}
+                    >
+                      <span>{r.emoji}</span>
+                      {r.count > 1 && <span className="text-[10px] text-muted-foreground">{r.count}</span>}
+                    </button>
+                  ))}
                 </div>
               )}
 
