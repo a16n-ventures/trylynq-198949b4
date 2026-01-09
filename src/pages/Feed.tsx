@@ -22,20 +22,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useNavigate } from 'react-router-dom';
 
-// --- IMPORTED COMPONENTS & HOOKS ---
+// --- CUSTOM IMPORTS (Based on your uploaded files) ---
 import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 import { VerifiedBadge } from '@/components/VerifiedBadge';
-import { useFeedPosts } from '@/hooks/useFeedData';
-import { useStories, type Story } from '@/hooks/useStories';
+import { useFeedPosts, type Post } from '@/hooks/useFeedData';
+import { useStories, type StoryUser } from '@/hooks/useStories';
 import { usePremiumStatus } from '@/hooks/usePremiumStatus';
 
-// --- WRAPPER FOR BADGE (Fixes the prop mismatch) ---
-const PostAuthorBadge = ({ userId }: { userId: string }) => {
-  const { isPremium } = usePremiumStatus(userId);
-  return <VerifiedBadge isPremium={isPremium} />;
-};
-
-// --- TYPES (Local) ---
+// --- TYPES ---
 interface Profile { 
   id?: string; 
   user_id?: string;
@@ -72,30 +66,14 @@ interface Event {
   created_at?: string;
 }
 
-// --- HELPER FUNCTIONS ---
-const getEventStatus = (startDate: string) => {
-  const date = new Date(startDate);
-  const now = new Date();
-  const expirationTime = addHours(date, 3);
-
-  if (isPast(date) && now < expirationTime) {
-    if (differenceInMinutes(expirationTime, now) < 30) {
-      return { label: 'Ending Soon', color: 'bg-orange-500' };
-    }
-    return { label: 'Happening Now', color: 'bg-green-600' };
-  }
-
-  if (isToday(date)) return { label: 'Today', color: 'bg-blue-500' };
-  if (isFuture(date)) {
-    const hoursUntil = differenceInMinutes(date, now) / 60;
-    if (hoursUntil <= 24) return { label: 'Starting Soon', color: 'bg-amber-500' };
-    return { label: 'Upcoming', color: 'bg-primary' };
-  }
-  
-  return { label: 'Past', color: 'bg-muted-foreground' };
+// --- HELPER COMPONENT: Verified Badge Wrapper ---
+// Uses the hook to fetch status for users where we don't have is_premium pre-loaded
+const UserVerifiedBadge = ({ userId, className }: { userId: string, className?: string }) => {
+  const { isPremium } = usePremiumStatus(userId);
+  return <VerifiedBadge isPremium={isPremium} className={className} />;
 };
 
-// --- MODALS ---
+// --- MODAL COMPONENTS ---
 function EventDetailModal({ event, isOpen, onClose, onRSVP }: { 
   event: Event | null; isOpen: boolean; onClose: () => void; onRSVP: (eventId: string) => void;
 }) {
@@ -164,19 +142,26 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
   const { user: currentUser } = useAuth();
   const [index, setIndex] = useState(0);
   
-  // Resolve ID
   const targetId = user.user_id || user.id;
+  if (!targetId) return null;
+
+  // Use the hook to get stories for this specific user
   const { storyUsers } = useStories(targetId);
   const userStories = storyUsers.find(u => u.user_id === targetId)?.stories || [];
   
   const current = userStories[index];
   const isMyStory = currentUser?.id === targetId;
-  const { isPremium } = usePremiumStatus(targetId);
 
+  // We can use the helper component for the badge inside the viewer
+  
   useEffect(() => {
     if (!current && userStories.length > 0) setIndex(0);
-  }, [userStories, current]);
+    else if (userStories.length === 0 && !storyUsers.length) {
+       // Wait for load or close if truly empty
+    }
+  }, [userStories, current, storyUsers]);
 
+  // Track View
   useEffect(() => {
     if (!current || !currentUser || isMyStory) return;
     const viewKey = `story-view-${current.id}-${currentUser.id}`;
@@ -207,7 +192,7 @@ function StoryViewer({ user, onClose }: { user: Profile; onClose: () => void }) 
             <div className="flex-1">
               <span className="text-white font-bold text-sm drop-shadow-md flex items-center gap-1">
                 {isMyStory ? 'Your Story' : user.display_name}
-                <VerifiedBadge isPremium={isPremium} className="text-blue-400" />
+                <UserVerifiedBadge userId={targetId} className="text-blue-400" />
               </span>
               <span className="text-white/70 text-xs block">{formatDistanceToNow(new Date(current.created_at), { addSuffix: true })}</span>
             </div>
@@ -239,11 +224,11 @@ const Feed = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
-  // Custom Hooks
+  // Custom Hooks (Using correct imports from your files)
   const { posts: feedPosts, likePost, deletePost, isLoading: postsLoading } = useFeedPosts(user?.id);
   const { storyUsers, uploadStory, isUploading: uploadingStory, isLoading: storiesLoading } = useStories(user?.id);
   
-  // States
+  // UI States
   const [postText, setPostText] = useState('');
   const [postMedia, setPostMedia] = useState<{ file: File, url: string, type: 'image' | 'video' } | null>(null);
   const [uploadingPost, setUploadingPost] = useState(false);
@@ -251,7 +236,6 @@ const Feed = () => {
   const postFileInputRef = useRef<HTMLInputElement>(null);
   const storyFileRef = useRef<HTMLInputElement>(null);
 
-  // Interaction States
   const [selectedStory, setSelectedStory] = useState<Profile | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<Profile | null>(null);
   const [storyPreview, setStoryPreview] = useState<{ file: File, url: string } | null>(null);
@@ -277,6 +261,7 @@ const Feed = () => {
 
   useEffect(() => {
     if (!user) return;
+    
     supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle()
       .then(({ data }) => { if (data) setCurrentUserProfile(data); });
 
@@ -411,6 +396,7 @@ const Feed = () => {
   };
 
   const handleLikePost = (post: any) => {
+    // Correctly call the mutation from the hook
     likePost({ postId: post.id, isLiked: post.is_liked_by_user || false });
   };
 
@@ -487,7 +473,7 @@ const Feed = () => {
     } catch (e: any) { toast.error("Failed to RSVP"); }
   };
 
-  const filteredPosts = feedPosts.filter(p => p.content?.toLowerCase().includes(searchQuery.toLowerCase()) || p.profiles?.display_name?.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredPosts = (feedPosts || []).filter(p => p.content?.toLowerCase().includes(searchQuery.toLowerCase()) || p.profiles?.display_name?.toLowerCase().includes(searchQuery.toLowerCase()));
   const filteredCommunities = communities.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
   const filteredEvents = events.filter(e => e.title.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -582,16 +568,9 @@ const Feed = () => {
                         <CardHeader className="p-4 flex flex-row items-start gap-3 space-y-0">
                           <div className="cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}><Avatar><AvatarImage src={post.profiles?.avatar_url || undefined} /><AvatarFallback>{post.profiles?.display_name?.[0]}</AvatarFallback></Avatar></div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm truncate flex items-center cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>{post.profiles?.display_name}<PostAuthorBadge userId={post.user_id} /></p>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground"><span>{post.created_at ? formatDistanceToNow(new Date(post.created_at), { addSuffix: true }) : 'Just now'}</span>{post.location && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {post.location}</span>}</div>
+                            <p className="font-semibold text-sm truncate flex items-center cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>{post.profiles?.display_name}<VerifiedBadge isPremium={post.is_premium} /></p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground"><span>{formatDistanceToNow(new Date(post.created_at || new Date()), { addSuffix: true })}</span>{post.location && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {post.location}</span>}</div>
                           </div>
-                          
-                          {post.user_id !== user?.id && (
-                              myFriends.includes(post.user_id) ? 
-                              <Button size="sm" variant="ghost" className="text-blue-600 h-8" onClick={() => navigate(`/app/messages?userId=${post.user_id}`)}><MessageCircle className="w-4 h-4 mr-1" /> Message</Button> :
-                              sentRequests.includes(post.user_id) ? <Button size="sm" variant="ghost" disabled className="text-muted-foreground h-8"><Check className="w-4 h-4 mr-1" /> Sent</Button> :
-                              <Button size="sm" variant="outline" className="h-8" onClick={() => handleConnect(post.user_id)}><UserPlus className="w-4 h-4 mr-1" /> Connect</Button>
-                          )}
                           <DropdownMenu>
                               <DropdownMenuTrigger><MoreVertical className="w-5 h-5 text-muted-foreground" /></DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
@@ -685,7 +664,7 @@ const Feed = () => {
           </DialogContent>
       </Dialog>
 
-      {selectedStory && <StoryViewer user={selectedStory} onClose={() => setSelectedStory(null)} onStoryChange={() => queryClient.invalidateQueries({ queryKey: ['stories'] })} />}
+      {selectedStory && <StoryViewer user={selectedStory} onClose={() => setSelectedStory(null)} />}
 
       <Dialog open={!!activeCommentPost} onOpenChange={() => setActiveCommentPost(null)}>
         <DialogContent className="sm:max-w-[500px] h-[70vh] flex flex-col">
