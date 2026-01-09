@@ -2154,6 +2154,7 @@ export type Database = {
         Returns: undefined
       }
       is_admin: { Args: never; Returns: boolean }
+      make_user_admin: { Args: { target_user_id: string }; Returns: undefined }
       match_events_smart: {
         Args: {
           match_count: number

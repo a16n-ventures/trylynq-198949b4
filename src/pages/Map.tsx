@@ -439,9 +439,10 @@ const MapPage = () => {
 
         <div className="flex-grow" />
 
-        {/* BOTTOM SHEET */}
-        <div className="relative pointer-events-auto pb-safe">
-          <div className="container-mobile flex justify-end mb-4 px-4">
+        {/* BOTTOM SHEET - Fixed above bottom nav (64px height + safe area) */}
+        <div className="fixed bottom-20 left-0 right-0 z-20 pointer-events-auto px-4 pb-2 max-h-[45vh]">
+          {/* Recenter Button */}
+          <div className="flex justify-end mb-3">
             <Button
               onClick={() => location ? mapRef.current?.recenter() : requestLocation()}
               className="rounded-full shadow-lg h-12 w-12 bg-white text-black hover:bg-gray-100"
@@ -450,8 +451,8 @@ const MapPage = () => {
             </Button>
           </div>
 
-          <div className="relative max-h-[45vh] overflow-y-auto px-4 pb-6">
-            {/* Conditional Rendering */}
+          {/* Nearby List Card with horizontal scroll for items */}
+          <div className="overflow-y-auto max-h-[35vh]">
             {selectedFriend && activeView === 'friends' ? (
                 <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
                   <CardContent className="p-4">
@@ -519,24 +520,24 @@ const MapPage = () => {
                         <img 
                           src={selectedEvent.image_url} 
                           alt={selectedEvent.title}
-                          className="w-20 h-20 rounded-lg object-cover"
+                          className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
                         />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start gap-2 mb-2">
-                          <h3 className="font-bold text-lg leading-tight">{selectedEvent.title}</h3>
-                          <Button variant="ghost" size="icon" onClick={() => setSelectedEvent(null)}>
+                          <h3 className="font-bold text-lg leading-tight truncate">{selectedEvent.title}</h3>
+                          <Button variant="ghost" size="icon" className="flex-shrink-0" onClick={() => setSelectedEvent(null)}>
                             <X className="w-4 h-4" />
                           </Button>
                         </div>
                         <div className="space-y-1 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {format(new Date(selectedEvent.start_date), 'MMM d, h:mm a')}
+                            <Calendar className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{format(new Date(selectedEvent.start_date), 'MMM d, h:mm a')}</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {selectedEvent.location}
+                            <MapPin className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{selectedEvent.location}</span>
                           </div>
                         </div>
                       </div>
@@ -572,46 +573,51 @@ const MapPage = () => {
                       <Badge variant="secondary" className="text-xs">{filteredList.length}</Badge>
                     </div>
 
-                    <div className="space-y-1">
-                      {filteredList.length === 0 ? (
-                        <div className="text-center py-6 text-muted-foreground text-sm">
-                          {searchQuery ? `No ${activeView} match your search.` : `No ${activeView} found nearby.`}
-                        </div>
-                      ) : (
-                        filteredList.map((item: any) => (
+                    {/* Horizontal scrollable list */}
+                    {filteredList.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground text-sm">
+                        {searchQuery ? `No ${activeView} match your search.` : `No ${activeView} found nearby.`}
+                      </div>
+                    ) : (
+                      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
+                        {filteredList.map((item: any) => (
                           <div
                             key={item.id}
-                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
+                            className="flex-shrink-0 w-32 p-3 rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors cursor-pointer"
                             onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
                           >
                             {activeView === 'friends' ? (
-                              <div className="relative">
-                                <Avatar className="w-10 h-10">
-                                  <AvatarImage src={item.avatar} />
-                                  <AvatarFallback>{item.name[0]}</AvatarFallback>
-                                </Avatar>
-                                {item.status === 'online' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />}
+                              <div className="flex flex-col items-center text-center gap-2">
+                                <div className="relative">
+                                  <Avatar className="w-12 h-12">
+                                    <AvatarImage src={item.avatar} />
+                                    <AvatarFallback>{item.name[0]}</AvatarFallback>
+                                  </Avatar>
+                                  {item.status === 'online' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />}
+                                </div>
+                                <div className="w-full">
+                                  <h4 className="font-medium text-xs truncate flex items-center justify-center gap-1">
+                                    {item.name}
+                                    {item.is_premium && <PremiumBadge />}
+                                  </h4>
+                                  <p className="text-[10px] text-muted-foreground">{item.distanceKm}km away</p>
+                                </div>
                               </div>
                             ) : (
-                              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                                {format(new Date(item.start_date), 'd')}
+                              <div className="flex flex-col items-center text-center gap-2">
+                                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
+                                  {format(new Date(item.start_date), 'd')}
+                                </div>
+                                <div className="w-full">
+                                  <h4 className="font-medium text-xs truncate">{item.title}</h4>
+                                  <p className="text-[10px] text-muted-foreground">{item.distanceKm}km away</p>
+                                </div>
                               </div>
                             )}
-                            
-                            <div className="flex-1 min-w-0">
-                              <div className="flex justify-between">
-                                <h4 className="font-medium text-sm truncate flex items-center gap-1">
-                                  {item.name || item.title}
-                                  {activeView === 'friends' && item.is_premium && <PremiumBadge />}
-                                </h4>
-                                <span className="text-xs text-muted-foreground">{item.distanceKm}km</span>
-                              </div>
-                              <p className="text-xs text-muted-foreground truncate">{item.locationLabel || item.location}</p>
-                            </div>
                           </div>
-                        ))
-                      )}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
             )}

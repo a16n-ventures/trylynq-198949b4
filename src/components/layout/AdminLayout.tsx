@@ -30,22 +30,48 @@ export default function AdminLayout() {
     const checkRole = async () => {
       if (!user) return;
       
-      const { data: hasRole, error } = await supabase.rpc('has_role', { 
-        _user_id: user.id, 
-        _role: 'admin' 
-      });
+      try {
+        const { data: hasRole, error } = await supabase.rpc('has_role', { 
+          _user_id: user.id, 
+          _role: 'admin' 
+        });
 
-      if (error) {
-        console.error("Role check failed", error);
-        toast.error("Authorization check failed");
-        navigate('/app');
-        return;
-      }
+        if (error) {
+          console.error("Role check failed", error);
+          toast.error("Authorization check failed. Please try again.");
+          navigate('/app');
+          return;
+        }
 
-      if (hasRole) {
-        setIsAdmin(true);
-      } else {
-        toast.error("Unauthorized access");
+        if (hasRole) {
+          setIsAdmin(true);
+        } else {
+          // Check if user_roles table has any admins at all
+          const { count } = await supabase
+            .from('user_roles')
+            .select('*', { count: 'exact', head: true })
+            .eq('role', 'admin');
+          
+          if (count === 0) {
+            // No admins exist - offer to make this user an admin (first user setup)
+            toast.info("No admin found. Setting up admin access...");
+            const { error: makeAdminError } = await supabase.rpc('make_user_admin', { 
+              target_user_id: user.id 
+            });
+            
+            if (!makeAdminError) {
+              toast.success("You are now an admin!");
+              setIsAdmin(true);
+              return;
+            }
+          }
+          
+          toast.error("Unauthorized access - Admin role required");
+          navigate('/app');
+        }
+      } catch (err) {
+        console.error("Role check error", err);
+        toast.error("Failed to verify admin access");
         navigate('/app');
       }
     };
