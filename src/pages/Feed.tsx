@@ -1091,7 +1091,7 @@ const Feed = () => {
     
     const { data, error } = await supabase
       .from('post_comments')
-      .select('*, profiles:user_id(display_name, avatar_url)')
+      .select('*, profiles(display_name, avatar_url)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
     
@@ -1128,7 +1128,7 @@ const Feed = () => {
         content: commentText.trim(),
         parent_id: replyingTo?.id || null
       })
-      .select('*, profiles:user_id(display_name, avatar_url)')
+      .select('*, profiles(display_name, avatar_url)')
       .single();
     
     if (error) {
