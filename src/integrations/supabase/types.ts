@@ -2088,15 +2088,25 @@ export type Database = {
         }[]
       }
       get_my_role: { Args: never; Returns: string }
-      get_nearby_users: {
-        Args: { p_radius_km?: number; p_user_id: string }
-        Returns: {
-          avatar_url: string
-          display_name: string
-          distance_km: number
-          user_id: string
-        }[]
-      }
+      get_nearby_users:
+        | {
+            Args: { p_radius_km?: number; p_user_id: string }
+            Returns: {
+              avatar_url: string
+              display_name: string
+              distance_km: number
+              user_id: string
+            }[]
+          }
+        | {
+            Args: { p_radius_km?: number; p_user_id: string }
+            Returns: {
+              avatar_url: string
+              display_name: string
+              distance_km: number
+              user_id: string
+            }[]
+          }
       get_smart_feed: {
         Args: {
           user_interests: string[]

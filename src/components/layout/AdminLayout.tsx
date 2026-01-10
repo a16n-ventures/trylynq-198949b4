@@ -31,44 +31,49 @@ export default function AdminLayout() {
       if (!user) return;
       
       try {
+        // First check if user is already an admin using RPC
         const { data: hasRole, error } = await supabase.rpc('has_role', { 
           _user_id: user.id, 
           _role: 'admin' 
         });
 
-        if (error) {
-          console.error("Role check failed", error);
-          toast.error("Authorization check failed. Please try again.");
-          navigate('/app');
+        if (!error && hasRole) {
+          setIsAdmin(true);
           return;
         }
 
-        if (hasRole) {
-          setIsAdmin(true);
-        } else {
-          // Check if user_roles table has any admins at all
-          const { count } = await supabase
-            .from('user_roles')
-            .select('*', { count: 'exact', head: true })
-            .eq('role', 'admin');
+        // If not admin, check if ANY admins exist in the system
+        // Use a direct count query which works even without full select permissions
+        const { count, error: countError } = await supabase
+          .from('user_roles')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'admin');
+        
+        // If no admins exist, bootstrap first admin
+        if (!countError && count === 0) {
+          toast.info("No admin found. Setting up admin access...");
           
-          if (count === 0) {
-            // No admins exist - offer to make this user an admin (first user setup)
-            toast.info("No admin found. Setting up admin access...");
-            const { error: makeAdminError } = await supabase.rpc('make_user_admin', { 
-              target_user_id: user.id 
-            });
-            
-            if (!makeAdminError) {
-              toast.success("You are now an admin!");
-              setIsAdmin(true);
-              return;
-            }
+          // Call make_user_admin RPC - it has SECURITY DEFINER so it will work
+          const { error: makeAdminError } = await supabase.rpc('make_user_admin', { 
+            target_user_id: user.id 
+          });
+          
+          if (!makeAdminError) {
+            toast.success("You are now an admin!");
+            setIsAdmin(true);
+            return;
+          } else {
+            console.error("Failed to make admin:", makeAdminError);
+            toast.error("Failed to set up admin access");
+            navigate('/app');
+            return;
           }
-          
-          toast.error("Unauthorized access - Admin role required");
-          navigate('/app');
         }
+        
+        // Admins exist but user is not one of them
+        toast.error("Unauthorized access - Admin role required");
+        navigate('/app');
+        
       } catch (err) {
         console.error("Role check error", err);
         toast.error("Failed to verify admin access");
