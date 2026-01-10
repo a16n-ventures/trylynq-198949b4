@@ -31,39 +31,49 @@ export default function AdminLayout() {
       if (!user) return;
       
       try {
-        // First check if user is already an admin using RPC
-        const { data: hasRole, error } = await supabase.rpc('has_role', { 
+        // First check if user is a super_admin using RPC
+        const { data: isSuperAdmin, error: superAdminError } = await supabase.rpc('has_role', { 
+          _user_id: user.id, 
+          _role: 'super_admin' 
+        });
+
+        if (!superAdminError && isSuperAdmin) {
+          setIsAdmin(true);
+          return;
+        }
+        
+        // Also check for regular admin role
+        const { data: hasAdminRole, error: adminError } = await supabase.rpc('has_role', { 
           _user_id: user.id, 
           _role: 'admin' 
         });
 
-        if (!error && hasRole) {
+        if (!adminError && hasAdminRole) {
           setIsAdmin(true);
           return;
         }
 
-        // If not admin, check if ANY admins exist in the system
-        // Use a direct count query which works even without full select permissions
-        const { count, error: countError } = await supabase
+        // If not admin, check if ANY super_admins exist in the system
+        const { count: superAdminCount, error: superCountError } = await supabase
           .from('user_roles')
           .select('*', { count: 'exact', head: true })
-          .eq('role', 'admin');
+          .eq('role', 'super_admin');
         
-        // If no admins exist, bootstrap first admin
-        if (!countError && count === 0) {
-          toast.info("No admin found. Setting up admin access...");
+        // If no super_admins exist, bootstrap first super_admin
+        if (!superCountError && superAdminCount === 0) {
+          toast.info("No super admin found. Setting up admin access...");
           
-          // Call make_user_admin RPC - it has SECURITY DEFINER so it will work
-          const { error: makeAdminError } = await supabase.rpc('make_user_admin', { 
-            target_user_id: user.id 
-          });
+          // Insert super_admin role directly
+          const { error: insertError } = await supabase
+            .from('user_roles')
+            .insert({ user_id: user.id, role: 'super_admin' });
           
-          if (!makeAdminError) {
-            toast.success("You are now an admin!");
+          if (!insertError) {
+            toast.success("You are now a super admin!");
             setIsAdmin(true);
             return;
           } else {
-            console.error("Failed to make admin:", makeAdminError);
+            console.error("Failed to make super admin:", insertError);
             toast.error("Failed to set up admin access");
             navigate('/app');
             return;

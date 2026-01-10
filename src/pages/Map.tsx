@@ -78,6 +78,8 @@ const MapPage = () => {
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+  const [showDirections, setShowDirections] = useState(false);
+  const [directionsDestination, setDirectionsDestination] = useState<{ lat: number; lng: number; name: string } | null>(null);
 
   // --- 1. Fetch Friend Locations (FIXED) ---
   const friendIds = useMemo(() => {
@@ -496,10 +498,11 @@ const MapPage = () => {
                       <Button
                         variant="outline"
                         onClick={() => {
-                          const { latitude, longitude } = selectedFriend;
+                          const { latitude, longitude, name } = selectedFriend;
                           if (latitude && longitude) {
-                            const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
-                            window.open(url, '_blank');
+                            setDirectionsDestination({ lat: latitude, lng: longitude, name });
+                            setShowDirections(true);
+                            setSelectedFriend(null);
                           } else {
                             toast.error('Location unavailable');
                           }
@@ -554,8 +557,13 @@ const MapPage = () => {
                         <Button
                           variant="outline"
                           onClick={() => {
-                            const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedEvent.latitude},${selectedEvent.longitude}`;
-                            window.open(url, '_blank');
+                            setDirectionsDestination({ 
+                              lat: selectedEvent.latitude, 
+                              lng: selectedEvent.longitude, 
+                              name: selectedEvent.title 
+                            });
+                            setShowDirections(true);
+                            setSelectedEvent(null);
                           }}
                         >
                           <Navigation className="w-4 h-4 mr-2" />
@@ -626,6 +634,80 @@ const MapPage = () => {
       </div>
 
       <ContactImportModal open={showContactImport} onOpenChange={setShowContactImport} />
+      
+      {/* In-App Directions Overlay */}
+      {showDirections && directionsDestination && location && (
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col">
+          {/* Directions Header */}
+          <div className="flex items-center gap-3 p-4 border-b bg-background">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="rounded-full"
+              onClick={() => {
+                setShowDirections(false);
+                setDirectionsDestination(null);
+              }}
+            >
+              <X className="w-5 h-5" />
+            </Button>
+            <div className="flex-1">
+              <h2 className="font-bold text-lg">Directions</h2>
+              <p className="text-sm text-muted-foreground truncate">
+                To: {directionsDestination.name}
+              </p>
+            </div>
+          </div>
+          
+          {/* Embedded Map with Route */}
+          <div className="flex-1 relative">
+            <iframe
+              className="w-full h-full border-0"
+              loading="lazy"
+              allowFullScreen
+              referrerPolicy="no-referrer-when-downgrade"
+              src={`https://www.google.com/maps/embed/v1/directions?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&origin=${location.latitude},${location.longitude}&destination=${directionsDestination.lat},${directionsDestination.lng}&mode=driving`}
+            />
+          </div>
+          
+          {/* Directions Footer */}
+          <div className="p-4 border-t bg-background space-y-3">
+            <div className="flex items-center gap-3 text-sm">
+              <div className="flex items-center gap-2 flex-1">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <span className="text-muted-foreground">Your location</span>
+              </div>
+              <div className="flex items-center gap-2 flex-1">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span className="text-muted-foreground truncate">{directionsDestination.name}</span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  // Open in external Google Maps app for turn-by-turn navigation
+                  const url = `https://www.google.com/maps/dir/?api=1&origin=${location.latitude},${location.longitude}&destination=${directionsDestination.lat},${directionsDestination.lng}&travelmode=driving`;
+                  window.open(url, '_blank');
+                }}
+              >
+                <Navigation className="w-4 h-4 mr-2" />
+                Open in Maps
+              </Button>
+              <Button 
+                className="gradient-primary text-white"
+                onClick={() => {
+                  setShowDirections(false);
+                  setDirectionsDestination(null);
+                }}
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -41,6 +41,7 @@ import { CommunityInfoDialog } from '@/components/messages/CommunityInfoDialog';
 import { CommunitySettingsDialog } from '@/components/messages/CommunitySettingsDialog';
 import { CommunityModerationDialog } from '@/components/messages/CommunityModerationDialog';
 import { useMessageReactions } from '@/hooks/useMessageReactions';
+import { EmojiPicker } from '@/components/messages/EmojiPicker';
 
 // Helper function to extract display name from profile
 const getDisplayName = (profile: any): string => {
@@ -118,6 +119,7 @@ export default function Messages() {
   
   // Pinned messages state
   const [showPinnedMessages, setShowPinnedMessages] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const [friendSearch, setFriendSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
@@ -1354,6 +1356,13 @@ const sendMessage = useMutation({
                 <Button variant="ghost" size="icon" className="rounded-full shrink-0 h-11 w-11" onClick={() => fileInputRef.current?.click()}>
                   <ImageIcon className="w-5 h-5" />
                 </Button>
+                
+                {/* Emoji Picker - Modern inline integration */}
+                <EmojiPicker 
+                  onSelect={(emoji) => setMessageInput(prev => prev + emoji)}
+                  isOpen={showEmojiPicker}
+                  onOpenChange={setShowEmojiPicker}
+                />
                 
                 <div className="flex-1 relative">
                   <Textarea 
