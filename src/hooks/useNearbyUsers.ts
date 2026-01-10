@@ -117,8 +117,8 @@ export function useNearbyUsers(userId: string | undefined, enabled: boolean = tr
           .sort((a, b) => (a.distance_km || 0) - (b.distance_km || 0));
       }
 
-      // Filter out excluded users from RPC results
-      return (data || [])
+      // Filter out excluded users from RPC results and ensure proper profile data
+      const nearbyWithProfiles = (data || [])
         .filter((u: any) => !excludeIds.has(u.user_id))
         .map((u: any) => ({
           user_id: u.user_id,
@@ -126,6 +126,31 @@ export function useNearbyUsers(userId: string | undefined, enabled: boolean = tr
           avatar_url: u.avatar_url,
           distance_km: u.distance_km
         }));
+      
+      // For any users with generic names, fetch their real profile data
+      const genericUsers = nearbyWithProfiles.filter(
+        u => !u.display_name || u.display_name.startsWith('User')
+      );
+      
+      if (genericUsers.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, display_name, avatar_url')
+          .in('user_id', genericUsers.map(u => u.user_id));
+        
+        if (profiles) {
+          const profileMap = new Map(profiles.map(p => [p.user_id, p]));
+          nearbyWithProfiles.forEach(u => {
+            const profile = profileMap.get(u.user_id);
+            if (profile) {
+              u.display_name = profile.display_name || u.display_name;
+              u.avatar_url = profile.avatar_url || u.avatar_url;
+            }
+          });
+        }
+      }
+      
+      return nearbyWithProfiles;
     },
     enabled: enabled && !!userId && !!userLocation,
     staleTime: 60000,
