@@ -1151,59 +1151,71 @@ const Feed = () => {
   };
 
   const openComments = async (postId: string) => {
-    setActiveCommentPost(postId);
-    setReplyingTo(null);
-    setLikedComments(new Set());
-    
-    // NUCLEAR FIX: Two-step fetch strategy
-    
-    // Attempt 1: Try to get comments WITH profile data
-    let { data, error } = await supabase
-      .from('post_comments')
-      .select('*, profiles(display_name, avatar_url)')
-      .eq('post_id', postId)
-      .order('created_at', { ascending: true });
-    
-    // Attempt 2: If Attempt 1 failed or was blocked by RLS, fetch RAW comments
-    if (error || (data && data.length === 0)) {
-       // We double check raw comments just to be sure it's not a join error masking the data
-       const { data: rawData, error: rawError } = await supabase
-         .from('post_comments')
-         .select('*')
-         .eq('post_id', postId)
-         .order('created_at', { ascending: true });
-         
-       if (!rawError && rawData && rawData.length > 0) {
-           // If we found raw comments, manually attach a placeholder profile so the UI doesn't crash
-           data = rawData.map((c: any) => ({
-               ...c,
-               profiles: c.profiles || { display_name: 'User', avatar_url: null, user_id: c.user_id }
-           }));
-           error = null; // Clear the error since we recovered
-       }
+  setActiveCommentPost(postId);
+  setReplyingTo(null);
+  setLikedComments(new Set());
+
+  // Step 1: Fetch comments only
+  const { data: comments, error: commentsError } = await supabase
+    .from('post_comments')
+    .select('*')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true });
+
+  if (commentsError) {
+    console.error('Error fetching comments:', commentsError);
+    setPostComments([]);
+    return;
+  }
+
+  if (!comments || comments.length === 0) {
+    setPostComments([]);
+    return;
+  }
+
+  // Step 2: Fetch profiles for comment authors
+  const userIds = [...new Set(comments.map(c => c.user_id).filter(Boolean))];
+
+  let profilesMap = new Map<string, any>();
+
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('user_id, display_name, avatar_url')
+      .in('user_id', userIds);
+
+    if (profiles) {
+      profiles.forEach(p => profilesMap.set(p.id, p));
     }
-    
-    if (error) {
-      console.error('Error fetching comments:', error);
-      setPostComments([]);
-    } else {
-      setPostComments(data || []);
-      
-      // Fetch user's liked comments (keep existing logic)
-      if (user && data && data.length > 0) {
-        const commentIds = data.map((c: any) => c.id);
-        const { data: likes } = await supabase
-          .from('comment_likes')
-          .select('comment_id')
-          .eq('user_id', user.id)
-          .in('comment_id', commentIds);
-        
-        if (likes) {
-          setLikedComments(new Set(likes.map(l => l.comment_id)));
-        }
-      }
+  }
+
+  // Step 3: Merge comments + profiles
+  const mergedComments = comments.map(c => ({
+    ...c,
+    profiles: profilesMap.get(c.user_id) ?? {
+      display_name: 'User',
+      avatar_url: null,
+      id: c.user_id,
+    },
+  }));
+
+  setPostComments(mergedComments);
+
+  // Step 4: Fetch liked comments
+  if (user) {
+    const commentIds = mergedComments.map(c => c.id);
+
+    const { data: likes } = await supabase
+      .from('comment_likes')
+      .select('comment_id')
+      .eq('user_id', user.id)
+      .in('comment_id', commentIds);
+
+    if (likes) {
+      setLikedComments(new Set(likes.map(l => l.comment_id)));
     }
-  };
+  }
+};
   
   const submitComment = async () => {
     if (!activeCommentPost || !commentText.trim() || !user) return;
