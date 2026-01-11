@@ -1150,41 +1150,28 @@ const Feed = () => {
     setReplyingTo(null);
     setLikedComments(new Set());
     
-    // NUCLEAR FIX: Two-step fetch strategy
-    
-    // Attempt 1: Try to get comments WITH profile data
-    let { data, error } = await supabase
+    // Now that RLS is fixed, we can just ask for the data directly!
+    const { data, error } = await supabase
       .from('post_comments')
-      .select('*, profiles(display_name, avatar_url)')
+      .select(`
+        *,
+        profiles (
+          display_name,
+          avatar_url,
+          user_id
+        )
+      `)
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
     
-    // Attempt 2: If Attempt 1 failed or was blocked by RLS, fetch RAW comments
-    if (error || (data && data.length === 0)) {
-       // We double check raw comments just to be sure it's not a join error masking the data
-       const { data: rawData, error: rawError } = await supabase
-         .from('post_comments')
-         .select('*')
-         .eq('post_id', postId)
-         .order('created_at', { ascending: true });
-         
-       if (!rawError && rawData && rawData.length > 0) {
-           // If we found raw comments, manually attach a placeholder profile so the UI doesn't crash
-           data = rawData.map((c: any) => ({
-               ...c,
-               profiles: c.profiles || { display_name: 'User', avatar_url: null, user_id: c.user_id }
-           }));
-           error = null; // Clear the error since we recovered
-       }
-    }
-    
     if (error) {
       console.error('Error fetching comments:', error);
+      toast.error('Could not load comments');
       setPostComments([]);
     } else {
       setPostComments(data || []);
       
-      // Fetch user's liked comments (keep existing logic)
+      // Fetch user's liked comments
       if (user && data && data.length > 0) {
         const commentIds = data.map((c: any) => c.id);
         const { data: likes } = await supabase
@@ -1932,7 +1919,7 @@ const Feed = () => {
                           {/* Parent Comment */}
                           <CommentItemUI
                             comment={c}
-                            currentUserId={user?.id}
+                            currentUserId={user?.id} <VerifiedBadge userId={user.id} />
                             isLiked={likedComments.has(c.id)}
                             postId={activeCommentPost!}
                             onLike={handleLikeComment}
@@ -1948,7 +1935,7 @@ const Feed = () => {
                                 <CommentItemUI
                                   key={reply.id}
                                   comment={reply}
-                                  currentUserId={user?.id}
+                                  currentUserId={user?.id} <VerifiedBadge userId={user.id} />
                                   isLiked={likedComments.has(reply.id)}
                                   postId={activeCommentPost!}
                                   onLike={handleLikeComment}
