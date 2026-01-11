@@ -403,7 +403,12 @@ function CommentItemUI({ comment, currentUserId, isLiked, postId, onLike, onRepl
       <div className="flex-1">
         <div className={`${isReply ? 'bg-muted/30 p-2 rounded-lg rounded-tl-none' : 'bg-muted/50 p-3 rounded-xl rounded-tl-none'} relative`}>
           <div className="flex items-start justify-between gap-2">
-            <p className={`${isReply ? 'text-xs' : 'text-xs'} font-bold mb-1`}>{comment.profiles?.display_name}</p>
+            <div className="flex items-center mb-1">
+                <span className={`${isReply ? 'text-xs' : 'text-xs'} font-bold`}>
+                    {comment.profiles?.display_name}
+                </span>
+                <VerifiedBadge userId={comment.user_id} />
+            </div>
             {isOwner && !isEditing && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1919,7 +1924,7 @@ const Feed = () => {
                           {/* Parent Comment */}
                           <CommentItemUI
                             comment={c}
-                            currentUserId={user?.id} <VerifiedBadge userId={user.id} />
+                            currentUserId={user?.id} 
                             isLiked={likedComments.has(c.id)}
                             postId={activeCommentPost!}
                             onLike={handleLikeComment}
