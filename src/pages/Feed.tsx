@@ -572,6 +572,27 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
     await supabase.from('story_likes').insert({ story_id: current.id, user_id: currentUser.id });
   };
 
+  const handleSendReply = async () => {
+    if (!msg.trim() || !currentUser || !current) return;
+    setSendingReply(true);
+    try {
+        const { error } = await supabase.from('messages').insert({
+            sender_id: currentUser.id,
+            receiver_id: user.user_id || user.id,
+            content: `Replied to story: ${msg}`,
+            // We assume basic schema, if you have a specific story_id column in messages, add it here.
+        });
+
+        if (error) throw error;
+        toast.success("Reply sent!");
+        setMsg("");
+    } catch (e) {
+        toast.error("Failed to send reply");
+    } finally {
+        setSendingReply(false);
+    }
+  };
+
   const handleDeleteStory = async () => {
     if (!current || !currentUser) return;
     if (!confirm('Delete this story?')) return;
@@ -666,13 +687,25 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
           
           {!isMyStory && (
             <div className="absolute bottom-0 w-full p-4 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex gap-3 pb-8">
-              <Input 
-                value={msg} 
-                onChange={(e) => setMsg(e.target.value)} 
-                placeholder="Reply..." 
-                className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0" 
-                onClick={(e) => e.stopPropagation()} 
-              />
+              <div className="relative flex-1">
+                 <Input 
+                   value={msg} 
+                   onChange={(e) => setMsg(e.target.value)} 
+                   placeholder="Reply to story..." 
+                   className="bg-white/10 border-white/10 text-white placeholder:text-white/60 rounded-full backdrop-blur-md focus-visible:ring-0 pr-10" 
+                   onClick={(e) => e.stopPropagation()} 
+                   onKeyDown={(e) => e.key === 'Enter' && handleSendReply()}
+                 />
+                 <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className="absolute right-1 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 h-8 w-8 rounded-full"
+                    onClick={(e) => { e.stopPropagation(); handleSendReply(); }}
+                    disabled={sendingReply || !msg.trim()}
+                 >
+                    {sendingReply ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                 </Button>
+              </div>
               <Button size="icon" variant="ghost" className="text-white rounded-full hover:bg-white/10" onClick={(e) => { e.stopPropagation(); handleLike(); }}>
                 <Heart className={`w-7 h-7 transition-transform active:scale-125 ${liked ? 'fill-red-500 text-red-500' : ''}`} />
               </Button>
