@@ -1935,7 +1935,7 @@ const Feed = () => {
                                 <CommentItemUI
                                   key={reply.id}
                                   comment={reply}
-                                  currentUserId={user?.id} <VerifiedBadge userId={user.id} />
+                                  currentUserId={user?.id}
                                   isLiked={likedComments.has(reply.id)}
                                   postId={activeCommentPost!}
                                   onLike={handleLikeComment}
