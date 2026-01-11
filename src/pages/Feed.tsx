@@ -481,6 +481,7 @@ function StoryViewer({ user, onClose, onStoryChange }: { user: Profile; onClose:
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(false);
   const [msg, setMsg] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
   const [showActions, setShowActions] = useState(false); 
   const [viewCount, setViewCount] = useState(0);
   const [incomingHearts, setIncomingHearts] = useState<{ id: number, left: number }[]>([]);
