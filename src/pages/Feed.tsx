@@ -867,10 +867,13 @@ const Feed = () => {
       }
     }
 
-    // Fetch events sorted by latest created
+    // Fetch events sorted by latest created with live attendee count
     const { data: evts } = await supabase
       .from('events')
-      .select('*')
+      .select(`
+        *,
+        event_attendees ( count )
+      `)
       .gt('start_date', new Date().toISOString())
       .order('created_at', { ascending: false })
       .limit(20);
@@ -884,9 +887,16 @@ const Feed = () => {
         .in('event_id', eventIds);
       
       const rsvpSet = new Set(rsvps?.map(r => r.event_id) || []);
-      setEvents(evts.map(e => ({ ...e, is_attending: rsvpSet.has(e.id) })));
+      setEvents(evts.map(e => ({ 
+        ...e, 
+        is_attending: rsvpSet.has(e.id),
+        attendee_count: e.event_attendees?.[0]?.count || 0
+      })));
     } else if (evts) {
-      setEvents(evts);
+      setEvents(evts.map(e => ({
+        ...e,
+        attendee_count: e.event_attendees?.[0]?.count || 0
+      })));
     }
   };
 
@@ -1710,6 +1720,9 @@ const Feed = () => {
                                     <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                                         <MapPin className="w-3 h-3" /> {e.location}
                                     </p>
+                                    <p className="text-xs text-primary font-medium flex items-center gap-1 mt-1">
+                                        <Users className="w-3 h-3" /> {e.attendee_count || 0} attending
+                                    </p>
                                     <Button className="w-full mt-3 rounded-full" size="sm" variant="outline">View Details</Button>
                                 </div>
                             </Card>
@@ -1737,14 +1750,18 @@ const Feed = () => {
                        <div className="h-8 w-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-3"><Type className="w-4 h-4" /></div>
                       Create Post
                   </DropdownMenuItem>
+                  {/* Share Photo - Commented out per user request
                   <DropdownMenuItem onClick={() => openCreateModal('photo')} className="p-2.5 rounded-lg focus:bg-muted font-medium cursor-pointer">
                        <div className="h-8 w-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mr-3"><ImageIcon className="w-4 h-4" /></div>
                       Share Photo
                   </DropdownMenuItem>
+                  */}
+                  {/* Share Video - Commented out per user request
                   <DropdownMenuItem onClick={() => openCreateModal('video')} className="p-2.5 rounded-lg focus:bg-muted font-medium cursor-pointer">
                        <div className="h-8 w-8 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center mr-3"><Video className="w-4 h-4" /></div>
                       Share Video
                   </DropdownMenuItem>
+                  */}
               </DropdownMenuContent>
           </DropdownMenu>
       </div>
@@ -1769,7 +1786,7 @@ const Feed = () => {
                 <AvatarFallback>U</AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                 <p className="font-semibold text-sm">
+                 <p className="font-semibold text-sm flex items-center gap-1">
                    {currentUserProfile?.display_name || 'You'}
                    <VerifiedBadge userId={user.id} />
                  </p>

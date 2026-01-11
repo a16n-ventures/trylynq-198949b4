@@ -263,49 +263,51 @@ export const MessageBubble = memo(function MessageBubbleInner({
                         <MoreVertical className="w-3.5 h-3.5" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align={msg.is_me ? "end" : "start"} className="w-48">
-                      <DropdownMenuItem onClick={() => onReply(msg)}>
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Reply
+                    <DropdownMenuContent align={msg.is_me ? "end" : "start"} className="w-52 p-1.5 bg-popover/95 backdrop-blur-lg border shadow-xl">
+                      <DropdownMenuItem onClick={() => onReply(msg)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer">
+                        <MessageSquare className="w-4 h-4 text-blue-500" />
+                        <span className="font-medium">Reply</span>
                       </DropdownMenuItem>
                       
                       {msg.content && (
-                        <DropdownMenuItem onClick={handleCopyMessage}>
-                          <Copy className="w-4 h-4 mr-2" />
-                          Copy Text
+                        <DropdownMenuItem onClick={handleCopyMessage} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer">
+                          <Copy className="w-4 h-4 text-green-500" />
+                          <span className="font-medium">Copy Text</span>
                         </DropdownMenuItem>
                       )}
                       
                       {onForward && (
-                        <DropdownMenuItem onClick={() => onForward(msg)}>
-                          <Forward className="w-4 h-4 mr-2" />
-                          Forward
+                        <DropdownMenuItem onClick={() => onForward(msg)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer">
+                          <Forward className="w-4 h-4 text-purple-500" />
+                          <span className="font-medium">Forward</span>
                         </DropdownMenuItem>
                       )}
                       
-                      <DropdownMenuItem onClick={() => handleReact('❤️')}>
-                        <Heart className="w-4 h-4 mr-2" />
-                        React with ❤️
+                      <DropdownMenuItem onClick={() => handleReact('❤️')} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer">
+                        <Heart className="w-4 h-4 text-red-500" />
+                        <span className="font-medium">React with ❤️</span>
                       </DropdownMenuItem>
                       
-                      <DropdownMenuSeparator />
+                      <DropdownMenuSeparator className="my-1.5" />
                       
                       {msg.is_me && !msg.image_url && (
-                        <DropdownMenuItem onClick={() => { setIsEditing(true); setEditContent(msg.content || ""); }}>
-                          <Edit2 className="w-4 h-4 mr-2" /> Edit Message
+                        <DropdownMenuItem onClick={() => { setIsEditing(true); setEditContent(msg.content || ""); }} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer">
+                          <Edit2 className="w-4 h-4 text-amber-500" /> 
+                          <span className="font-medium">Edit Message</span>
                         </DropdownMenuItem>
                       )}
                       
                       {canModerate && onPin && (
-                        <DropdownMenuItem onClick={() => onPin(msg)}>
-                          <Pin className="w-4 h-4 mr-2" /> {msg.is_pinned ? 'Unpin' : 'Pin'}
+                        <DropdownMenuItem onClick={() => onPin(msg)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer">
+                          <Pin className="w-4 h-4 text-orange-500" /> 
+                          <span className="font-medium">{msg.is_pinned ? 'Unpin' : 'Pin'}</span>
                         </DropdownMenuItem>
                       )}
                       
                       {(msg.is_me || canModerate) && (
-                        <DropdownMenuItem onClick={() => onDelete(msg.id)} className="text-destructive focus:text-destructive">
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          {msg.is_me ? 'Delete' : 'Remove'}
+                        <DropdownMenuItem onClick={() => onDelete(msg.id)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-destructive focus:text-destructive">
+                          <Trash2 className="w-4 h-4" />
+                          <span className="font-medium">{msg.is_me ? 'Delete' : 'Remove'}</span>
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
