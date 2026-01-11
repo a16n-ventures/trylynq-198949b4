@@ -1168,65 +1168,59 @@ const Feed = () => {
     }
   };
 
-    const submitComment = async () => {
+  const submitComment = async () => {
     if (!activeCommentPost || !commentText.trim() || !user) return;
-    
-    // NUCLEAR FIX: Use local profile data instead of relying on a complex DB join
+
+    // Use local profile data instead of relying on a join (avoids RLS/join issues)
     const optimisticProfile = currentUserProfile || {
       display_name: 'You',
       avatar_url: null,
-      user_id: user.id
+      user_id: user.id,
     };
 
     try {
-      // 1. Simple Insert (No Joins = No Errors)
+      // 1) Simple insert (no join)
       const { data, error } = await supabase
         .from('post_comments')
         .insert({
           post_id: activeCommentPost,
           user_id: user.id,
           content: commentText.trim(),
-          parent_id: replyingTo?.id || null
+          parent_id: replyingTo?.id || null,
         })
-        .select('*') // Only select the comment data, not the profile relation
+        .select('*')
         .single();
-      
+
       if (error) throw error;
-      
-      // 2. Manually construct the object for the UI
+
+      // 2) Construct object expected by UI
       const newComment = {
         ...data,
         profiles: {
-            display_name: optimisticProfile.display_name,
-            avatar_url: optimisticProfile.avatar_url,
-            user_id: user.id
-        }
+          display_name: optimisticProfile.display_name,
+          avatar_url: optimisticProfile.avatar_url,
+          user_id: user.id,
+        },
       };
-      
-      // 3. Update UI
-      await supabase.rpc('increment_post_comments', { post_id: activeCommentPost });
-      setPostComments(prev => [...prev, newComment]);
-      setFeedPosts(prev => prev.map(p => 
-        p.id === activeCommentPost ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p
-      ));
-      setCommentText("");
-      setReplyingTo(null);
-      toast.success("Comment posted!");
 
-    } catch (error: any) {
-      console.error("Comment failed:", error);
-      toast.error(error.message || 'Failed to post comment');
+      // 3) Update counters + UI
+      await supabase.rpc('increment_post_comments', { post_id: activeCommentPost });
+      setPostComments((prev) => [...prev, newComment]);
+      setFeedPosts((prev) =>
+        prev.map((p) =>
+          p.id === activeCommentPost
+            ? { ...p, comments_count: (p.comments_count || 0) + 1 }
+            : p
+        )
+      );
+
+      setCommentText('');
+      setReplyingTo(null);
+      toast.success('Comment posted!');
+    } catch (err: any) {
+      console.error('Comment failed:', err);
+      toast.error(err?.message || 'Failed to post comment');
     }
-  };
-    
-    await supabase.rpc('increment_post_comments', { post_id: activeCommentPost });
-    setPostComments(prev => [...prev, data]);
-    setFeedPosts(prev => prev.map(p => 
-      p.id === activeCommentPost ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p
-    ));
-    setCommentText("");
-    setReplyingTo(null);
-    toast.success("Comment posted!");
   };
 
   const handleReply = (commentId: string, authorName: string) => {
@@ -1775,8 +1769,9 @@ const Feed = () => {
                 <AvatarFallback>U</AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                 <p className="font-semibold text-sm">{currentUserProfile?.display_name || 'You'}
-                      <VerifiedBadge userId={user.user_id || user.id} />
+                 <p className="font-semibold text-sm">
+                   {currentUserProfile?.display_name || 'You'}
+                   <VerifiedBadge userId={user.id} />
                  </p>
                  <p className="text-xs text-muted-foreground capitalize">{createType}</p>
               </div>
