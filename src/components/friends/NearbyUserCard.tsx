@@ -3,13 +3,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { UserPlus, MapPin, Loader2, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+// ❌ REMOVED: import { ScrollArea } from "@/components/ui/scroll-area"; (Likely cause of error)
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { FriendProfilePreview } from "@/components/friends/FriendProfilePreview";
 import type { NearbyProfile } from "@/hooks/useNearbyUsers";
 
-// ✅ Added Local Badge Component (Matches Friends.tsx)
+// ✅ Local Badge Component (Matches Friends.tsx)
 const VerifiedBadge = () => (
   <svg 
     className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 ml-1" 
@@ -34,10 +34,10 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
   const [showMutuals, setShowMutuals] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   
-  // State to hold fetched profile details if props are missing
+  // State to hold fetched profile details
   const [fetchedDetails, setFetchedDetails] = useState<{ display_name?: string; username?: string; avatar_url?: string } | null>(null);
 
-  // Effect to fetch real user details if name is generic
+  // 1. Resolve Generic Names
   useEffect(() => {
     // Check if name is generic (User + last 4 chars of ID) or missing
     const isGenericName = !profile.display_name || (profile.user_id && profile.display_name === `User${profile.user_id.slice(-4)}`);
@@ -64,25 +64,24 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
     fetchRealProfileData();
   }, [profile.user_id, profile.display_name]);
 
-  // Fetch mutual friends logic
+  // 2. Fetch Mutual Friends
   useEffect(() => {
     if (!user || !profile.user_id) return;
 
     const fetchMutuals = async () => {
       try {
-        // 1. Get my accepted friends
+        // Get my accepted friends
         const { data: myFriendships } = await supabase
           .from('friendships')
           .select('requester_id, addressee_id')
           .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
           .eq('status', 'accepted');
         
-        // Handle case where query returns null (though typically returns empty array)
         const myFriendIds = new Set(
           (myFriendships || []).map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id)
         );
 
-        // 2. Get their accepted friends
+        // Get their accepted friends
         const { data: theirFriendships } = await supabase
           .from('friendships')
           .select('requester_id, addressee_id')
@@ -93,11 +92,11 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
           (theirFriendships || []).map(f => f.requester_id === profile.user_id ? f.addressee_id : f.requester_id)
         );
 
-        // 3. Calculate intersection
+        // Calculate intersection
         const mutualIds = [...myFriendIds].filter(id => theirFriendIds.has(id));
         setMutualsCount(mutualIds.length);
 
-        // 4. If mutuals exist, fetch their basic profiles for the dialog
+        // Fetch basic profiles for mutuals
         if (mutualIds.length > 0) {
           const { data: profiles } = await supabase
             .from('profiles')
@@ -143,7 +142,6 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         <div className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setShowProfile(true)}>
             <span className="font-semibold truncate group-hover:underline underline-offset-2">{finalDisplayName}</span>
-            {/* ✅ Swapped PremiumBadge for VerifiedBadge if you don't have PremiumBadge component */}
             <VerifiedBadge />
           </div>
 
@@ -155,6 +153,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
               </div>
             )}
             
+            {/* Mutual Friends Trigger */}
             {mutualsCount > 0 && (
               <button 
                 className="text-[11px] text-muted-foreground flex items-center gap-1 hover:text-primary transition-colors text-left"
@@ -193,7 +192,9 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
               Mutual Friends ({mutualsCount})
             </DialogTitle>
           </DialogHeader>
-          <ScrollArea className="h-64 mt-2 pr-2">
+          
+          {/* ✅ REPLACED ScrollArea with standard div to ensure compatibility */}
+          <div className="h-64 mt-2 pr-2 overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20">
             <div className="space-y-2">
               {mutuals.length > 0 ? mutuals.map((friend) => (
                 <div key={friend.user_id} className="flex items-center gap-3 p-2 hover:bg-muted/50 rounded-lg transition-colors">
@@ -207,7 +208,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
                 <p className="text-sm text-muted-foreground text-center py-4">Loading mutuals...</p>
               )}
             </div>
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
