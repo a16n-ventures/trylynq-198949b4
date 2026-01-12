@@ -23,6 +23,7 @@ interface LeafletMapProps {
   loading?: boolean;
   error?: string | null;
   mapStyle?: 'standard' | 'satellite';
+  routeCoordinates?: [number, number][] | null; // ✅ Added prop for navigation route
 }
 
 const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
@@ -30,12 +31,14 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
   friendsLocations,
   loading,
   error,
-  mapStyle = 'standard'
+  mapStyle = 'standard',
+  routeCoordinates // ✅ Destructure new prop
 }, ref) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const routeLayerRef = useRef<any>(null); // ✅ Ref to track the route line
   const [isMounted, setIsMounted] = useState(false);
 
   // Expose recenter method to parent
@@ -197,6 +200,48 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
 
     updateMarkers();
   }, [userLocation, friendsLocations]);
+
+  // 4. ✅ Handle Route Rendering (New Logic)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    const updateRoute = async () => {
+      const L = (await import('leaflet')).default;
+      const map = mapInstanceRef.current;
+
+      // Clear previous route
+      if (routeLayerRef.current) {
+        map.removeLayer(routeLayerRef.current);
+        routeLayerRef.current = null;
+      }
+
+      if (routeCoordinates && routeCoordinates.length > 0) {
+        // Draw new route
+        const polyline = L.polyline(routeCoordinates, {
+          color: '#3b82f6', // Tailwind blue-500
+          weight: 6,
+          opacity: 0.8,
+          lineJoin: 'round',
+          lineCap: 'round',
+          dashArray: undefined
+        }).addTo(map);
+
+        routeLayerRef.current = polyline;
+
+        // Auto-zoom to show the entire route
+        try {
+          map.fitBounds(polyline.getBounds(), {
+            padding: [50, 50],
+            maxZoom: 16
+          });
+        } catch (e) {
+          console.error("Error fitting bounds:", e);
+        }
+      }
+    };
+
+    updateRoute();
+  }, [routeCoordinates]);
 
   if (!isMounted) return <div className="h-full w-full bg-muted flex items-center justify-center">Loading Map...</div>;
 
