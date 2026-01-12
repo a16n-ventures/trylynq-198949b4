@@ -192,14 +192,19 @@ const MapPage = () => {
   const discoveryRadiusKm = discoveryRadiusMeters / 1000;
 
   // --- UPDATE friendsMapped logic to use user's radius ---
+    // --- UPDATE friendsMapped logic to use user's radius ---
   const friendsMapped: FriendOnMap[] = useMemo(() => {
     if (!location) return [];
+    
+    console.log(`🎯 Filtering friends within ${discoveryRadiusKm}km radius`);
     
     return nearbyFriendsRaw
       .map((loc: any) => {
         const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
         
+        // ✅ USE USER'S DISCOVERY RADIUS
         if (dist > discoveryRadiusKm) {
+          console.log(`⏭️ Friend "${loc.profiles?.display_name}" is ${dist.toFixed(1)}km away (outside ${discoveryRadiusKm}km radius)`);
           return null;
         }
 
@@ -226,10 +231,13 @@ const MapPage = () => {
           is_premium: isPremium
         };
       })
-      .filter(Boolean) as FriendOnMap[];
+      .filter(Boolean) as FriendOnMap[]
+      // ✅ SORT BY DISTANCE (Closest first)
+      .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
   }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus]);
 
   // --- UPDATE events query to use user's radius ---
+    // --- UPDATE events query to use user's radius ---
   const { data: events = [], isLoading: eventsLoading } = useQuery({
     queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
@@ -247,6 +255,7 @@ const MapPage = () => {
         const eLng = e.longitude || 3.3792;
         const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
         
+        // ✅ USE USER'S DISCOVERY RADIUS
         if (dist > discoveryRadiusKm) {
           return null;
         }
@@ -265,7 +274,10 @@ const MapPage = () => {
           longitude: eLng,
           distanceKm: Number(dist.toFixed(1))
         };
-      }).filter(Boolean);
+      })
+      .filter(Boolean)
+      // ✅ SORT BY DISTANCE (Closest first)
+      .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
     },
     enabled: !!location && activeView === 'events',
   });
