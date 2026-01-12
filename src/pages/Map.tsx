@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
   MessageSquare, Calendar, Users, Loader2, X, MapPinned,
-  Video, Globe, Layers, Radar
+  Video, Globe, Layers, Radar, CornerUpRight
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -78,14 +78,16 @@ const MapPage = () => {
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
-  const [showDirections, setShowDirections] = useState(false);
-  const [directionsDestination, setDirectionsDestination] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  
+  // --- Navigation State (Refactored) ---
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navigationTarget, setNavigationTarget] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null);
+  const [isRouting, setIsRouting] = useState(false);
 
-  // --- 1. Fetch Friend Locations (FIXED) ---
+  // --- 1. Fetch Friend Locations ---
   const friendIds = useMemo(() => {
     if (!user || !friends) return [];
-    // CRITICAL FIX: Extract IDs from the raw friendship keys (requester_id/addressee_id)
-    // This matches your original logic and ensures we actually get the UUIDs.
     return friends.map((f: any) => 
       f.requester_id === user.id ? f.addressee_id : f.requester_id
     ).filter(Boolean);
@@ -123,10 +125,6 @@ const MapPage = () => {
     queryKey: ['friend-locations', friendIds],
     queryFn: async () => {
       if (friendIds.length === 0) return [];
-      
-      // CRITICAL FIX: Removed .eq('is_sharing_location', true)
-      // We fetch ALL locations for friends. We will filter them in memory if needed.
-      // This solves the "not all my contacts" issue.
       const { data } = await supabase
         .from('user_locations')
         .select('user_id, latitude, longitude, is_sharing_location, updated_at')
@@ -145,13 +143,10 @@ const MapPage = () => {
     const uniqueFriendsMap = new Map();
 
     friends.forEach((friendship: any) => {
-      // Determine which profile is the friend
       const isRequester = friendship.requester_id === user?.id;
       const profile = isRequester ? friendship.addressee : friendship.requester;
-      // Get the ID securely
       const friendId = isRequester ? friendship.addressee_id : friendship.requester_id;
       
-      // Find their location data
       const loc = friendLocations.find(l => l.user_id === friendId);
 
       if (loc && loc.latitude && loc.longitude) {
@@ -185,32 +180,26 @@ const MapPage = () => {
       return data;
     },
     enabled: !!user?.id,
-    staleTime: 60000, // Cache for 1 minute
+    staleTime: 60000, 
   });
 
-  // Extract discovery radius (in meters), default to 10km if not set
   const discoveryRadiusMeters = useMemo(() => {
     const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
     const savedRadius = prefs?.discovery_radius;
-    return savedRadius ?? 10000; // Default 10km in meters
+    return savedRadius ?? 10000; 
   }, [userProfile]);
 
-  // Convert to kilometers for filtering
   const discoveryRadiusKm = discoveryRadiusMeters / 1000;
 
   // --- UPDATE friendsMapped logic to use user's radius ---
   const friendsMapped: FriendOnMap[] = useMemo(() => {
     if (!location) return [];
     
-    console.log(`🎯 Filtering friends within ${discoveryRadiusKm}km radius`);
-    
     return nearbyFriendsRaw
       .map((loc: any) => {
         const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
         
-        // ✅ USE USER'S DISCOVERY RADIUS
         if (dist > discoveryRadiusKm) {
-          console.log(`⏭️ Friend "${loc.profiles?.display_name}" is ${dist.toFixed(1)}km away (outside ${discoveryRadiusKm}km radius)`);
           return null;
         }
 
@@ -220,8 +209,6 @@ const MapPage = () => {
         if (online) statusText = 'Active now';
         else if (!loc.is_sharing) statusText = 'Location paused';
         else statusText = 'Active recently';
-
-        console.log(`✅ Friend "${loc.profiles?.display_name}" included: ${dist.toFixed(1)}km away`);
 
         const isPremium = premiumStatus[loc.user_id] || false;
 
@@ -248,9 +235,6 @@ const MapPage = () => {
     queryFn: async () => {
       if (!location) return [];
       
-      console.log(`🎯 Fetching events within ${discoveryRadiusKm}km radius`);
-      
-      // ✅ Removed LIMIT to fetch ALL nearby events
       const { data } = await supabase
         .from('events')
         .select('*, creator:profiles!creator_id(display_name, avatar_url)')
@@ -263,13 +247,9 @@ const MapPage = () => {
         const eLng = e.longitude || 3.3792;
         const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
         
-        // ✅ USE USER'S DISCOVERY RADIUS
         if (dist > discoveryRadiusKm) {
-          console.log(`⏭️ Event "${e.title}" is ${dist.toFixed(1)}km away (outside ${discoveryRadiusKm}km radius)`);
           return null;
         }
-
-        console.log(`✅ Event "${e.title}" included: ${dist.toFixed(1)}km away`);
 
         return {
           id: e.id,
@@ -290,13 +270,12 @@ const MapPage = () => {
     enabled: !!location && activeView === 'events',
   });
 
-  // ✅ ADDED: Format events for the map component
   const nearbyEventsForMap = useMemo(() => {
     return events.map((e: any) => ({
-      user_id: e.id, // Use event ID as "user_id" for the map marker
+      user_id: e.id, 
       latitude: e.latitude,
       longitude: e.longitude,
-      is_sharing: true, // Events are always "visible"
+      is_sharing: true, 
       updated_at: new Date().toISOString(),
       profiles: {
         display_name: e.title,
@@ -323,7 +302,6 @@ const MapPage = () => {
     if (!user) return;
     const newValue = !isGhostMode;
     try {
-      // Safe update: don't overwrite coords, just the toggle
       await supabase.from('user_locations').upsert({ 
         user_id: user.id, 
         is_sharing_location: !newValue,
@@ -351,6 +329,52 @@ const MapPage = () => {
     return () => { channel.unsubscribe(); };
   }, [user]);
 
+  // --- Directions Logic (In-App with OSRM) ---
+  const handleGetDirections = async (destLat: number, destLng: number, destName: string) => {
+    if (!location) {
+      toast.error("Your location is unavailable");
+      return;
+    }
+    
+    setIsRouting(true);
+    // Optimistic UI Update
+    setNavigationTarget({ lat: destLat, lng: destLng, name: destName });
+    setIsNavigating(true);
+    setSelectedFriend(null);
+    setSelectedEvent(null);
+
+    try {
+      // Fetch driving route from OSRM (Open Source Routing Machine) public API
+      // Format: {longitude},{latitude};{longitude},{latitude}
+      const response = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${location.longitude},${location.latitude};${destLng},${destLat}?overview=full&geometries=geojson`
+      );
+      
+      const data = await response.json();
+      
+      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        // OSRM returns [lng, lat], Leaflet needs [lat, lng]
+        const coordinates = data.routes[0].geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
+        setRouteCoordinates(coordinates);
+      } else {
+        toast.error("No route found");
+        setIsNavigating(false);
+      }
+    } catch (error) {
+      console.error('Routing error:', error);
+      toast.error("Could not fetch directions");
+      setIsNavigating(false);
+    } finally {
+      setIsRouting(false);
+    }
+  };
+
+  const cancelNavigation = () => {
+    setIsNavigating(false);
+    setNavigationTarget(null);
+    setRouteCoordinates(null);
+  };
+
   // --- Filtered Lists ---
   const filteredList = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -366,7 +390,7 @@ const MapPage = () => {
     <div className="relative h-screen w-screen overflow-hidden bg-background">
       {/* LAYER 1: MAP */}
       <div className="absolute inset-0 z-0 h-full w-full">
-        {/* ✅ UPDATED: Pass either friends or events to the map based on active view */}
+        {/* Pass routeCoordinates to LeafletMap for drawing the polyline */}
         <LeafletMap
           ref={mapRef}
           userLocation={location}
@@ -374,74 +398,77 @@ const MapPage = () => {
           loading={locationLoading}
           error={locationError}
           mapStyle={mapStyle} 
+          routeCoordinates={routeCoordinates}
         />
       </div>
 
       {/* LAYER 2: UI OVERLAY */}
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
-        {/* Header */}
-        <div className="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pointer-events-auto">
-          <div className="container-mobile flex items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70" />
-              <Input 
-                placeholder={activeView === 'friends' ? "Find friends..." : "Find events..."}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/60 backdrop-blur-md"
-              />
-            </div>
-            
-            <Button 
-              size="icon" 
-              variant={isGhostMode ? "destructive" : "secondary"}
-              className="rounded-full shadow-lg backdrop-blur-md bg-white/20 border-white/20 text-white"
-              onClick={toggleGhostMode}
-            >
-              {isGhostMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </Button>
-
-            <Button 
-              size="icon" 
-              variant="secondary" 
-              className="rounded-full shadow-lg backdrop-blur-md bg-white/20 border-white/20 text-white"
-              onClick={() => setShowContactImport(true)}
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-
-          <div className="container-mobile mt-3 flex justify-between items-center">
-            <Tabs value={activeView} onValueChange={(v: any) => setActiveView(v)} className="w-[200px]">
-              <TabsList className="grid w-full grid-cols-2 bg-white/10 backdrop-blur-md border border-white/10">
-                <TabsTrigger value="friends" className="text-white data-[state=active]:bg-white/20">Friends</TabsTrigger>
-                <TabsTrigger value="events" className="text-white data-[state=active]:bg-white/20">Events</TabsTrigger>
-              </TabsList>
-            </Tabs> 
-
-            <div className="mt-2 px-1">
-              <div className="flex items-center gap-2 text-xs text-white/80 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-md">
-                <Radar className="w-3 h-3" />
-                <span>Showing {activeView} within <strong>{discoveryRadiusKm}km</strong></span>
+        {/* Header - Hide during navigation for cleaner view */}
+        {!isNavigating && (
+          <div className="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pointer-events-auto">
+            <div className="container-mobile flex items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70" />
+                <Input 
+                  placeholder={activeView === 'friends' ? "Find friends..." : "Find events..."}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/60 backdrop-blur-md"
+                />
               </div>
+              
+              <Button 
+                size="icon" 
+                variant={isGhostMode ? "destructive" : "secondary"}
+                className="rounded-full shadow-lg backdrop-blur-md bg-white/20 border-white/20 text-white"
+                onClick={toggleGhostMode}
+              >
+                {isGhostMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+
+              <Button 
+                size="icon" 
+                variant="secondary" 
+                className="rounded-full shadow-lg backdrop-blur-md bg-white/20 border-white/20 text-white"
+                onClick={() => setShowContactImport(true)}
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
             </div>
 
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-white hover:bg-white/20 gap-2 backdrop-blur-md bg-white/5 rounded-full px-3"
-              onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
-            >
-              {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
-              <span className="text-xs">{mapStyle === 'standard' ? 'Satellite' : 'Standard'}</span>
-            </Button>
+            <div className="container-mobile mt-3 flex justify-between items-center">
+              <Tabs value={activeView} onValueChange={(v: any) => setActiveView(v)} className="w-[200px]">
+                <TabsList className="grid w-full grid-cols-2 bg-white/10 backdrop-blur-md border border-white/10">
+                  <TabsTrigger value="friends" className="text-white data-[state=active]:bg-white/20">Friends</TabsTrigger>
+                  <TabsTrigger value="events" className="text-white data-[state=active]:bg-white/20">Events</TabsTrigger>
+                </TabsList>
+              </Tabs> 
+
+              <div className="mt-2 px-1">
+                <div className="flex items-center gap-2 text-xs text-white/80 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-md">
+                  <Radar className="w-3 h-3" />
+                  <span>Showing {activeView} within <strong>{discoveryRadiusKm}km</strong></span>
+                </div>
+              </div>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-white hover:bg-white/20 gap-2 backdrop-blur-md bg-white/5 rounded-full px-3"
+                onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
+              >
+                {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
+                <span className="text-xs">{mapStyle === 'standard' ? 'Satellite' : 'Standard'}</span>
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex-grow" />
 
-        {/* BOTTOM SHEET - Fixed above bottom nav (64px height + safe area) */}
+        {/* BOTTOM SHEET */}
         <div className="fixed bottom-20 left-0 right-0 z-20 pointer-events-auto px-4 pb-2 max-h-[45vh]">
           {/* Recenter Button */}
           <div className="flex justify-end mb-3">
@@ -453,9 +480,53 @@ const MapPage = () => {
             </Button>
           </div>
 
-          {/* Nearby List Card with horizontal scroll for items */}
+          {/* CONTENT AREA */}
           <div className="overflow-y-auto max-h-[35vh]">
-            {selectedFriend && activeView === 'friends' ? (
+            
+            {/* 1. Navigation Active Card */}
+            {isNavigating && navigationTarget ? (
+              <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90 border-l-4 border-l-blue-500">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 text-blue-500 font-bold mb-1 text-xs uppercase tracking-wider">
+                        <Navigation className="w-3 h-3 animate-pulse" />
+                        Navigating to
+                      </div>
+                      <h3 className="font-bold text-lg leading-tight truncate max-w-[200px]">
+                        {navigationTarget.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {isRouting ? "Calculating best route..." : "Follow the path on the map"}
+                      </p>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                       <Button 
+                        size="icon"
+                        variant="destructive"
+                        className="rounded-full h-10 w-10 shadow-md"
+                        onClick={cancelNavigation}
+                      >
+                        <X className="w-5 h-5" />
+                      </Button>
+                      <Button 
+                        size="icon"
+                        className="rounded-full h-10 w-10 shadow-md gradient-primary text-white"
+                        onClick={() => {
+                          // External backup just in case
+                          const url = `https://www.google.com/maps/dir/?api=1&destination=${navigationTarget.lat},${navigationTarget.lng}&travelmode=driving`;
+                          window.open(url, '_blank');
+                        }}
+                      >
+                        <CornerUpRight className="w-5 h-5" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : selectedFriend && activeView === 'friends' ? (
+                // 2. Selected Friend Card
                 <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-4">
@@ -498,11 +569,8 @@ const MapPage = () => {
                       <Button
                         variant="outline"
                         onClick={() => {
-                          const { latitude, longitude, name } = selectedFriend;
-                          if (latitude && longitude) {
-                            setDirectionsDestination({ lat: latitude, lng: longitude, name });
-                            setShowDirections(true);
-                            setSelectedFriend(null);
+                          if (selectedFriend.latitude && selectedFriend.longitude) {
+                            handleGetDirections(selectedFriend.latitude, selectedFriend.longitude, selectedFriend.name);
                           } else {
                             toast.error('Location unavailable');
                           }
@@ -516,6 +584,7 @@ const MapPage = () => {
                   </CardContent>
                 </Card>
             ) : selectedEvent && activeView === 'events' ? (
+                // 3. Selected Event Card
                 <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
                   <CardContent className="p-4">
                     <div className="flex gap-3 mb-4">
@@ -557,13 +626,7 @@ const MapPage = () => {
                         <Button
                           variant="outline"
                           onClick={() => {
-                            setDirectionsDestination({ 
-                              lat: selectedEvent.latitude, 
-                              lng: selectedEvent.longitude, 
-                              name: selectedEvent.title 
-                            });
-                            setShowDirections(true);
-                            setSelectedEvent(null);
+                            handleGetDirections(selectedEvent.latitude, selectedEvent.longitude, selectedEvent.title);
                           }}
                         >
                           <Navigation className="w-4 h-4 mr-2" />
@@ -574,6 +637,7 @@ const MapPage = () => {
                   </CardContent>
                 </Card>
             ) : (
+                // 4. Default Nearby List
                 <Card className="gradient-card shadow-card border-0 backdrop-blur-xl bg-background/85">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -581,7 +645,6 @@ const MapPage = () => {
                       <Badge variant="secondary" className="text-xs">{filteredList.length}</Badge>
                     </div>
 
-                    {/* Horizontal scrollable list */}
                     {filteredList.length === 0 ? (
                       <div className="text-center py-6 text-muted-foreground text-sm">
                         {searchQuery ? `No ${activeView} match your search.` : `No ${activeView} found nearby.`}
@@ -634,80 +697,6 @@ const MapPage = () => {
       </div>
 
       <ContactImportModal open={showContactImport} onOpenChange={setShowContactImport} />
-      
-      {/* In-App Directions Overlay */}
-      {showDirections && directionsDestination && location && (
-        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col">
-          {/* Directions Header */}
-          <div className="flex items-center gap-3 p-4 border-b bg-background">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="rounded-full"
-              onClick={() => {
-                setShowDirections(false);
-                setDirectionsDestination(null);
-              }}
-            >
-              <X className="w-5 h-5" />
-            </Button>
-            <div className="flex-1">
-              <h2 className="font-bold text-lg">Directions</h2>
-              <p className="text-sm text-muted-foreground truncate">
-                To: {directionsDestination.name}
-              </p>
-            </div>
-          </div>
-          
-          {/* Embedded Map with Route */}
-          <div className="flex-1 relative">
-            <iframe
-              className="w-full h-full border-0"
-              loading="lazy"
-              allowFullScreen
-              referrerPolicy="no-referrer-when-downgrade"
-              src={`https://www.google.com/maps/embed/v1/directions?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&origin=${location.latitude},${location.longitude}&destination=${directionsDestination.lat},${directionsDestination.lng}&mode=driving`}
-            />
-          </div>
-          
-          {/* Directions Footer */}
-          <div className="p-4 border-t bg-background space-y-3">
-            <div className="flex items-center gap-3 text-sm">
-              <div className="flex items-center gap-2 flex-1">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                <span className="text-muted-foreground">Your location</span>
-              </div>
-              <div className="flex items-center gap-2 flex-1">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <span className="text-muted-foreground truncate">{directionsDestination.name}</span>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  // Open in external Google Maps app for turn-by-turn navigation
-                  const url = `https://www.google.com/maps/dir/?api=1&origin=${location.latitude},${location.longitude}&destination=${directionsDestination.lat},${directionsDestination.lng}&travelmode=driving`;
-                  window.open(url, '_blank');
-                }}
-              >
-                <Navigation className="w-4 h-4 mr-2" />
-                Open in Maps
-              </Button>
-              <Button 
-                className="gradient-primary text-white"
-                onClick={() => {
-                  setShowDirections(false);
-                  setDirectionsDestination(null);
-                }}
-              >
-                Done
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
