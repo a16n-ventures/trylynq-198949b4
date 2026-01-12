@@ -1,17 +1,51 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
+// Helper to calculate distance in KM
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 /**
  * Global real-time notification hook that listens for 
- * friend requests, event invites, messages, and location shares
- * and invalidates relevant queries + shows toast notifications
+ * friend requests, event invites, messages, location shares
+ * AND nearby users, invalidating relevant queries + showing toast notifications
  */
 export function useRealtimeNotifications() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  
+  // Refs to track location and notification state without causing re-renders
+  const userLocation = useRef<{ lat: number; lng: number } | null>(null);
+  const notifiedNearbyUsers = useRef<Set<string>>(new Set());
+
+  // 1. Track current user's location for distance calculations
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        userLocation.current = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+      },
+      (error) => console.error("Error watching location for notifications:", error),
+      { enableHighAccuracy: false, maximumAge: 30000, timeout: 27000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -156,11 +190,72 @@ export function useRealtimeNotifications() {
       })
       .subscribe();
 
+    // ✅ NEW: Subscribe to nearby user updates (Friends or Discoverable Users)
+    const nearbyUserChannel = supabase
+      .channel('global-nearby-users')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'user_locations',
+        // Note: filtering by distance must happen client-side due to realtime limitations
+      }, async (payload: any) => {
+        const newData = payload.new;
+        
+        // 1. Skip own updates
+        if (newData.user_id === user.id) return;
+        
+        // 2. Ensure we have our own location to compare against
+        if (!userLocation.current) return;
+        
+        // 3. Ensure updated location is valid
+        if (!newData.latitude || !newData.longitude) return;
+
+        // 4. Calculate distance
+        const distance = calculateDistance(
+          userLocation.current.lat,
+          userLocation.current.lng,
+          newData.latitude,
+          newData.longitude
+        );
+
+        // 5. Check if within 25km radius
+        if (distance <= 25) {
+          // 6. Check if we already notified about this user in this session to prevent spam
+          if (notifiedNearbyUsers.current.has(newData.user_id)) return;
+
+          // 7. Fetch user details for the notification
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('display_name')
+            .eq('user_id', newData.user_id)
+            .single();
+            
+          const name = profile?.display_name || 'Someone';
+          
+          // 8. Send Notification
+          toast.success(`${name} is nearby!`, {
+            description: `${distance.toFixed(1)}km away from your location.`,
+            action: {
+              label: 'See Map',
+              onClick: () => window.location.href = '/app/map'
+            }
+          });
+
+          // 9. Mark as notified
+          notifiedNearbyUsers.current.add(newData.user_id);
+          
+          // Optional: Invalidate nearby query to refresh lists
+          queryClient.invalidateQueries({ queryKey: ['nearbyUsers'] });
+        }
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(friendshipChannel);
       supabase.removeChannel(eventInviteChannel);
       supabase.removeChannel(messageChannel);
       supabase.removeChannel(locationShareChannel);
+      supabase.removeChannel(nearbyUserChannel);
     };
   }, [user, queryClient]);
 }
