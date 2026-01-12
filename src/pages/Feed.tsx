@@ -1107,7 +1107,7 @@ const Feed = () => {
          // Store ad metadata in the post's metadata or use advertisements table
          try {
              await supabase.from('advertisements').insert({
-                 title: 'Promoted Post',
+                 title: 'Promoted',
                  link_url: `/app/feed?post=${postData.id}`,
                  description: postText.substring(0, 100),
                  placement: 'feed',
@@ -1879,7 +1879,7 @@ const Feed = () => {
                       <Plus className="h-8 w-8 text-white" />
                   </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="end" className="w-48 mb-2 p-1.5 rounded-xl border-0 shadow-xl bg-popover/95 backdrop-blur-lg">
+              <DropdownMenuContent side="top" align="end" className="w-auto mb-2 p-1.5 rounded-xl border-0 shadow-xl bg-popover/95 backdrop-blur-lg">
                   <DropdownMenuItem onClick={() => openCreateModal('story')} className="p-2.5 rounded-lg focus:bg-muted font-medium cursor-pointer">
                       <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-3"><Plus className="w-4 h-4" /></div>
                       Story
