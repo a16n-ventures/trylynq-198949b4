@@ -23,14 +23,16 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
   const [showMutuals, setShowMutuals] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   
-  // ✅ ADDED: State to hold fetched profile details if props are missing
+  // State to hold fetched profile details if props are missing/generic
   const [fetchedDetails, setFetchedDetails] = useState<{ display_name?: string; username?: string; avatar_url?: string } | null>(null);
 
-  // ✅ ADDED: Effect to fetch real user details if name is missing or generic
+  // Effect to fetch real user details if name is missing or generic (UserXXXX)
   useEffect(() => {
     // If we already have a good display name in props, don't fetch
-    if (profile.display_name && profile.display_name !== `User${profile.user_id?.slice(-4)}`) return;
+    // Checks for "User" followed by last 4 chars of ID
+    const isGenericName = !profile.display_name || (profile.user_id && profile.display_name === `User${profile.user_id.slice(-4)}`);
     
+    if (!isGenericName) return;
     if (!profile.user_id) return;
 
     const fetchRealProfileData = async () => {
@@ -84,13 +86,13 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         const mutualIds = [...myFriendIds].filter(id => theirFriendIds.has(id));
         setMutualsCount(mutualIds.length);
 
-        // 4. If expanded or count > 0, we can fetch details
+        // 4. If mutuals exist, fetch their basic profiles for the dialog
         if (mutualIds.length > 0) {
           const { data: profiles } = await supabase
             .from('profiles')
             .select('id, user_id, display_name, avatar_url')
             .in('user_id', mutualIds)
-            .limit(10); // Limit to 10 for preview
+            .limit(20); // Limit to 20 for preview
           setMutuals(profiles || []);
         }
       } catch (err) {
@@ -106,7 +108,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
     return km < 1 ? `${Math.round(km * 1000)}m away` : `${km.toFixed(1)}km away`;
   };
 
-  // ✅ UPDATED: Logic to prioritize fetched data over props, over generic fallback
+  // Logic to prioritize fetched data over props, over generic fallback
   const finalAvatar = fetchedDetails?.avatar_url || profile.avatar_url;
   const finalDisplayName = 
     fetchedDetails?.display_name || 
