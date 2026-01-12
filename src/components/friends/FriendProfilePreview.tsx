@@ -4,11 +4,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MessageSquare, MapPin, UserMinus, Ban, Flag, Clock } from "lucide-react";
+import { MessageSquare, MapPin, UserMinus, Ban, Flag, Clock, Link2, ExternalLink, Globe, Instagram, Twitter, Linkedin, Github } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import type { Profile } from "@/hooks/useFriends";
+
+interface ProfileLink {
+  id: string;
+  title: string;
+  url: string;
+}
 
 interface FriendProfilePreviewProps {
   profile: Profile | null;
@@ -19,6 +25,14 @@ interface FriendProfilePreviewProps {
   onBlockUser?: (userId: string) => void;
   onReportUser?: (userId: string) => void;
 }
+
+const getLinkIcon = (url: string) => {
+  if (url.includes('instagram.com')) return Instagram;
+  if (url.includes('twitter.com') || url.includes('x.com')) return Twitter;
+  if (url.includes('linkedin.com')) return Linkedin;
+  if (url.includes('github.com')) return Github;
+  return Globe;
+};
 
 export function FriendProfilePreview({
   profile,
@@ -32,7 +46,6 @@ export function FriendProfilePreview({
   const navigate = useNavigate();
   const [confirmAction, setConfirmAction] = useState<'remove' | 'block' | null>(null);
 
-  // ✅ FIXED: Improved premium status check with better error handling
   const { data: fullProfile, isLoading } = useQuery({
     queryKey: ['friendProfile', profile?.user_id],
     queryFn: async () => {
@@ -42,7 +55,6 @@ export function FriendProfilePreview({
         const [profileRes, locationRes, premiumRes, subRes] = await Promise.all([
           supabase.from('profiles').select('*').eq('user_id', profile.user_id).single(),
           supabase.from('user_locations').select('*').eq('user_id', profile.user_id).single(),
-          // Check premium_features table
           supabase
             .from('premium_features')
             .select('is_active, expires_at')
@@ -50,26 +62,24 @@ export function FriendProfilePreview({
             .eq('is_active', true)
             .gt('expires_at', new Date().toISOString())
             .maybeSingle(),
-          // Check subscriptions table
           supabase
             .from('subscriptions')
             .select('status')
             .eq('user_id', profile.user_id)
             .maybeSingle()
         ]);
-
-        // Debug logging (remove in production)
-        console.log('Premium feature:', premiumRes.data);
-        console.log('Subscription:', subRes.data);
         
-        // Calculate premium status
         const isPremium = !!premiumRes.data || subRes.data?.status === 'active';
-        console.log('Is Premium:', isPremium);
+        
+        // Parse links from preferences
+        const preferences = profileRes.data?.preferences as { links?: ProfileLink[] } | null;
+        const links = preferences?.links || [];
         
         return {
           ...profileRes.data,
           location: locationRes.data,
-          isPremium
+          isPremium,
+          links
         };
       } catch (error) {
         console.error('Error fetching friend profile:', error);
@@ -110,7 +120,7 @@ export function FriendProfilePreview({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto">
+      <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="sr-only">Profile Preview</DialogTitle>
         </DialogHeader>
@@ -133,7 +143,6 @@ export function FriendProfilePreview({
             <div className="text-center">
               <div className="flex items-center justify-center gap-2">
                 <h3 className="text-xl font-semibold">{fullProfile.display_name || 'Unknown User'}</h3>
-                {/* ✅ FIXED: Added optional chaining and proper check */}
                 {fullProfile?.isPremium && (
                   <svg 
                     className="w-5 h-5 text-blue-500 flex-shrink-0" 
@@ -149,6 +158,41 @@ export function FriendProfilePreview({
                 <p className="text-sm text-muted-foreground mt-1 max-w-xs">{fullProfile.bio}</p>
               )}
             </div>
+
+            {/* Profile Links - Instagram style */}
+            {fullProfile.links && fullProfile.links.length > 0 && (
+              <div className="w-full space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+                  <Link2 className="w-3 h-3" />
+                  Links
+                </div>
+                <div className="space-y-1.5">
+                  {fullProfile.links.slice(0, 3).map((link: ProfileLink) => {
+                    const LinkIcon = getLinkIcon(link.url);
+                    return (
+                      <a
+                        key={link.id}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2.5 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-all group text-sm"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <LinkIcon className="w-3.5 h-3.5 text-primary" />
+                        </div>
+                        <span className="flex-1 truncate font-medium">{link.title}</span>
+                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                      </a>
+                    );
+                  })}
+                  {fullProfile.links.length > 3 && (
+                    <p className="text-xs text-center text-muted-foreground">
+                      +{fullProfile.links.length - 3} more links
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Location info */}
             {fullProfile.location?.is_sharing_location && (

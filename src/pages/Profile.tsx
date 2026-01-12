@@ -12,7 +12,8 @@ import {
   Edit3, MapPin, Users, Camera, Bell, LogOut, Crown, Trash2,
   Loader2, Gift, Copy, Radar, BarChart3, Eye, Share2, ChevronRight,
   Shield, Check, X, Calendar, MessageSquare, Heart, Star, Zap,
-  AlertCircle, RefreshCw, Settings, AtSign, Mail, User, Phone
+  AlertCircle, RefreshCw, Settings, AtSign, Mail, User, Phone,
+  Link2, Plus, ExternalLink, Globe, Instagram, Twitter, Linkedin, Github
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,12 +37,19 @@ import { Badge } from '@/components/ui/badge';
 import { useGeolocation } from '@/contexts/LocationContext';
 
 // --- TYPES ---
+interface ProfileLink {
+  id: string;
+  title: string;
+  url: string;
+  icon?: string;
+}
+
 interface ProfileData {
   user_id: string;
   display_name: string;
   username: string;
   email: string;
-  phone?: string | number | null; // Allow both for DB compatibility
+  phone?: string | number | null;
   bio: string;
   avatar_url: string;
   created_at: string;
@@ -49,6 +57,7 @@ interface ProfileData {
   preferences?: {
     notifications: boolean;
     discovery_radius?: number;
+    links?: ProfileLink[];
   };
 }
 
@@ -154,8 +163,13 @@ const Profile = () => {
     fullName: '',
     username: '',
     email: '',
-    phone: '' // Added phone state
+    phone: ''
   });
+  
+  // Links management state
+  const [showLinksDialog, setShowLinksDialog] = useState(false);
+  const [profileLinks, setProfileLinks] = useState<ProfileLink[]>([]);
+  const [newLink, setNewLink] = useState({ title: '', url: '' });
 
   // Query with optimized settings
   const { data, isLoading, refetch, isRefetching, error } = useQuery<CombinedProfile, Error>({
@@ -217,6 +231,9 @@ const Profile = () => {
         email: profile.email || user?.email || '',
         phone: profile.phone?.toString() || ''
       });
+      
+      // Sync profile links
+      setProfileLinks(profile.preferences?.links || []);
     }
   }, [profile, user?.email]);
 
@@ -636,6 +653,55 @@ const Profile = () => {
     });
   }, [settingsForm, updateProfileSettingsMutation]);
 
+  // Links management functions
+  const getLinkIcon = (url: string) => {
+    if (url.includes('instagram.com')) return Instagram;
+    if (url.includes('twitter.com') || url.includes('x.com')) return Twitter;
+    if (url.includes('linkedin.com')) return Linkedin;
+    if (url.includes('github.com')) return Github;
+    return Globe;
+  };
+
+  const addLink = useCallback(() => {
+    if (!newLink.title.trim() || !newLink.url.trim()) {
+      toast.error('Please enter both title and URL');
+      return;
+    }
+    
+    // Validate URL
+    try {
+      new URL(newLink.url.startsWith('http') ? newLink.url : `https://${newLink.url}`);
+    } catch {
+      toast.error('Please enter a valid URL');
+      return;
+    }
+
+    const link: ProfileLink = {
+      id: crypto.randomUUID(),
+      title: newLink.title.trim(),
+      url: newLink.url.startsWith('http') ? newLink.url : `https://${newLink.url}`
+    };
+    
+    const updatedLinks = [...profileLinks, link];
+    setProfileLinks(updatedLinks);
+    setNewLink({ title: '', url: '' });
+  }, [newLink, profileLinks]);
+
+  const removeLink = useCallback((linkId: string) => {
+    setProfileLinks(prev => prev.filter(l => l.id !== linkId));
+  }, []);
+
+  const saveLinks = useCallback(() => {
+    updateProfileMutation.mutate({ 
+      preferences: { links: profileLinks }
+    }, {
+      onSuccess: () => {
+        toast.success('Links saved successfully!');
+        setShowLinksDialog(false);
+      }
+    });
+  }, [profileLinks, updateProfileMutation]);
+
   // Memoized calculations
   const profileCompletion = useMemo(() => {
     let completed = 0;
@@ -820,47 +886,102 @@ const Profile = () => {
 
       <div className="container-mobile -mt-8 relative z-10 space-y-5">
         
-        {/* 30-DAY INSIGHTS */}
-        <Card className="border-0 shadow-lg overflow-hidden bg-white dark:bg-card">
-          <CardHeader className="pb-3 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 border-b px-5 pt-5">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-bold flex items-center gap-2 text-foreground">
-                <BarChart3 className="w-5 h-5 text-primary" /> 
+        {/* 30-DAY INSIGHTS - Compact version */}
+        <Card className="border-0 shadow-md overflow-hidden bg-card">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                <BarChart3 className="w-4 h-4 text-primary" /> 
                 30-Day Analytics
-              </CardTitle>
-              <Badge variant="outline" className="text-[10px] px-2 py-0.5">
-                <Zap className="w-3 h-3 mr-1" />
+              </h3>
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-5">
+                <Zap className="w-2.5 h-2.5 mr-0.5" />
                 Live
               </Badge>
             </div>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 p-0">
-            <div className="p-6 border-r flex flex-col items-center justify-center hover:bg-muted/5 transition-colors cursor-pointer group">
-              <div className="flex items-baseline gap-1.5 mb-2">
-                <span className="text-3xl font-bold text-foreground tracking-tight group-hover:scale-110 transition-transform">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-muted/30 rounded-lg p-3 text-center">
+                <span className="text-2xl font-bold text-foreground">
                   {profile?.profile_views_30d || 0}
                 </span>
-                <Badge className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0">
-                  +12%
-                </Badge>
+                <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-1 mt-1">
+                  <Eye className="w-3 h-3" /> Profile Views
+                </p>
               </div>
-              <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <Eye className="w-3.5 h-3.5" /> Profile Views
-              </span>
-            </div>
-            <div className="p-6 flex flex-col items-center justify-center hover:bg-muted/5 transition-colors cursor-pointer group">
-              <div className="flex items-baseline gap-1.5 mb-2">
-                <span className="text-3xl font-bold text-foreground tracking-tight group-hover:scale-110 transition-transform">
+              <div className="bg-muted/30 rounded-lg p-3 text-center">
+                <span className="text-2xl font-bold text-foreground">
                   {stats.event_views_30d || 0}
                 </span>
-                <Badge className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0">
-                  +5%
-                </Badge>
+                <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-1 mt-1">
+                  <Radar className="w-3 h-3" /> Event Reach
+                </p>
               </div>
-              <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <Radar className="w-3.5 h-3.5" /> Event Reach
-              </span>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* PROFILE LINKS - Instagram-style */}
+        <Card className="border-0 shadow-md">
+          <CardHeader className="pb-2 px-5 pt-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Link2 className="w-4 h-4 text-primary" />
+                My Links
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => setShowLinksDialog(true)}
+              >
+                <Edit3 className="w-3 h-3 mr-1" />
+                Edit
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            {profileLinks.length === 0 ? (
+              <div 
+                className="text-center py-6 border-2 border-dashed border-muted rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+                onClick={() => setShowLinksDialog(true)}
+              >
+                <Link2 className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Add links to share</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">Website, social profiles, etc.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {profileLinks.slice(0, 5).map((link) => {
+                  const LinkIcon = getLinkIcon(link.url);
+                  return (
+                    <a
+                      key={link.id}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-all group"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                        <LinkIcon className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{link.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">{link.url.replace(/^https?:\/\//, '')}</p>
+                      </div>
+                      <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </a>
+                  );
+                })}
+                {profileLinks.length > 5 && (
+                  <button 
+                    className="w-full text-xs text-primary font-medium py-2"
+                    onClick={() => setShowLinksDialog(true)}
+                  >
+                    +{profileLinks.length - 5} more links
+                  </button>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1275,6 +1396,117 @@ const Profile = () => {
                 <>
                   <Check className="w-4 h-4 mr-2" />
                   Save Changes
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Profile Links Dialog */}
+      <Dialog open={showLinksDialog} onOpenChange={setShowLinksDialog}>
+        <DialogContent className="sm:max-w-[500px] max-w-[calc(100vw-2rem)] max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <Link2 className="w-5 h-5 text-primary" />
+              Manage Links
+            </DialogTitle>
+            <DialogDescription>
+              Add links to your website, social profiles, or any other URL you want to share.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto py-4 space-y-4">
+            {/* Add new link form */}
+            <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+              <div className="space-y-2">
+                <Label htmlFor="link-title" className="text-sm font-medium">Link Title</Label>
+                <Input
+                  id="link-title"
+                  placeholder="e.g., My Website, Instagram"
+                  value={newLink.title}
+                  onChange={(e) => setNewLink(prev => ({ ...prev, title: e.target.value }))}
+                  maxLength={50}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="link-url" className="text-sm font-medium">URL</Label>
+                <Input
+                  id="link-url"
+                  placeholder="https://example.com"
+                  value={newLink.url}
+                  onChange={(e) => setNewLink(prev => ({ ...prev, url: e.target.value }))}
+                />
+              </div>
+              <Button 
+                onClick={addLink}
+                className="w-full"
+                disabled={!newLink.title.trim() || !newLink.url.trim()}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Link
+              </Button>
+            </div>
+
+            {/* Existing links list */}
+            {profileLinks.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-muted-foreground">Your Links ({profileLinks.length})</Label>
+                <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                  {profileLinks.map((link) => {
+                    const LinkIcon = getLinkIcon(link.url);
+                    return (
+                      <div
+                        key={link.id}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-background border group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <LinkIcon className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{link.title}</p>
+                          <p className="text-xs text-muted-foreground truncate">{link.url.replace(/^https?:\/\//, '')}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => removeLink(link.id)}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowLinksDialog(false);
+                setProfileLinks(profile?.preferences?.links || []);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={saveLinks}
+              disabled={updateProfileMutation.isPending}
+              className="gradient-primary text-white"
+            >
+              {updateProfileMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Save Links
                 </>
               )}
             </Button>
