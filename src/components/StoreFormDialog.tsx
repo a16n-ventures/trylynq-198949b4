@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,21 @@ export default function StoreFormDialog({ editingStore, onSuccess, trigger }: St
     location: editingStore?.location || '',
     contact_phone: editingStore?.contact_phone || ''
   });
+
+  // Sync state when editingStore changes or dialog opens
+  useEffect(() => {
+    if (editingStore && open) {
+      setStoreForm({
+        name: editingStore.name,
+        description: editingStore.description || '',
+        logo_url: editingStore.logo_url || '',
+        category: editingStore.category,
+        location: editingStore.location || '',
+        contact_phone: editingStore.contact_phone || ''
+      });
+      setLogoPreview(editingStore.logo_url || '');
+    }
+  }, [editingStore, open]);
 
   const resetForm = () => {
     setStoreForm({ name: '', description: '', logo_url: '', category: 'General', location: '', contact_phone: '' });

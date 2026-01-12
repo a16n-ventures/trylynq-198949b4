@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,23 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
     delivery_mode: (editingItem?.delivery_mode || 'onsite') as 'onsite' | 'payment_before_delivery',
     max_delivery_days: editingItem?.max_delivery_days || 3
   });
+
+  // Sync state when editingItem changes or dialog opens
+  useEffect(() => {
+    if (editingItem && open) {
+      setItemForm({
+        store_id: editingItem.store_id,
+        name: editingItem.name,
+        description: editingItem.description || '',
+        image_url: editingItem.image_url || '',
+        price: editingItem.price,
+        discount_percent: editingItem.discount_percent,
+        delivery_mode: (editingItem.delivery_mode || 'onsite') as 'onsite' | 'payment_before_delivery',
+        max_delivery_days: editingItem.max_delivery_days || 3
+      });
+      setImagePreview(editingItem.image_url || '');
+    }
+  }, [editingItem, open]);
 
   // Fetch only stores owned by the current user
   const { data: stores = [], isLoading: storesLoading } = useQuery({
@@ -183,8 +200,6 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
   };
 
   const handleOpenChange = (isOpen: boolean) => {
-    // ✅ FIXED: Removed the premature stores.length check here.
-    // We let the dialog open first so useQuery can actually fetch the data.
     setOpen(isOpen);
     if (!isOpen) resetForm();
   };
@@ -200,7 +215,6 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
         </DialogHeader>
         
         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-          {/* ✅ ADDED: Loading state handling */}
           {storesLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -292,7 +306,6 @@ export default function ItemFormDialog({ editingItem, onSuccess, trigger }: Item
           )}
         </div>
         
-        {/* Only show Footer if not loading and stores exist */}
         {!storesLoading && stores.length > 0 && (
           <DialogFooter>
             <Button onClick={handleSubmit} disabled={createItemMutation.isPending || updateItemMutation.isPending || uploading}>
