@@ -16,6 +16,11 @@ export interface Message {
   pending?: boolean;
   read?: boolean;
   updated_at?: string;
+  reply_to?: {
+    id: string;
+    content?: string | null;
+    sender_name?: string;
+  } | null;
 }
 
 export interface CommunityMember {
