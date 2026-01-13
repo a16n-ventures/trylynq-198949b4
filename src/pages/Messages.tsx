@@ -347,12 +347,12 @@ export default function Messages() {
       if (!user?.id) return [];
       
       try {
+        // Fetch ALL communities
+        // CHANGED: Removed `community_members ( count )` join.
+        // Now selects '*' to use the static 'member_count' column, matching Feed.tsx behavior.
         const { data: communities, error: commError } = await supabase
           .from('communities')
-          .select(`
-            id, name, description, cover_url, creator_id, created_at, member_count,
-            community_members ( count )
-          `)
+          .select('*') 
           .order('created_at', { ascending: false });
 
         if (commError) {
