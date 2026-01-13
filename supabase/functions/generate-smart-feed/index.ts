@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1"
 import { Configuration, OpenAIApi } from "https://esm.sh/openai@3.2.1"
 
-// ✅ 1. Define CORS Headers
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -15,20 +14,22 @@ interface FeedRequest {
 }
 
 serve(async (req) => {
-  // ✅ 2. Handle CORS Preflight Request
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Only parse JSON after checking for OPTIONS
     const { user_id, user_lat, user_long } = await req.json() as FeedRequest;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-    const openai = new OpenAIApi(new Configuration({ apiKey: Deno.env.get('OPENAI_API_KEY') }));
+
+    // Initialize OpenAI only if key exists
+    const openAIKey = Deno.env.get('OPENAI_API_KEY');
+    const openai = openAIKey ? new OpenAIApi(new Configuration({ apiKey: openAIKey })) : null;
 
     // --- FETCH CONTEXT ---
     const [profileRes, friendsRes, adsRes] = await Promise.all([
@@ -37,9 +38,10 @@ serve(async (req) => {
       supabase.from('advertisements').select('*, social_posts(*, profiles(*))').eq('is_active', true).limit(5)
     ]);
 
-    const profile = profileRes.data || { is_premium: false }; // Fallback safety
+    const profile = profileRes.data || { is_premium: false, interests: [] };
     const ads = adsRes.data || [];
     
+    // Flatten friends list
     const friendIds = friendsRes.data?.map((f: any) => 
       f.requester_id === user_id ? f.addressee_id : f.requester_id
     ) || [];
@@ -48,11 +50,12 @@ serve(async (req) => {
     let eventsData: any[] = [];
 
     // --- LOGIC FORK ---
-    if (!profile.is_premium) {
-      // STANDARD USER
+    // Fallback to Standard if OpenAI key is missing or user is not premium
+    if (!profile.is_premium || !openai) {
+      // 👤 STANDARD USER (or System Fallback)
       const { data: posts } = await supabase
         .from('social_posts')
-        .select(`*, profiles(display_name, avatar_url, user_id)`) // Removed 'is_premium' from select to avoid error if col missing
+        .select(`*, profiles(display_name, avatar_url, user_id)`)
         .order('created_at', { ascending: false })
         .limit(40);
 
@@ -63,45 +66,55 @@ serve(async (req) => {
         .order('created_at', { ascending: false })
         .limit(10);
 
-      feedData = posts || [];
-      eventsData = events || [];
+      // ✅ FIX: Add 'type' property so frontend filters don't remove them
+      feedData = (posts || []).map(p => ({ ...p, type: 'post' }));
+      eventsData = (events || []).map(e => ({ ...e, type: 'event' }));
 
     } else {
-      // PREMIUM USER
-      const inputContext = `Interests: ${profile.interests?.join(', ') || 'general'}. Propensity: ${profile.travel_propensity || 'High'}.`;
-      const embeddingResponse = await openai.createEmbedding({
-        model: 'text-embedding-3-small',
-        input: inputContext,
-      });
-      const userVector = embeddingResponse.data.data[0].embedding;
+      // 💎 PREMIUM USER
+      try {
+        const inputContext = `Interests: ${profile.interests?.join(', ') || 'general'}. Propensity: ${profile.travel_propensity || 'High'}.`;
+        const embeddingResponse = await openai.createEmbedding({
+          model: 'text-embedding-3-small',
+          input: inputContext,
+        });
+        const userVector = embeddingResponse.data.data[0].embedding;
 
-      const { data: rawPosts } = await supabase
-        .from('social_posts')
-        .select(`*, profiles(display_name, avatar_url, user_id)`)
-        .order('created_at', { ascending: false })
-        .limit(100);
+        // Fetch Posts
+        const { data: rawPosts } = await supabase
+          .from('social_posts')
+          .select(`*, profiles(display_name, avatar_url, user_id)`)
+          .order('created_at', { ascending: false })
+          .limit(100);
 
-      if (rawPosts) {
-        feedData = rawPosts.map((post: any) => {
-          let score = 0;
-          if (friendIds.includes(post.user_id)) score += 30;
-          // Simple decay
-          score -= (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60); 
-          return { ...post, sortScore: score };
-        }).sort((a: any, b: any) => b.sortScore - a.sortScore).slice(0, 40);
+        if (rawPosts) {
+          // Score and Sort
+          feedData = rawPosts.map((post: any) => {
+            let score = 0;
+            if (friendIds.includes(post.user_id)) score += 30; // Prioritize friends
+            score -= (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60); // Recency decay
+            return { ...post, type: 'post', sortScore: score }; // ✅ Add 'type'
+          }).sort((a: any, b: any) => b.sortScore - a.sortScore).slice(0, 40);
+        }
+
+        // Fetch Events (RPC)
+        const { data: aiEvents, error: rpcError } = await supabase.rpc('match_content_smart', {
+          query_embedding: userVector,
+          user_lat: user_lat || null,
+          user_long: user_long || null,
+          travel_radius_km: (profile.travel_propensity || 0.5) * 500, 
+          match_threshold: 0.60
+        });
+
+        if (rpcError) throw rpcError;
+        eventsData = (aiEvents || []).map((e: any) => ({ ...e, type: 'event' }));
+
+      } catch (err) {
+        console.error("Premium Logic Failed, using fallback", err);
+        // Fallback to standard feed if AI fails
+        const { data: posts } = await supabase.from('social_posts').select('*').limit(20);
+        feedData = (posts || []).map(p => ({ ...p, type: 'post' }));
       }
-
-      // RPC Call for events
-      const searchRadius = (profile.travel_propensity || 0.5) * 500;
-      const { data: aiEvents } = await supabase.rpc('match_content_smart', {
-        query_embedding: userVector,
-        user_lat: user_lat || null,
-        user_long: user_long || null,
-        travel_radius_km: searchRadius, 
-        match_threshold: 0.60
-      });
-      
-      eventsData = aiEvents || [];
     }
 
     // --- AD INJECTION ---
@@ -109,11 +122,13 @@ serve(async (req) => {
     let adIndex = 0;
 
     feedData.forEach((item, index) => {
+      // Inject Ad every 6 items
       if (index > 0 && index % 6 === 0 && ads[adIndex]) {
         finalFeed.push({
           id: `ad-${ads[adIndex].id}`,
+          type: 'ad', // ✅ Correct type for ads
           post_type: 'ad',
-          content: ads[adIndex].social_posts?.content,
+          content: ads[adIndex].social_posts?.content || ads[adIndex].description,
           image_url: ads[adIndex].social_posts?.image_url,
           profiles: ads[adIndex].social_posts?.profiles,
           link_url: ads[adIndex].link_url,
@@ -124,7 +139,6 @@ serve(async (req) => {
       finalFeed.push(item);
     });
 
-    // ✅ 3. Return Response with CORS Headers
     return new Response(JSON.stringify({ 
       success: true, 
       posts: finalFeed,
@@ -135,7 +149,6 @@ serve(async (req) => {
     });
 
   } catch (error: any) {
-    // ✅ 4. Handle Errors with CORS Headers too
     return new Response(JSON.stringify({ error: error.message }), { 
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
