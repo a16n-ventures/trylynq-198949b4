@@ -949,7 +949,7 @@ const Profile = () => {
               <Switch 
                 checked={!!location?.is_sharing_location}
                 onCheckedChange={handleLocationToggle}
-                disabled={toggleLocationMutation.isPending || locationLoading}
+                enabled={toggleLocationMutation.isPending || locationLoading}
                 aria-label="Toggle location sharing"
               />
             </div>
