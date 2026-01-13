@@ -17,7 +17,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -48,11 +47,9 @@ const getDisplayName = (profile: any): string => {
   try {
     if (!profile) return 'Unknown User';
     
-    // Handle array wrapping (from Supabase joins)
     const p = Array.isArray(profile) ? profile[0] : profile;
     if (!p) return 'Unknown User';
     
-    // Priority order: display_name > username > email
     if (p.display_name && typeof p.display_name === 'string' && p.display_name.trim()) {
       return p.display_name.trim();
     }
@@ -82,7 +79,7 @@ const PremiumBadge = () => (
   </svg>
 );
 
-// Extended type to support premium status locally without modifying the global type file
+// Extended type to support premium status locally
 type ExtendedSelectedChat = SelectedChat & { is_premium?: boolean };
 type ExtendedDMListItem = DMListItem & { is_premium?: boolean };
 
@@ -105,7 +102,7 @@ export default function Messages() {
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isCreateCommunityOpen, setIsCreateCommunityOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isModerationOpen, setIsModerationOpen] = useState(false); // New State for Moderation
+  const [isModerationOpen, setIsModerationOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -184,7 +181,7 @@ export default function Messages() {
   // Clear typing when chat changes
   useEffect(() => {
     clearTyping();
-  }, [selectedChat?.id]);
+  }, [selectedChat?.id, clearTyping]);
 
   // Debounce search query
   useEffect(() => {
@@ -192,14 +189,13 @@ export default function Messages() {
     return () => window.clearTimeout(id);
   }, [searchQuery]);
 
-  // FIXED DM LIST QUERY - Properly fetch and display user names
+  // DM LIST QUERY
   const { data: dmList = [], isLoading: loadingDMs, error: dmError } = useQuery({
     queryKey: ['dm_list', user?.id],
     queryFn: async (): Promise<ExtendedDMListItem[]> => {
       try {
         if (!user?.id) return [];
 
-        // Step 1: Get all messages with error handling
         const { data: rawMessages, error: msgError } = await supabase
           .from('messages')
           .select('*')
@@ -215,7 +211,6 @@ export default function Messages() {
           return [];
         }
 
-        // Step 2: Build partner map with null checks
         const partnerMap = new Map<string, { last_msg: string; time: string }>();
         const partnerIds = new Set<string>();
 
@@ -241,7 +236,6 @@ export default function Messages() {
         const idsList = Array.from(partnerIds);
         if (idsList.length === 0) return [];
 
-        // Step 3: Fetch profiles with error handling
         const { data: profiles, error: profileError } = await supabase
           .from('profiles')
           .select('id, user_id, display_name, username, email, avatar_url')
@@ -251,7 +245,6 @@ export default function Messages() {
           console.error("❌ Profile fetch error:", profileError);
         }
 
-        // Step 3.5: Fetch premium status for these users
         const { data: premiumFeatures } = await supabase
           .from('premium_features')
           .select('user_id')
@@ -270,7 +263,6 @@ export default function Messages() {
           ...(subscriptions?.map(s => s.user_id) || [])
         ]);
 
-        // Step 4: Create profile lookup with safety
         const profileLookup = new Map<string, any>();
         if (profiles && Array.isArray(profiles)) {
           profiles.forEach((p: any) => {
@@ -283,7 +275,6 @@ export default function Messages() {
           });
         }
 
-        // Step 5: Fetch unread counts
         const { data: unreadData } = await supabase
           .from('messages')
           .select('sender_id')
@@ -299,7 +290,6 @@ export default function Messages() {
           });
         }
 
-        // Step 6: Map to DMListItem with proper name resolution
         const dmListItems = idsList
           .map(pid => {
             try {
@@ -350,14 +340,13 @@ export default function Messages() {
     retryDelay: 1000
   });
 
-  // FIXED COMMUNITIES QUERY - Properly fetch all community data AND live count
+  // COMMUNITIES QUERY
   const { data: commList = [], isLoading: loadingComms } = useQuery({
     queryKey: ['comm_list', user?.id],
     queryFn: async (): Promise<CommunityListItem[]> => {
       if (!user?.id) return [];
       
       try {
-        // Fetch ALL communities with complete field selection and live member count
         const { data: communities, error: commError } = await supabase
           .from('communities')
           .select(`
@@ -375,7 +364,6 @@ export default function Messages() {
           return [];
         }
         
-        // Fetch user's memberships
         const { data: memberships, error: memError } = await supabase
           .from('community_members')
           .select('community_id, role')
@@ -390,13 +378,10 @@ export default function Messages() {
           membershipMap.set(m.community_id, m.role);
         });
 
-        // Map communities with proper data validation
         return communities.map((c: any) => {
           const myRole = membershipMap.get(c.id);
           const communityName = c.name?.trim() || 'Unnamed Community';
           
-          // Use live count from the join if available, fallback to static column
-          // community_members comes as [{ count: number }] from the select
           const liveCount = c.community_members?.[0]?.count;
           const finalCount = liveCount !== undefined ? liveCount : (c.member_count || 0);
 
@@ -442,10 +427,9 @@ export default function Messages() {
     enabled: selectedChat?.type === 'community' && !!user?.id
   });
 
-  // FIXED FRIENDS HOOK - Robust name resolution
+  // FRIENDS HOOK
   const { friends: rawFriends = [] } = useFriends(user?.id);
 
-  // Fetch premium status for friends separately to display in New Chat
   const { data: friendPremiumStatus = {} } = useQuery({
     queryKey: ['friends_premium', rawFriends],
     queryFn: async () => {
@@ -493,13 +477,11 @@ export default function Messages() {
             let profile = null;
             let friendId = null;
   
-            // Case 1: Current user is requester
             if (friendship.requester_id === user.id) {
               const addressee = friendship.addressee;
               profile = Array.isArray(addressee) ? addressee[0] : addressee;
               friendId = friendship.addressee_id;
             } 
-            // Case 2: Current user is addressee
             else if (friendship.addressee_id === user.id) {
               const requester = friendship.requester;
               profile = Array.isArray(requester) ? requester[0] : requester;
@@ -535,7 +517,7 @@ export default function Messages() {
     }
   }, [rawFriends, user?.id, friendPremiumStatus]);
   
-  // FIXED: Messages query with proper sender name resolution
+  // MESSAGES QUERY
   const { data: messages = [], isLoading: loadingMessages, error: messagesError } = useQuery({
     queryKey: ['messages', selectedChat?.type, selectedChat?.id, user?.id],
     queryFn: async (): Promise<Message[]> => {
@@ -560,15 +542,15 @@ export default function Messages() {
             read: m.is_read
           }));
         } else {
-  const { data, error } = await supabase
-    .from('community_messages')
-    .select(`
-      *,
-      sender:profiles!sender_id(id, user_id, display_name, username, email, avatar_url),
-      reply_to:community_messages(id, content, sender_id, image_url)
-    `)
-    .eq('community_id', selectedChat.id)
-    .order('created_at', { ascending: true });
+          const { data, error } = await supabase
+            .from('community_messages')
+            .select(`
+              *,
+              sender:profiles!sender_id(id, user_id, display_name, username, email, avatar_url),
+              reply_to:community_messages(id, content, sender_id, image_url)
+            `)
+            .eq('community_id', selectedChat.id)
+            .order('created_at', { ascending: true });
           
           if (error) throw error;
           
@@ -660,7 +642,6 @@ export default function Messages() {
       const { error } = await supabase.from('community_members').insert({ community_id: communityId, user_id: user.id, role: 'member' });
       if (error) throw error;
       
-      // Update member count (RPC as backup, but we fetch live count now)
       await supabase.rpc('increment_community_members', { community_id: communityId });
     },
     onSuccess: () => {
@@ -764,13 +745,12 @@ export default function Messages() {
     }
   });
 
-const sendMessage = useMutation({
+  const sendMessage = useMutation({
     mutationFn: async (vars: { content: string | null; file: File | null }) => {
       if ((!vars.content && !vars.file) || !selectedChat || !user) {
         throw new Error('Missing required data');
       }
   
-      // 1. Upload file if exists
       let imageUrl: string | null = null;
       if (vars.file) {
         const fileExt = vars.file.name.split('.').pop();
@@ -794,7 +774,6 @@ const sendMessage = useMutation({
         imageUrl = urlData.publicUrl;
       }
   
-      // 2. Insert message based on type
       if (selectedChat.type === 'dm') {
         const { data, error } = await supabase
           .from('messages')
@@ -815,7 +794,6 @@ const sendMessage = useMutation({
         return data;
         
       } else {
-        // ✅ ENHANCED: Ensure robust reply handling and community context
         const { data, error } = await supabase
           .from('community_messages')
           .insert({
@@ -839,7 +817,6 @@ const sendMessage = useMutation({
       }
     },
     
-    // Optimistic update
     onMutate: async (vars) => {
       if (!selectedChat || !user) return;
       
@@ -991,6 +968,7 @@ const sendMessage = useMutation({
       }
     };
   }, [imagePreview]);
+
   const isComm = selectedChat?.type === 'community';
   const isMuted = useMemo(() => {
     if (!isComm || !myMembership) return false;
@@ -1007,7 +985,6 @@ const sendMessage = useMutation({
 
   // Chat view
   if (selectedChat) {
-    // ✅ FIXED: Use LIVE membership data for role checks if available
     const myRole = myMembership?.role || (selectedChat.type === 'community' ? selectedChat.my_role : 'none') || 'none';
     const canType = !isComm || (isComm && myRole !== 'none' && !isMuted);
     const isAdmin = myRole === 'admin';
@@ -1016,10 +993,407 @@ const sendMessage = useMutation({
     const chatImages = messages.filter(m => m.image_url && !m.is_deleted).map(m => ({ url: m.image_url!, id: m.id }));
     const pinnedMessages = isComm ? messages.filter(m => m.is_pinned && !m.is_deleted) : [];
 
-      // Loading Check
     if (!user) {
       return (
         <div className="min-h-screen w-full flex items-center justify-center bg-background">
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search conversations..." 
+              className="pl-10 bg-muted/50 rounded-xl border-muted-foreground/20 focus:border-primary" 
+              value={searchQuery} 
+              onChange={(e) => setSearchQuery(e.target.value)} 
+            />
+          </div>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChatMode)} className="px-4">
+          <TabsList className="w-full bg-muted/50 rounded-xl p-1 mb-4">
+            <TabsTrigger value="dm" className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <MessageSquare className="w-4 h-4 mr-2" /> Direct
+            </TabsTrigger>
+            <TabsTrigger value="community" className="flex-1 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Users className="w-4 h-4 mr-2" /> Communities
+            </TabsTrigger>
+          </TabsList>
+
+          {/* DM Tab */}
+          <TabsContent value="dm" className="space-y-2 mt-0">
+            {dmError && (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <p className="text-destructive mb-2">Failed to load conversations</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['dm_list'] })}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+            {loadingDMs ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : dmList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 opacity-60">
+                <MessageSquare className="w-12 h-12 text-muted-foreground mb-4" />
+                <h3 className="font-bold text-xl mb-2">No conversations yet</h3>
+                <Button onClick={() => setIsNewChatOpen(true)} className="rounded-full mt-4">Start a Chat</Button>
+              </div>
+            ) : (
+              dmList.filter((d) =>
+                  d.name?.toLowerCase()?.includes(debouncedSearch.toLowerCase())).map((dm) => (
+                <div 
+                  key={dm.id} 
+                  className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl transition-all cursor-pointer bg-gradient-to-r from-background to-muted/5 group"
+                  onClick={() => setSelectedChat({ 
+                    type: 'dm', 
+                    id: dm.id, 
+                    partner_id: dm.partner_id, 
+                    name: dm.name, 
+                    avatar: dm.avatar, 
+                    is_online: dm.is_online,
+                    is_premium: dm.is_premium 
+                  })}
+                >
+                  <div className="relative">
+                    <Avatar className="h-14 w-14 ring-2 ring-background shadow-md group-hover:shadow-lg transition-all">
+                      <AvatarImage src={dm.avatar} />
+                      <AvatarFallback>{dm.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                    </Avatar>
+                    {dm.is_online && (
+                      <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1">
+                        <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{dm.name}</h3>
+                        {dm.is_premium && <PremiumBadge />}
+                      </div>
+                      <span className="text-[11px] text-muted-foreground font-medium">{formatTime(dm.time)}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground truncate">{dm.last_msg}</p>
+                  </div>
+                  {dm.unread_count > 0 && (
+                    <Badge className="bg-primary text-primary-foreground rounded-full min-w-[20px] h-5 flex items-center justify-center text-[11px] font-bold">
+                      {dm.unread_count > 99 ? '99+' : dm.unread_count}
+                    </Badge>
+                  )}
+                </div>
+              ))
+            )}
+          </TabsContent>
+
+          {/* Communities Tab */}
+          <TabsContent value="community" className="space-y-2 mt-0">
+            {loadingComms ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : commList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 opacity-60">
+                <Users className="w-12 h-12 text-muted-foreground mb-4" />
+                <h3 className="font-bold text-xl mb-2">No communities yet</h3>
+                <Button onClick={() => setIsCreateCommunityOpen(true)} className="rounded-full mt-4">Create Community</Button>
+              </div>
+            ) : (
+              commList.filter((c) => c.name.toLowerCase().includes(debouncedSearch.toLowerCase())).map((comm) => (
+                <div key={comm.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 rounded-2xl transition-all bg-gradient-to-r from-background to-muted/5 group">
+                  <Avatar className="h-14 w-14 rounded-2xl border-2 border-background shadow-md cursor-pointer group-hover:shadow-lg transition-all" 
+                    onClick={() =>
+                      setSelectedChat({
+                        type: 'community',
+                        id: comm.id,
+                        name: comm.name,
+                        avatar: comm.cover || comm.cover_url,
+                        cover: comm.cover || comm.cover_url,
+                        cover_url: comm.cover_url,
+                        description: comm.description,
+                        member_count: comm.member_count,
+                        my_role: comm.my_role
+                      })
+                    }
+                    >
+                    <AvatarImage src={comm.cover || comm.cover_url || comm.avatar} />
+                    <AvatarFallback>{comm.name?.[0]?.toUpperCase() || 'C'}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedChat({
+                      type: 'community',
+                      id: comm.id,
+                      name: comm.name,
+                      cover: comm.cover_url,
+                      description: comm.description,
+                      my_role: comm.my_role,
+                      member_count: comm.member_count
+                    })
+                  }>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">{comm.name}</h3>
+                      {comm.my_role === 'admin' && <Badge className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200">Admin</Badge>}
+                      {comm.my_role === 'moderator' && <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200">Mod</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Users className="w-3 h-3"/> {comm.member_count} member{comm.member_count !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant={comm.my_role !== 'none' ? "outline" : "default"} 
+                    className="rounded-full px-5 transition-transform active:scale-95"
+                    onClick={() => comm.my_role !== 'none' ? setSelectedChat({ type: 'community', id: comm.id, name: comm.name, cover: comm.cover_url, description: comm.description, my_role: comm.my_role, member_count: comm.member_count }) : joinCommunity.mutate(comm.id)}
+                  >
+                    {comm.my_role !== 'none' ? "Open" : "Join"}
+                  </Button>
+                </div>
+              ))
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* New Chat Dialog */}
+        <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
+          <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] h-[85vh] flex flex-col p-0 gap-0">
+            <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
+              <DialogTitle className="text-xl">New Message</DialogTitle>
+              <DialogDescription>
+                {friends.length > 0 
+                  ? `Start a conversation with ${friends.length} friend${friends.length !== 1 ? 's' : ''}`
+                  : "Start a conversation with your friends"
+                }
+              </DialogDescription>
+            </DialogHeader>
+            
+            {friends.length > 0 && (
+              <div className="px-6 py-4 bg-muted/10 flex-shrink-0">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Search friends..." 
+                    className="pl-10 bg-muted/50 rounded-xl border-muted-foreground/20 focus:border-primary" 
+                    value={friendSearch} 
+                    onChange={(e) => setFriendSearch(e.target.value)} 
+                  />
+                </div>
+              </div>
+            )}
+        
+            <div className="flex-1 min-h-0 overflow-y-auto px-6">
+              <div className="space-y-6 pb-6 pt-2">
+                {friends.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                      <Users className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="font-semibold text-lg mb-2">No friends yet</h3>
+                    <p className="text-sm text-muted-foreground max-w-xs">
+                      Add friends to start messaging them directly
+                    </p>
+                  </div>
+                ) : filteredFriends.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Search className="w-12 h-12 text-muted-foreground mb-4" />
+                    <h3 className="font-semibold text-lg mb-2">No results found</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Try searching with a different name
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {onlineFriends.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            Online • {onlineFriends.length}
+                          </h3>
+                        </div>
+                        <div className="space-y-1">
+                          {onlineFriends.map((f: any) => (
+                            <div 
+                              key={f.id} 
+                              onClick={() => { 
+                              setSelectedChat({ 
+                                type: 'dm', 
+                                id: f.id, 
+                                partner_id: f.id, 
+                                name: f.name, 
+                                avatar: f.avatar, 
+                                is_online: f.is_online,
+                                is_premium: f.is_premium
+                              }); 
+                                setIsNewChatOpen(false); 
+                              }} 
+                              className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
+                            >
+                              <div className="relative">
+                                <Avatar className="h-12 w-12 ring-2 ring-background">
+                                  <AvatarImage src={f.avatar} />
+                                  <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                                </Avatar>
+                                <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 rounded-full border-2 border-background" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                  <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                                  {f.is_premium && <PremiumBadge />}
+                                </div>
+                                <p className="text-xs text-green-600 font-medium">Active now</p>
+                              </div>
+                              <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+        
+                    {offlineFriends.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            All Friends • {offlineFriends.length}
+                          </h3>
+                        </div>
+                        <div className="space-y-1">
+                          {offlineFriends.map((f: any) => (
+                            <div 
+                              key={f.id} 
+                              onClick={() => { 
+                                setSelectedChat({ 
+                                  type: 'dm', 
+                                  id: f.id, 
+                                  partner_id: f.id, 
+                                  name: f.name, 
+                                  avatar: f.avatar, 
+                                  is_online: f.is_online,
+                                  is_premium: f.is_premium
+                                }); 
+                                setIsNewChatOpen(false); 
+                              }} 
+                              className="flex items-center gap-3 p-3 hover:bg-muted/60 rounded-xl cursor-pointer transition-all group"
+                            >
+                              <Avatar className="h-12 w-12 ring-2 ring-background opacity-90 group-hover:opacity-100 transition-opacity">
+                                <AvatarImage src={f.avatar} />
+                                <AvatarFallback>{f.name?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                  <p className="font-semibold text-[15px] truncate">{f.name}</p>
+                                  {f.is_premium && <PremiumBadge />}
+                                </div>
+                                {f.last_seen && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Active {formatDistanceToNow(new Date(f.last_seen), { addSuffix: true })}
+                                  </p>
+                                )}
+                              </div>
+                              <MessageSquare className="w-5 h-5 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Create Community Dialog */}
+        <Dialog open={isCreateCommunityOpen} onOpenChange={(open) => {
+          setIsCreateCommunityOpen(open);
+          if (!open) {
+            setNewCommName('');
+            setNewCommDesc('');
+            setNewCommCoverFile(null);
+            if (newCommCoverPreview?.startsWith('blob:')) {
+              try { URL.revokeObjectURL(newCommCoverPreview); } catch {}
+            }
+            setNewCommCoverPreview(null);
+          }
+        }}>
+          <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto">
+            <DialogHeader>
+              <DialogTitle>Create Community</DialogTitle>
+              <DialogDescription>Create a space for your community to connect</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Cover Image</Label>
+                <input 
+                  type="file" 
+                  accept="image/jpeg,image/png,image/webp" 
+                  className="hidden" 
+                  ref={coverInputRef} 
+                  onChange={handleCoverSelect} 
+                />
+                {newCommCoverPreview ? (
+                  <div className="relative w-full h-32 rounded-xl overflow-hidden border-2 border-dashed border-primary/30 group">
+                    <img src={newCommCoverPreview} className="w-full h-full object-cover" alt="Cover preview" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => coverInputRef.current?.click()}
+                      >
+                        Change
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setNewCommCoverFile(null);
+                          if (newCommCoverPreview?.startsWith('blob:')) {
+                            try { URL.revokeObjectURL(newCommCoverPreview); } catch {}
+                          }
+                          setNewCommCoverPreview(null);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => coverInputRef.current?.click()}
+                    className="w-full h-32 rounded-xl border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary"
+                  >
+                    <Upload className="w-6 h-6" />
+                    <span className="text-sm">Upload cover image</span>
+                  </button>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Community Name *</Label>
+                <Input placeholder="Enter community name" value={newCommName} onChange={(e) => setNewCommName(e.target.value)} maxLength={50} />
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea placeholder="What's this community about?" value={newCommDesc} onChange={(e) => setNewCommDesc(e.target.value)} rows={4} maxLength={200} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCreateCommunityOpen(false)}>Cancel</Button>
+              <Button onClick={() => createCommunity.mutate()} disabled={!newCommName.trim() || createCommunity.isPending}>
+                {createCommunity.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                Create
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+}
+
+    if (loadingMessages) {
+      return (
+        <div className="fixed inset-0 z-[100] bg-background flex flex-col h-[100dvh] items-center justify-center">
           <div className="text-center space-y-3">
             <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
             <p className="text-sm text-muted-foreground">Loading messages...</p>
@@ -1119,7 +1493,6 @@ const sendMessage = useMutation({
                   {isComm ? 'Community Info' : 'View Profile'}
                 </DropdownMenuItem>
                 
-                {/* ✅ FIXED: Use computed isAdmin check based on live data */}
                 {isComm && isAdmin && (
                   <DropdownMenuItem 
                     onClick={(e) => {
@@ -1132,7 +1505,6 @@ const sendMessage = useMutation({
                   </DropdownMenuItem>
                 )}
 
-                {/* ✅ NEW: Moderation Menu Item */}
                 {isComm && canModerate && (
                   <>
                     <DropdownMenuSeparator />
@@ -1160,7 +1532,6 @@ const sendMessage = useMutation({
           images={chatImages} 
         />
         
-        {/* DM Profile Dialog */}
         {!isComm && (
           <Dialog open={isInfoOpen} onOpenChange={setIsInfoOpen}>
             <DialogContent className="sm:max-w-[420px]">
@@ -1192,7 +1563,6 @@ const sendMessage = useMutation({
           </Dialog>
         )}
         
-        {/* Community Dialogs */}
         {isComm && (
           <>
             <CommunityInfoDialog 
@@ -1201,7 +1571,7 @@ const sendMessage = useMutation({
               community={selectedChat}
               coverUrl={selectedChat.cover || selectedChat.cover_url || selectedChat.avatar}
             />
-            {/* ✅ FIXED: Render dialog if isAdmin is true */}
+            {isAdmin && (
               <CommunitySettingsDialog 
                 isOpen={isSettingsOpen} 
                 onClose={() => setIsSettingsOpen(false)} 
@@ -1210,7 +1580,7 @@ const sendMessage = useMutation({
                 currentDesc={selectedChat.description || ''} 
                 currentCoverUrl={selectedChat.cover || selectedChat.cover_url || selectedChat.avatar}
               />
-            {/* ✅ NEW: Moderation Dialog */}
+            )}
             {canModerate && (
               <CommunityModerationDialog 
                 isOpen={isModerationOpen}
@@ -1357,7 +1727,6 @@ const sendMessage = useMutation({
                   <ImageIcon className="w-5 h-5" />
                 </Button>
                 
-                {/* Emoji Picker - Modern inline integration */}
                 <EmojiPicker 
                   onSelect={(emoji) => setMessageInput(prev => prev + emoji)}
                   isOpen={showEmojiPicker}
