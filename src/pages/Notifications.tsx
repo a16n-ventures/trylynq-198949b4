@@ -4,32 +4,44 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Bell, UserPlus, Calendar, Loader2, Check, X, MessageSquare, MapPin, Reply } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+import { Bell, UserPlus, Calendar, Loader2, Check, X, MessageSquare, MapPin, Reply, Navigation, Clock, Trash2 } from "lucide-react";
+import { formatDistanceToNow, format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useNearbyNotifications } from "@/hooks/useNearbyNotifications";
 
 // --- Types ---
+type NotificationType = 'nearby_user' | 'friend_request' | 'event_invite' | 'message' | 'location_share' | 'story_reply';
+
 type NotificationItem = {
   id: string;
-  type: 'friend_request' | 'event_invite' | 'message' | 'location_share' | 'story_reply';
+  type: NotificationType;
+  title: string;
+  message: string;
   created_at: string;
-  sender_id: string;
-  sender_name: string;
+  is_read: boolean;
+  sender_id: string | null;
+  sender_name?: string;
   sender_avatar?: string;
-  event_id?: string;
-  event_title?: string;
-  message_preview?: string;
-  share_id?: string;
+  metadata?: {
+    distance_km?: number;
+    avatar_url?: string;
+    timestamp?: string;
+    event_id?: string;
+    event_title?: string;
+  };
 };
 
 export default function Notifications() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { markAsRead } = useNearbyNotifications(user?.id);
 
-  // Build notifications from multiple tables
+  // Fetch all notifications from the new table + legacy sources
   const { data: notifications = [], isLoading } = useQuery({
     queryKey: ["notifications", user?.id],
     queryFn: async (): Promise<NotificationItem[]> => {
@@ -39,8 +51,21 @@ export default function Notifications() {
       const userIdsToFetch = new Set<string>();
       const eventIdsToFetch = new Set<string>();
 
-      // 1. FETCH RAW DATA (No Joins to prevent breakage)
-      
+      // 1. Fetch from new notifications table
+      const { data: dbNotifications } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (dbNotifications) {
+        dbNotifications.forEach(n => {
+          if (n.sender_id) userIdsToFetch.add(n.sender_id);
+        });
+      }
+
+      // 2. Fetch legacy sources (for backwards compatibility)
       // A. Friend Requests
       const { data: friendRequests } = await supabase
         .from("friendships")
@@ -59,7 +84,7 @@ export default function Notifications() {
       
       eventInvites?.forEach(i => {
         userIdsToFetch.add(i.inviter_id);
-        if(i.event_id) eventIdsToFetch.add(i.event_id);
+        if (i.event_id) eventIdsToFetch.add(i.event_id);
       });
 
       // C. Location Shares
@@ -72,18 +97,17 @@ export default function Notifications() {
 
       locationShares?.forEach(s => userIdsToFetch.add(s.sharer_id));
 
-      // D. Story Replies (Messages)
+      // D. Story Replies
       const { data: messages } = await supabase
         .from("messages")
         .select("id, created_at, sender_id, content")
         .eq("receiver_id", user.id)
         .eq("is_read", false)
-        .ilike("content", "Replied to story:%"); // Only story replies
+        .ilike("content", "Replied to story:%");
 
       messages?.forEach(m => userIdsToFetch.add(m.sender_id));
 
-
-      // 2. FETCH PROFILES & EVENTS BULK
+      // 3. Bulk fetch profiles & events
       const profileMap = new Map();
       const eventMap = new Map();
 
@@ -105,15 +129,38 @@ export default function Notifications() {
         events?.forEach(e => eventMap.set(e.id, e));
       }
 
-      // 3. CONSTRUCT NOTIFICATIONS
+      // 4. Process database notifications
+      dbNotifications?.forEach(n => {
+        const profile = n.sender_id ? profileMap.get(n.sender_id) : null;
+        const metadata = n.metadata as NotificationItem['metadata'] || {};
+        
+        items.push({
+          id: n.id,
+          type: n.type as NotificationType,
+          title: n.title,
+          message: n.message,
+          created_at: n.created_at,
+          is_read: n.is_read,
+          sender_id: n.sender_id,
+          sender_name: profile?.display_name || 'Unknown User',
+          sender_avatar: metadata?.avatar_url || profile?.avatar_url,
+          metadata: metadata
+        });
+      });
+
+      // 5. Process legacy Friend Requests (only if not already in notifications)
+      const existingIds = new Set(items.map(i => i.id));
       
-      // Process Friend Requests
       friendRequests?.forEach((req: any) => {
+        if (existingIds.has(req.id)) return;
         const profile = profileMap.get(req.requester_id);
         items.push({
           id: req.id,
           type: 'friend_request',
+          title: 'Friend Request',
+          message: `${profile?.display_name || 'Someone'} sent you a friend request`,
           created_at: req.created_at,
+          is_read: false,
           sender_id: req.requester_id,
           sender_name: profile?.display_name || 'Unknown User',
           sender_avatar: profile?.avatar_url
@@ -122,45 +169,54 @@ export default function Notifications() {
 
       // Process Event Invites
       eventInvites?.forEach((inv: any) => {
+        if (existingIds.has(inv.id)) return;
         const profile = profileMap.get(inv.inviter_id);
         const event = eventMap.get(inv.event_id);
         items.push({
           id: inv.id,
           type: 'event_invite',
+          title: 'Event Invitation',
+          message: `${profile?.display_name || 'Someone'} invited you to ${event?.title || 'an event'}`,
           created_at: inv.created_at,
+          is_read: false,
           sender_id: inv.inviter_id,
           sender_name: profile?.display_name || 'Unknown User',
           sender_avatar: profile?.avatar_url,
-          event_id: inv.event_id,
-          event_title: event?.title || 'an event'
+          metadata: { event_id: inv.event_id, event_title: event?.title }
         });
       });
 
       // Process Location Shares
       locationShares?.forEach((share: any) => {
+        if (existingIds.has(share.id)) return;
         const profile = profileMap.get(share.sharer_id);
         items.push({
           id: share.id,
           type: 'location_share',
+          title: 'Location Shared',
+          message: `${profile?.display_name || 'Someone'} is sharing their location with you`,
           created_at: share.created_at,
+          is_read: false,
           sender_id: share.sharer_id,
           sender_name: profile?.display_name || 'Unknown User',
-          sender_avatar: profile?.avatar_url,
-          share_id: share.id
+          sender_avatar: profile?.avatar_url
         });
       });
 
       // Process Story Replies
       messages?.forEach((msg: any) => {
+        if (existingIds.has(msg.id)) return;
         const profile = profileMap.get(msg.sender_id);
         items.push({
-           id: msg.id,
-           type: 'story_reply',
-           created_at: msg.created_at,
-           sender_id: msg.sender_id,
-           sender_name: profile?.display_name || 'Unknown User',
-           sender_avatar: profile?.avatar_url,
-           message_preview: msg.content.replace('Replied to story:', '').trim()
+          id: msg.id,
+          type: 'story_reply',
+          title: 'Story Reply',
+          message: msg.content.replace('Replied to story:', '').trim(),
+          created_at: msg.created_at,
+          is_read: false,
+          sender_id: msg.sender_id,
+          sender_name: profile?.display_name || 'Unknown User',
+          sender_avatar: profile?.avatar_url
         });
       });
 
@@ -174,51 +230,43 @@ export default function Notifications() {
   useEffect(() => {
     if (!user) return;
 
-    // Friendships channel
-    const friendChannel = supabase.channel('friendships-notif')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'friendships', 
-        filter: `addressee_id=eq.${user.id}` 
-      }, () => {
-        queryClient.invalidateQueries({ queryKey: ['notifications'] });
-        toast.info("Friend list updated");
-      })
-      .subscribe();
+    const channels = [
+      supabase.channel('notifications-updates')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'notifications', 
+          filter: `user_id=eq.${user.id}` 
+        }, () => {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        })
+        .subscribe(),
 
-    // Messages channel (for story replies)
-    const msgChannel = supabase.channel('messages-notif')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: `receiver_id=eq.${user.id}` 
-      }, (payload: any) => {
-         if (payload.new.content && payload.new.content.includes("Replied to story")) {
-             toast.info("New story reply!");
-             queryClient.invalidateQueries({ queryKey: ['notifications'] });
-         }
-      })
-      .subscribe();
+      supabase.channel('friendships-notif')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'friendships', 
+          filter: `addressee_id=eq.${user.id}` 
+        }, () => {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        })
+        .subscribe(),
 
-    // Event Invites channel
-    const inviteChannel = supabase.channel('invites-notif')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'event_invitations', 
-        filter: `invitee_id=eq.${user.id}` 
-      }, () => {
-        queryClient.invalidateQueries({ queryKey: ['notifications'] });
-        toast.info("New event invitation!");
-      })
-      .subscribe();
+      supabase.channel('invites-notif')
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'event_invitations', 
+          filter: `invitee_id=eq.${user.id}` 
+        }, () => {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        })
+        .subscribe()
+    ];
 
     return () => {
-      supabase.removeChannel(friendChannel);
-      supabase.removeChannel(msgChannel);
-      supabase.removeChannel(inviteChannel);
+      channels.forEach(c => supabase.removeChannel(c));
     };
   }, [user, queryClient]);
 
@@ -286,12 +334,21 @@ export default function Notifications() {
     onError: () => toast.error("Failed to decline invitation")
   });
 
-  const dismissLocationShare = useMutation({
-    mutationFn: async ({ shareId }: { shareId: string }) => {
-      await supabase
-        .from("location_shares")
-        .update({ is_active: false })
-        .eq("id", shareId);
+  const dismissNotification = useMutation({
+    mutationFn: async (notificationId: string) => {
+      // Try to delete from notifications table first
+      const { error: notifError } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("id", notificationId);
+      
+      // If it's a location share, deactivate it
+      if (notifError) {
+        await supabase
+          .from("location_shares")
+          .update({ is_active: false })
+          .eq("id", notificationId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
@@ -310,34 +367,175 @@ export default function Notifications() {
         return <Reply className="w-4 h-4 text-pink-500" />;
       case 'location_share':
         return <MapPin className="w-4 h-4 text-amber-500" />;
+      case 'nearby_user':
+        return <Navigation className="w-4 h-4 text-emerald-500" />;
       default:
         return <Bell className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
-  const getMessage = (item: NotificationItem) => {
-    switch (item.type) {
-      case 'friend_request':
-        return `${item.sender_name} sent you a friend request`;
-      case 'event_invite':
-        return `${item.sender_name} invited you to ${item.event_title}`;
-      case 'story_reply':
-        return `Replying to your story: "${item.message_preview}"`;
-      case 'location_share':
-        return `${item.sender_name} is sharing their location with you`;
-      default:
-        return 'New notification';
-    }
-  };
+  const unreadNotifications = notifications.filter(n => !n.is_read);
+  const readNotifications = notifications.filter(n => n.is_read);
+
+  const renderNotificationCard = (item: NotificationItem) => (
+    <Card 
+      key={item.id} 
+      className={`hover:shadow-md transition-all ${!item.is_read ? 'bg-primary/5 border-primary/20' : ''}`}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="relative">
+            <Avatar className="w-12 h-12">
+              <AvatarImage src={item.sender_avatar} />
+              <AvatarFallback className="bg-primary/10 text-primary font-medium">
+                {item.sender_name?.[0]?.toUpperCase() || '?'}
+              </AvatarFallback>
+            </Avatar>
+            {item.type === 'nearby_user' && (
+              <div className="absolute -bottom-1 -right-1 bg-emerald-500 rounded-full p-1 border-2 border-background">
+                <Navigation className="w-2.5 h-2.5 text-white" />
+              </div>
+            )}
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              {getIcon(item.type)}
+              <span className="text-sm font-semibold truncate">{item.sender_name}</span>
+              {!item.is_read && (
+                <Badge variant="default" className="h-5 text-[10px] px-1.5 bg-primary/20 text-primary border-0">
+                  New
+                </Badge>
+              )}
+            </div>
+            
+            <p className="text-sm text-foreground mb-1">
+              {item.type === 'nearby_user' ? (
+                <span className="flex items-center gap-1">
+                  <span className="font-medium text-emerald-600">Nearby!</span>
+                  <span className="text-muted-foreground">•</span>
+                  <span>{item.message}</span>
+                </span>
+              ) : item.type === 'story_reply' ? (
+                <>
+                  <span className="text-muted-foreground">Replied: </span>
+                  "{item.message}"
+                </>
+              ) : (
+                item.message
+              )}
+            </p>
+            
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Clock className="w-3 h-3" />
+              <span>{formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}</span>
+              {item.type === 'nearby_user' && item.metadata?.distance_km && (
+                <>
+                  <span>•</span>
+                  <span className="text-emerald-600 font-medium">
+                    {item.metadata.distance_km < 1 
+                      ? `${Math.round(item.metadata.distance_km * 1000)}m away`
+                      : `${item.metadata.distance_km.toFixed(1)}km away`
+                    }
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-2 shrink-0">
+            {item.type === 'friend_request' && (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                  onClick={() => declineFriendMutation.mutate({ friendshipId: item.id })}
+                  disabled={declineFriendMutation.isPending}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => acceptFriendMutation.mutate({ friendshipId: item.id })}
+                  disabled={acceptFriendMutation.isPending}
+                >
+                  <Check className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            {item.type === 'event_invite' && item.metadata?.event_id && (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                  onClick={() => declineEventMutation.mutate({ invitationId: item.id })}
+                  disabled={declineEventMutation.isPending}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => acceptEventMutation.mutate({ invitationId: item.id, eventId: item.metadata!.event_id! })}
+                  disabled={acceptEventMutation.isPending}
+                >
+                  <Check className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            {item.type === 'story_reply' && (
+              <Button 
+                size="sm" 
+                variant="secondary" 
+                className="h-8 px-3 text-xs"
+                onClick={() => navigate(`/app/messages?userId=${item.sender_id}`)}
+              >
+                Reply
+              </Button>
+            )}
+            {item.type === 'nearby_user' && (
+              <Button 
+                size="sm" 
+                variant="secondary" 
+                className="h-8 px-3 text-xs"
+                onClick={() => navigate(`/app/map?focus=${item.sender_id}`)}
+              >
+                <MapPin className="w-3 h-3 mr-1" />
+                View
+              </Button>
+            )}
+            {(item.type === 'location_share' || item.is_read) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                onClick={() => dismissNotification.mutate(item.id)}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="container-mobile py-6 pb-24 space-y-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Notifications</h1>
-        {notifications.length > 0 && (
-          <span className="text-sm text-muted-foreground">
-            {notifications.length} pending
-          </span>
+        {unreadNotifications.length > 0 && (
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => markAsRead(undefined)}
+            className="text-primary"
+          >
+            Mark all as read
+          </Button>
         )}
       </div>
 
@@ -354,106 +552,36 @@ export default function Notifications() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {notifications.map((item) => (
-            <Card key={item.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage src={item.sender_avatar} />
-                    <AvatarFallback>{item.sender_name[0]?.toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {getIcon(item.type)}
-                      <span className="text-sm font-medium truncate">{item.sender_name}</span>
-                    </div>
-                    {/* Message Body */}
-                    <p className="text-sm text-foreground mb-1">
-                      {item.type === 'story_reply' ? (
-                        <>
-                          <span className="text-muted-foreground">Replied: </span>
-                          "{item.message_preview}"
-                        </>
-                      ) : (
-                        getMessage(item).replace(`${item.sender_name} `, '')
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
-                    </p>
-                  </div>
+        <Tabs defaultValue="unread" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="unread" className="relative">
+              Unread
+              {unreadNotifications.length > 0 && (
+                <Badge className="ml-2 h-5 px-1.5 text-[10px]">
+                  {unreadNotifications.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="all">All</TabsTrigger>
+          </TabsList>
 
-                  <div className="flex gap-2 shrink-0">
-                    {item.type === 'friend_request' && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => declineFriendMutation.mutate({ friendshipId: item.id })}
-                          disabled={declineFriendMutation.isPending}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => acceptFriendMutation.mutate({ friendshipId: item.id })}
-                          disabled={acceptFriendMutation.isPending}
-                        >
-                          <Check className="w-4 h-4" />
-                        </Button>
-                      </>
-                    )}
-                    {item.type === 'event_invite' && item.event_id && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => declineEventMutation.mutate({ invitationId: item.id })}
-                          disabled={declineEventMutation.isPending}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => acceptEventMutation.mutate({ invitationId: item.id, eventId: item.event_id! })}
-                          disabled={acceptEventMutation.isPending}
-                        >
-                          <Check className="w-4 h-4" />
-                        </Button>
-                      </>
-                    )}
-                    {item.type === 'story_reply' && (
-                       <Button 
-                         size="sm" 
-                         variant="secondary" 
-                         className="h-8 px-3 text-xs"
-                         onClick={() => navigate(`/app/messages?userId=${item.sender_id}`)}
-                       >
-                         Reply
-                       </Button>
-                    )}
-                    {item.type === 'location_share' && item.share_id && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0"
-                        onClick={() => dismissLocationShare.mutate({ shareId: item.share_id! })}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+          <TabsContent value="unread" className="space-y-3">
+            {unreadNotifications.length === 0 ? (
+              <Card className="border-dashed">
+                <CardContent className="py-8 text-center">
+                  <Check className="w-10 h-10 mx-auto text-green-500/30 mb-3" />
+                  <p className="text-sm text-muted-foreground">No new notifications</p>
+                </CardContent>
+              </Card>
+            ) : (
+              unreadNotifications.map(renderNotificationCard)
+            )}
+          </TabsContent>
+
+          <TabsContent value="all" className="space-y-3">
+            {notifications.map(renderNotificationCard)}
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

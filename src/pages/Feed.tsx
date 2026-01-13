@@ -1779,10 +1779,10 @@ const Feed = () => {
                           <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
                           {post.image_url && (
                             <div className="rounded-xl overflow-hidden bg-muted">
-                                {post.post_type === 'video' || post.image_url.includes('.mp4') || post.image_url.includes('.webm') ? (
-                                    <video src={post.image_url} controls className="w-full max-h-[500px] object-contain" />
+                                {post.post_type === 'video' || post.image_url.includes('.mp4') || post.image_url.includes('.webm') || post.image_url.includes('.mov') ? (
+                                    <video src={post.image_url} className="w-full max-h-[500px] object-contain" autoPlay muted loop playsInline controls />
                                 ) : (
-                                    <img src={post.image_url} alt="Post content" className="w-full h-auto object-cover" />
+                                    <img src={post.image_url} alt="Post content" className="w-full h-auto object-cover max-h-[600px] object-top" loading="lazy" />
                                 )}
                             </div>
                           )}
