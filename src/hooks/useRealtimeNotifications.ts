@@ -27,7 +27,7 @@ interface NearbyUser {
   distance_km: number;
 }
 
-export function useNearbyNotifications(userId: string | undefined) {
+export function useRealtimeNotifications(userId: string | undefined) {
   const queryClient = useQueryClient();
   const { location } = useGeolocation();
   const notifiedUsersRef = useRef<Map<string, number>>(new Map()); // userId -> timestamp
