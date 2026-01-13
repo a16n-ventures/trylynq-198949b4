@@ -870,6 +870,85 @@ const Feed = () => {
     setStoriesLoading(false);
   };
 
+    // 1. FALLBACK POST FETCHER (Required for error handling)
+  const fetchPosts = async () => {
+    const { data: posts, error } = await supabase
+      .from('social_posts')
+      .select(`*, profiles (display_name, avatar_url, user_id), post_likes (user_id)`)
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (!error && posts) {
+      const formattedPosts = posts.map((p: any) => ({
+          ...p,
+          is_liked_by_user: p.post_likes && p.post_likes.some((l: any) => l.user_id === user?.id)
+      }));
+      setFeedPosts(formattedPosts as Post[]);
+    }
+    setLoading(false);
+  };
+
+  // 2. SPOTLIGHT FETCHER (Required for the Spotlight tab)
+  const fetchSpotlightData = async () => {
+    // Communities
+    const { data: comms } = await supabase
+      .from('communities')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+      
+    if (comms) {
+      if (user) {
+        const { data: memberships } = await supabase
+          .from('community_members')
+          .select('community_id, role')
+          .eq('user_id', user.id);
+        
+        const membershipMap = new Map(memberships?.map(m => [m.community_id, m.role]) || []);
+        
+        setCommunities(comms.map(c => ({ 
+          ...c, 
+          avatar_url: c.cover_url || null,
+          is_member: membershipMap.has(c.id),
+          my_role: membershipMap.get(c.id) || null
+        })));
+      } else {
+        setCommunities(comms.map(c => ({ ...c, avatar_url: c.cover_url || null })));
+      }
+    }
+
+    // Events
+    const { data: evts } = await supabase
+      .from('events')
+      .select(`*, event_attendees ( count )`)
+      .gt('start_date', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(20);
+    
+    if (evts) {
+      if (user) {
+        const eventIds = evts.map(e => e.id);
+        const { data: rsvps } = await supabase
+          .from('event_attendees')
+          .select('event_id')
+          .eq('user_id', user.id)
+          .in('event_id', eventIds);
+        
+        const rsvpSet = new Set(rsvps?.map(r => r.event_id) || []);
+        setEvents(evts.map(e => ({ 
+          ...e, 
+          is_attending: rsvpSet.has(e.id),
+          attendee_count: e.event_attendees?.[0]?.count || 0
+        })));
+      } else {
+        setEvents(evts.map(e => ({
+          ...e,
+          attendee_count: e.event_attendees?.[0]?.count || 0
+        })));
+      }
+    }
+  };
+
   const fetchSmartFeed = async () => {
     setLoading(true);
     
