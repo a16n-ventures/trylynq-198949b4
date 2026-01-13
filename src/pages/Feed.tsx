@@ -892,42 +892,18 @@ const Feed = () => {
 
       if (error) throw error;
 
-      if (response && response.data) {
-        // 3. Segregate the mixed feed back into your UI states
-        const mixedFeed = response.data;
-        
-        // Filter Posts & Ads for the main feed
-        const postsAndAds = mixedFeed.filter((item: any) => 
-          item.type === 'post' || item.type === 'ad'
-        ).map((item: any) => {
-          if (item.type === 'ad') {
-            // Transform Ad data to match Post interface
-            return {
-              id: item.id,
-              user_id: item.social_posts?.user_id,
-              content: item.social_posts?.content,
-              image_url: item.social_posts?.image_url,
-              post_type: 'ad', // Critical for UI rendering
-              created_at: item.created_at,
-              likes_count: 0,
-              comments_count: 0,
-              profiles: item.social_posts?.profiles
-            };
-          }
-          return item;
-        });
-        
-        setFeedPosts(postsAndAds);
+      if (response && response.posts) {
+  // The backend now handles the mixing and mapping for us
+  setFeedPosts(response.posts);
 
-        // Filter Events for Spotlight Tab
-        const smartEvents = mixedFeed.filter((item: any) => item.type === 'event');
-        if (smartEvents.length > 0) {
-          setEvents(smartEvents);
-        } else {
-           // Fallback if AI returns no events (rare), keep existing fetchSpotlightData logic as backup
-           fetchSpotlightData(); 
-        }
-      }
+  if (response.events && response.events.length > 0) {
+    setEvents(response.events.map((e: any) => ({
+        ...e,
+        attendee_count: e.attendee_count || 0,
+        is_attending: false 
+    })));
+  }
+}
     } catch (err) {
       console.error("Smart Feed Error:", err);
       fetchPosts(); 
