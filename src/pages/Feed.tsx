@@ -930,8 +930,8 @@ const Feed = () => {
       }
     } catch (err) {
       console.error("Smart Feed Error:", err);
-      // Fallback to standard fetching on error
-      fetchSmartFeed(); 
+      fetchPosts(); 
+      fetchSpotlightData();
     } finally {
       setLoading(false);
     }
