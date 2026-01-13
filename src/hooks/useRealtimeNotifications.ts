@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useGeolocation } from '@/contexts/LocationContext';
 import { toast } from 'sonner';
 
-const NEARBY_RADIUS_KM = 25; // 25km threshold
+const NEARBY_RADIUS_KM = 75; // 75km threshold
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // Check every 5 minutes
 const NOTIFICATION_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown per user
 
