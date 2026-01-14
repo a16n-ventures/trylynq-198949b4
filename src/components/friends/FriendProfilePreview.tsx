@@ -52,7 +52,7 @@ export function FriendProfilePreview({
       if (!profile?.user_id) return null;
       
       try {
-        const [profileRes, locationRes, premiumRes, subRes] = await Promise.all([
+        const [profileRes, locationRes, premiumRes, subRes, linksRes] = await Promise.all([
           supabase.from('profiles').select('*').eq('user_id', profile.user_id).single(),
           supabase.from('user_locations').select('*').eq('user_id', profile.user_id).single(),
           supabase
@@ -66,14 +66,30 @@ export function FriendProfilePreview({
             .from('subscriptions')
             .select('status')
             .eq('user_id', profile.user_id)
-            .maybeSingle()
+            .maybeSingle(),
+          // Fetch links from the new profile_links table
+          supabase
+            .from('profile_links')
+            .select('*')
+            .eq('user_id', profile.user_id)
+            .order('sort_order', { ascending: true })
         ]);
         
         const isPremium = !!premiumRes.data || subRes.data?.status === 'active';
         
-        // Parse links from preferences
-        const preferences = profileRes.data?.preferences as { links?: ProfileLink[] } | null;
-        const links = preferences?.links || [];
+        // Get links from DB first, fallback to preferences
+        let links: ProfileLink[] = [];
+        if (linksRes.data && linksRes.data.length > 0) {
+          links = linksRes.data.map(l => ({
+            id: l.id,
+            title: l.title,
+            url: l.url
+          }));
+        } else {
+          // Fallback to legacy preferences storage
+          const preferences = profileRes.data?.preferences as { links?: ProfileLink[] } | null;
+          links = preferences?.links || [];
+        }
         
         return {
           ...profileRes.data,

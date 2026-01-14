@@ -51,35 +51,44 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
   const [showMutuals, setShowMutuals] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   
-  // State to hold fetched profile details
-  const [fetchedDetails, setFetchedDetails] = useState<{ display_name?: string; username?: string; avatar_url?: string } | null>(null);
+  // State to hold fetched profile details - ALWAYS fetch to guarantee real data
+  const [fetchedDetails, setFetchedDetails] = useState<{ 
+    display_name?: string | null; 
+    username?: string | null; 
+    avatar_url?: string | null;
+    bio?: string | null;
+    email?: string | null;
+  } | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
-  // 1. Resolve Generic Names
+  // NUCLEAR FIX: Always fetch the real profile data from DB regardless of what's passed
   useEffect(() => {
-    // Check if name is generic (User + last 4 chars of ID) or missing
-    const isGenericName = !profile.display_name || (profile.user_id && profile.display_name === `User${profile.user_id.slice(-4)}`);
-    
-    if (!isGenericName) return;
-    if (!profile.user_id) return;
+    if (!profile.user_id) {
+      setIsLoadingProfile(false);
+      return;
+    }
 
     const fetchRealProfileData = async () => {
+      setIsLoadingProfile(true);
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('display_name, username, avatar_url')
+          .select('display_name, username, avatar_url, bio, email')
           .eq('user_id', profile.user_id)
-          .maybeSingle();
+          .single();
 
         if (!error && data) {
           setFetchedDetails(data);
         }
       } catch (err) {
         console.error("Error fetching user details:", err);
+      } finally {
+        setIsLoadingProfile(false);
       }
     };
 
     fetchRealProfileData();
-  }, [profile.user_id, profile.display_name]);
+  }, [profile.user_id]);
 
   // 2. Fetch Mutual Friends
   useEffect(() => {
@@ -135,14 +144,26 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
     return km < 1 ? `${Math.round(km * 1000)}m away` : `${km.toFixed(1)}km away`;
   };
 
+  // Priority: 1. Fetched display_name, 2. Fetched username, 3. Fetched email (before @), 4. Passed data
   const finalAvatar = fetchedDetails?.avatar_url || profile.avatar_url;
-  const finalDisplayName = 
-    fetchedDetails?.display_name || 
-    profile.display_name || 
-    fetchedDetails?.username || 
-    (profile as any).username || 
-    (profile as any).email ||
-    `User${profile.user_id?.slice(-4) || ''}`;
+  const finalDisplayName = (() => {
+    // Fetched data takes priority
+    if (fetchedDetails?.display_name && fetchedDetails.display_name.trim()) {
+      return fetchedDetails.display_name;
+    }
+    if (fetchedDetails?.username && fetchedDetails.username.trim()) {
+      return fetchedDetails.username;
+    }
+    if (fetchedDetails?.email) {
+      return fetchedDetails.email.split('@')[0];
+    }
+    // Fallback to passed profile data
+    if (profile.display_name && profile.display_name.trim() && !profile.display_name.startsWith('User')) {
+      return profile.display_name;
+    }
+    // Last resort
+    return `User${profile.user_id?.slice(-4) || ''}`;
+  })();
 
   return (
     <>

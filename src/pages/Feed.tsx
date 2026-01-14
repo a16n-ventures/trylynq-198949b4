@@ -1768,25 +1768,33 @@ const Feed = () => {
                   ) : filteredPosts.length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">No posts found.</div>
                   ) : (
-                    filteredPosts.map((post) => (
+                    filteredPosts.map((post) => {
+                      // Ensure we have valid profile data with fallbacks
+                      const authorName = post.profiles?.display_name || 'Unknown User';
+                      const authorAvatar = post.profiles?.avatar_url || undefined;
+                      const authorInitial = authorName[0]?.toUpperCase() || 'U';
+                      
+                      return (
                       <Card key={post.id} className="border-0 shadow-sm overflow-hidden">
                         <CardHeader className="p-4 flex flex-row items-start gap-3 space-y-0">
                           <div className="cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
-                            <Avatar>
-                              <AvatarImage src={post.profiles?.avatar_url} />
-                              <AvatarFallback>{post.profiles?.display_name?.[0]}</AvatarFallback>
+                            <Avatar className="w-10 h-10 border border-border/50">
+                              <AvatarImage src={authorAvatar} className="object-cover" />
+                              <AvatarFallback className="bg-muted text-muted-foreground font-medium">{authorInitial}</AvatarFallback>
                             </Avatar>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm truncate flex items-center cursor-pointer" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
-                                {post.profiles?.display_name}
+                            <p className="font-semibold text-sm truncate flex items-center cursor-pointer hover:underline underline-offset-2" onClick={() => setPreviewProfile({ user_id: post.user_id })}>
+                                {authorName}
                                 <VerifiedBadge userId={post.user_id} />
                             </p>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
                                 {post.location && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {post.location}</span>}
                                 {post.post_type === 'ad' && (
-                                  <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider">Sponsored</span>
+                                  <Badge variant="outline" className="h-4 text-[9px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200">
+                                    Sponsored
+                                  </Badge>
                                 )}
                             </div>
                           </div>
@@ -1854,7 +1862,7 @@ const Feed = () => {
                             </Button>
                         </CardFooter>
                       </Card>
-                    ))
+                    );})
                   )}
                 </div>
             </TabsContent>
