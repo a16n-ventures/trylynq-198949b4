@@ -22,7 +22,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useNavigate } from 'react-router-dom';
 import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
-import { Slider } from "@/components/ui/slider"; // Assuming you have this or I will use standard input range if not available in your UI kit, will use standard range for safety
+import { Slider } from "@/components/ui/slider"; import { VideoPlayer } from '@/components/feed/VideoPlayer'; 
+// Assuming you have this or I will use standard input range if not available in your UI kit, will use standard range for safety
 
 // --- TYPES ---
 interface Profile { id: string; display_name: string | null; avatar_url: string | null; user_id?: string; }
@@ -722,8 +723,12 @@ const Feed = () => {
       if (error) throw error;
 
       if (response && response.posts) {
-  // The backend now handles the mixing and mapping for us
-  setFeedPosts(response.posts);
+  // Fix: Explicitly check for user like status in the response data
+  const mappedPosts = response.posts.map((p: any) => ({
+      ...p,
+      is_liked_by_user: p.is_liked_by_user ?? (p.post_likes && Array.isArray(p.post_likes) && p.post_likes.some((l: any) => l.user_id === user?.id))
+  }));
+  setFeedPosts(mappedPosts);
 
   if (response.events && response.events.length > 0) {
     setEvents(response.events.map((e: any) => ({
@@ -893,23 +898,36 @@ const Feed = () => {
 
       // 2. Create Ad Record (if type is ad)
       if (createType === 'ad' && postData) {
-         const budgetVal = adBudget[0];
+         // Fix: Ensure minimum budget of 2136
+         const budgetVal = Math.max(adBudget[0], 2136); 
          const durationVal = adDuration[0];
-         const vat = budgetVal * durationVal * 0.075;
-         const total = (budgetVal * durationVal) + vat;
+         const totalBudget = budgetVal * durationVal;
+         const vat = totalBudget * 0.075;
+         const amountToPay = totalBudget + vat;
 
-         // Store ad metadata in the post's metadata or use advertisements table
          try {
-             await supabase.from('advertisements').insert({
-                 title: 'Promoted',
+             // Fix: Insert into user_ads with correct schema fields
+             const { error: adError } = await supabase.from('user_ads').insert({
+                 user_id: user?.id,
+                 post_id: postData.id,
+                 title: 'Promoted Post',
+                 content: postText.substring(0, 100) || 'Sponsored Content',
+                 image_url: publicUrl,
                  link_url: `/app/feed?post=${postData.id}`,
-                 description: postText.substring(0, 100),
-                 placement: 'feed',
-                 is_active: false, // Pending review
-                 created_by: user?.id
+                 goal: 'profile_visits', // Matching default state
+                 target_audience: adAudience,
+                 daily_budget: budgetVal,
+                 total_budget: totalBudget,
+                 duration_days: durationVal,
+                 amount_paid: amountToPay,
+                 status: 'pending',
+                 payment_status: 'pending'
              });
+             
+             if (adError) throw adError;
          } catch (adError) {
-             console.log("Ad creation note:", adError);
+             console.error("Ad creation failed:", adError);
+             toast.error("Post created but Ad submission failed.");
          }
       }
 
@@ -1581,8 +1599,11 @@ const Feed = () => {
                           <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
                           {post.image_url && (
                             <div className="rounded-xl overflow-hidden bg-muted">
-                                {post.post_type === 'video' || post.image_url.includes('.mp4') || post.image_url.includes('.webm') || post.image_url.includes('.mov') ? (
-                                    <video src={post.image_url} className="w-full max-h-[500px] object-contain" autoPlay muted loop playsInline controls />
+                          {post.post_type === 'video' || post.image_url?.includes('.mp4') || post.image_url?.includes('.webm') || post.image_url?.includes('.mov') ? (
+                                    <VideoPlayer 
+                                      src={post.image_url!} 
+                                      className="w-full max-h-[500px] bg-black aspect-video" 
+                                    />
                                 ) : (
                                     <img src={post.image_url} alt="Post content" className="w-full h-auto object-cover max-h-[600px] object-top" loading="lazy" />
                                 )}
@@ -1780,6 +1801,7 @@ const Feed = () => {
                         <Slider 
                            value={adBudget} 
                            onValueChange={setAdBudget} 
+                           min={2136} 
                            max={50000} 
                            step={100} 
                            className="py-4"
