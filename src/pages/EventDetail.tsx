@@ -987,13 +987,7 @@ const EventDetail = () => {
                   {!isCreator && isAttending && (
                     <>
                       {meetingStatus === 'live' ? (
-                        <Button 
-                          className="w-full animate-pulse bg-green-600 hover:bg-green-700"
-                          onClick={joinVideoCall}
-                        >
-                          <Video className="w-4 h-4 mr-2" />
-                          Join Live Room
-                        </Button>
+                        <Video className="w-4 h-4 animate-pulse bg-green-600 hover:bg-green-700" onClick={joinVideoCall} /> <span> Join Live Room </span>
                       ) : (
                         <Button className="w-full" disabled variant="outline">
                           <Clock className="w-4 h-4 mr-2" />
