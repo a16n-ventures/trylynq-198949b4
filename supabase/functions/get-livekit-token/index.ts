@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
-import { AccessToken } from "https://esm.sh/livekit-server-sdk@1.2.6";
+import { AccessToken } from "npm:livekit-server-sdk@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
