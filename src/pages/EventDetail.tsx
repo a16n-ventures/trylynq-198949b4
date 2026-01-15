@@ -58,6 +58,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { LiveKitRoom, VideoConference } from '@livekit/components-react';
+import '@livekit/components-styles';
+import { isPast, isFuture, isToday, addHours, differenceInMinutes } from "date-fns";
 
 // Premium Badge Component
 const PremiumBadge = () => (
@@ -87,6 +90,7 @@ type Event = {
   image_url?: string | null;
   event_type: 'physical' | 'virtual';
   meeting_link?: string | null;
+  meeting_status?: string; 
   is_sponsored?: boolean; 
   creator: {
     user_id: string;
@@ -140,6 +144,7 @@ const EventDetail = () => {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const [token, setToken] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -468,6 +473,28 @@ const filteredFriends = useMemo(() => {
       toast.error('Failed to RSVP: ' + error.message);
     }
   });
+  
+  const getEventStatus = (startDate: string) => {
+    const date = new Date(startDate);
+    const now = new Date();
+    // Assumption: Events last 1 hour by default for status calculation
+    const expirationTime = addHours(date, 1); 
+
+    // 1. Check if event is "Live" (Past start time, but not yet expired)
+    if (isPast(date) && now < expirationTime) {
+      // Check if ending within 30 mins
+      if (differenceInMinutes(expirationTime, now) < 30) {
+        return { label: 'Expiring Soon', color: 'bg-orange-500 animate-pulse border-orange-600 text-white' };
+      }
+      return { label: 'Happening Now', color: 'bg-green-600 animate-pulse border-green-700 text-white' };
+    }
+
+    // 2. Standard statuses
+    if (isToday(date)) return { label: 'Today', color: 'bg-blue-500 text-white border-blue-600' };
+    if (isFuture(date)) return { label: 'Upcoming', color: 'bg-primary text-primary-foreground' };
+    
+    return { label: 'Past', color: 'bg-muted text-muted-foreground' };
+  };
 
   // NEW: Delete Event Mutation
   const deleteEventMutation = useMutation({
@@ -579,24 +606,26 @@ const filteredFriends = useMemo(() => {
   // Video Call Functions
   const startVideoCall = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
-
-      mediaStreamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-
+      // 1. Update DB status to 'live' so attendees see the button
+      await supabase
+        .from('events')
+        .update({ meeting_status: 'live' })
+        .eq('id', eventId);
+  
+      // 2. Just open the dialog. The LiveKitRoom component inside 
+      //    will handle the camera/mic connections automatically.
       setIsInCall(true);
       setShowVideoDialog(true);
-      toast.success('Video call started');
     } catch (error) {
-      console.error('Error starting video call:', error);
+      console.error('Error:', error);
       toast.error('Failed to start video call. Please check camera permissions.');
     }
+  };
+  
+  const joinVideoCall = async () => {
+    setIsInCall(true);
+    setShowVideoDialog(true);
+    toast.success("Joining room...");
   };
 
   const endVideoCall = () => {
@@ -738,6 +767,32 @@ const filteredFriends = useMemo(() => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
   
+  // Add inside EventDetail component
+  const [meetingStatus, setMeetingStatus] = useState(event?.meeting_status || 'scheduled');
+  
+  useEffect(() => {
+    if (!eventId) return;
+  
+    const channel = supabase
+      .channel(`event-status-${eventId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${eventId}` },
+        (payload) => {
+          setMeetingStatus(payload.new.meeting_status);
+          // Optional: Toast notification for attendees
+          if (payload.new.meeting_status === 'live' && !isCreator) {
+            toast.success("The event has started! You can join now.");
+          }
+        }
+      )
+      .subscribe();
+  
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [eventId, isCreator]);
+  
   useEffect(() => {
     if (showEditDialog && event) {
       setEditTitle(event.title);
@@ -748,6 +803,29 @@ const filteredFriends = useMemo(() => {
       setEditMaxAttendees(event.max_attendees?.toString() || '');
     }
   }, [showEditDialog, event]);
+  
+  useEffect(() => {
+    if (!showVideoDialog || !user || !eventId) return;
+
+    const fetchToken = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-livekit-token', {
+          body: {
+            room_name: eventId,
+            participant_name: user.email || 'User',
+          },
+        });
+        
+        if (error) throw error;
+        setToken(data.token);
+      } catch (e) {
+        console.error(e);
+        toast.error("Failed to connect to server");
+      }
+    };
+
+    fetchToken();
+  }, [showVideoDialog, user, eventId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -832,7 +910,18 @@ const filteredFriends = useMemo(() => {
               <div className="flex-1">
                 {/* [MODIFIED: Add Sponsored Badge] */}
                 <div className="flex gap-2 mb-2">
-                  <Badge>{event.category}</Badge>
+                  {/* Dynamic Status Badge */}
+                  {(() => {
+                    const status = getEventStatus(event.start_date);
+                    return (
+                      <Badge className={`${status.color} border-0 shadow-sm`}>
+                        {status.label}
+                      </Badge>
+                    );
+                  })()}
+                  
+                  <Badge variant="outline">{event.category}</Badge>
+                  
                   {event.is_sponsored && (
                      <Badge variant="outline" className="border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/20">
                        <Megaphone className="w-3 h-3 mr-1" /> Sponsored
@@ -886,17 +975,26 @@ const filteredFriends = useMemo(() => {
                 <span>{event.location}</span>
               </div>
 
-              {event.event_type === 'virtual' && event.meeting_link && (
+              {event.event_type === 'virtual' && (
                 <div className="flex items-center gap-3 text-sm">
-                  <Video className="w-4 h-4 text-primary" />
-                  <a
-                    href={event.meeting_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline flex items-center gap-1"
-                  >
-                    Join Meeting <ExternalLink className="w-3 h-3" />
-                  </a>
+                  {!isCreator && isAttending && (
+                    <>
+                      {meetingStatus === 'live' ? (
+                        <Button 
+                          className="w-full animate-pulse bg-green-600 hover:bg-green-700"
+                          onClick={joinVideoCall}
+                        >
+                          <Video className="w-4 h-4 mr-2" />
+                          Join Live Room
+                        </Button>
+                      ) : (
+                        <Button className="w-full" disabled variant="outline">
+                          <Clock className="w-4 h-4 mr-2" />
+                          Waiting for Host...
+                        </Button>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -952,13 +1050,13 @@ const filteredFriends = useMemo(() => {
                   </Button>
                   
                   {event.event_type === 'virtual' ? (
-                    <Button
-                      className="w-full"
-                      onClick={startVideoCall}
-                      disabled={isInCall}
+                    <Button 
+                      className="w-full" 
+                      onClick={startVideoCall} 
+                      variant={meetingStatus === 'live' ? "destructive" : "default"}
                     >
                       <Video className="w-4 h-4 mr-2" />
-                      {isInCall ? 'In Call' : 'Start Video Call'}
+                      {meetingStatus === 'live' ? 'End Meeting' : 'Start In-App Event'}
                     </Button>
                   ) : (
                     <Button
@@ -1053,16 +1151,26 @@ const filteredFriends = useMemo(() => {
       </div>
 
       {/* Video Call Dialog */}
-      <Dialog open={showVideoDialog} onOpenChange={setShowVideoDialog}>
-        <DialogContent className="max-w-4xl h-[80vh] p-0">
+      <Dialog open={showVideoDialog} onOpenChange={setShowVideoDialog}><DialogContent className="max-w-4xl h-[80vh] p-0">
           <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
+            {/* ✅ FIX: Only render LiveKitRoom when token is ready */}
+            {token === "" ? (
+              <div className="flex flex-col items-center justify-center h-full text-white gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-sm font-medium">Connecting to secure room...</p>
+              </div>
+            ) : (
+              <LiveKitRoom
+                serverUrl={import.meta.env.VITE_LIVEKIT_URL}
+                token={token}
+                connect={true}
+                video={true}
+                audio={true}
+              >
+                {/* This component handles the grid layout automatically */}
+                <VideoConference /> 
+              </LiveKitRoom>
+            )}
             
             {/* Call Controls */}
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
