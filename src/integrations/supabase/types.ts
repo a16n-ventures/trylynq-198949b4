@@ -1763,6 +1763,98 @@ export type Database = {
           },
         ]
       }
+      user_ads: {
+        Row: {
+          amount_paid: number | null
+          clicks: number | null
+          content: string | null
+          created_at: string
+          daily_budget: number
+          duration_days: number
+          end_date: string | null
+          engagement: number | null
+          goal: string | null
+          id: string
+          image_url: string | null
+          impressions: number | null
+          link_url: string | null
+          payment_reference: string | null
+          payment_status: string | null
+          post_id: string | null
+          rejection_reason: string | null
+          start_date: string | null
+          status: string
+          target_audience: string | null
+          target_location: string | null
+          title: string
+          total_budget: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_paid?: number | null
+          clicks?: number | null
+          content?: string | null
+          created_at?: string
+          daily_budget?: number
+          duration_days?: number
+          end_date?: string | null
+          engagement?: number | null
+          goal?: string | null
+          id?: string
+          image_url?: string | null
+          impressions?: number | null
+          link_url?: string | null
+          payment_reference?: string | null
+          payment_status?: string | null
+          post_id?: string | null
+          rejection_reason?: string | null
+          start_date?: string | null
+          status?: string
+          target_audience?: string | null
+          target_location?: string | null
+          title: string
+          total_budget?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_paid?: number | null
+          clicks?: number | null
+          content?: string | null
+          created_at?: string
+          daily_budget?: number
+          duration_days?: number
+          end_date?: string | null
+          engagement?: number | null
+          goal?: string | null
+          id?: string
+          image_url?: string | null
+          impressions?: number | null
+          link_url?: string | null
+          payment_reference?: string | null
+          payment_status?: string | null
+          post_id?: string | null
+          rejection_reason?: string | null
+          start_date?: string | null
+          status?: string
+          target_audience?: string | null
+          target_location?: string | null
+          title?: string
+          total_budget?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_ads_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_bank_details: {
         Row: {
           account_name: string
