@@ -1490,10 +1490,10 @@ const EventDetail = () => {
               </Button>
               <Button
                 onClick={handleSendInvites}
-                disabled={sendInvitations.isPending || selectedFriends.size === 0}
+                disabled={inviteFriendsMutation.isPending || selectedFriends.size === 0}
                 className="min-w-[140px]"
               >
-                {sendInvitations.isPending ? (
+                {inviteFriendsMutation.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Sending...
