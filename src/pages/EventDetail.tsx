@@ -768,13 +768,21 @@ const filteredFriends = useMemo(() => {
   }
   
   const isCreator = user?.id && event?.creator_id ? user.id === event.creator_id : false;
-  
-  // Add inside EventDetail component
-  const [meetingStatus, setMeetingStatus] = useState(event?.meeting_status || 'scheduled');
-  
+
+  // 2. Define Meeting Status State (Initialize safely)
+  const [meetingStatus, setMeetingStatus] = useState('scheduled');
+
+  // 3. Sync State with Event Data
+  useEffect(() => {
+    if (event?.meeting_status) {
+      setMeetingStatus(event.meeting_status);
+    }
+  }, [event?.meeting_status]);
+
+  // 4. Realtime Listener
   useEffect(() => {
     if (!eventId) return;
-  
+
     const channel = supabase
       .channel(`event-status-${eventId}`)
       .on(
@@ -782,14 +790,13 @@ const filteredFriends = useMemo(() => {
         { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${eventId}` },
         (payload) => {
           setMeetingStatus(payload.new.meeting_status);
-          // Optional: Toast notification for attendees
           if (payload.new.meeting_status === 'live' && !isCreator) {
             toast.success("The event has started! You can join now.");
           }
         }
       )
       .subscribe();
-  
+
     return () => {
       supabase.removeChannel(channel);
     };
