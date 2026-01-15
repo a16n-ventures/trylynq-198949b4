@@ -983,12 +983,12 @@ const EventDetail = () => {
               </div>
 
               {event.event_type === 'virtual' && (
-                <div className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-3 text-sm animate-pulse text-primary hover:bg-text-primary" onClick={joinVideoCall}>
                   {!isCreator && isAttending && (
                     <>
                       {meetingStatus === 'live' ? (
                         <>
-                        <Video className="w-4 h-4 animate-pulse bg-green-600 hover:bg-green-700" onClick={joinVideoCall} /> <span> Join Live Room </span>
+                        <Video className="w-4 h-4 text-primary" /> <span> Join Live Room </span>
                         </>
                       ) : (
                         <Button className="w-full" disabled variant="outline">
