@@ -807,7 +807,7 @@ const Profile = () => {
               <div className="flex items-center gap-2 mt-3">
                 <Badge className="bg-amber-100/20 text-amber-200 border-amber-300/30 backdrop-blur-sm px-3 py-1">
                   <Crown className="w-3.5 h-3.5 mr-1.5" />
-                  {hasremiumBadge ? 'Premium Member' : 'Free Member'}
+                  {hasPremiumBadge ? 'Premium Member' : 'Free Member'}
                 </Badge>
               </div>
             </div>
