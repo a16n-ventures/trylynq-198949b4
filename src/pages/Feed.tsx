@@ -723,21 +723,23 @@ const Feed = () => {
       if (error) throw error;
 
       if (response && response.posts) {
-  // Fix: Explicitly check for user like status in the response data
-  const mappedPosts = response.posts.map((p: any) => ({
-      ...p,
-      is_liked_by_user: p.is_liked_by_user ?? (p.post_likes && Array.isArray(p.post_likes) && p.post_likes.some((l: any) => l.user_id === user?.id))
-  }));
-  setFeedPosts(mappedPosts);
+        // ✅ CRITICAL FIX: Map over posts to set 'is_liked_by_user' correctly
+        const formattedPosts = response.posts.map((p: any) => ({
+            ...p,
+            // We check if the 'post_likes' array contains a record with YOUR user_id
+            is_liked_by_user: p.post_likes && Array.isArray(p.post_likes) && p.post_likes.some((l: any) => l.user_id === user?.id)
+        }));
 
-  if (response.events && response.events.length > 0) {
-    setEvents(response.events.map((e: any) => ({
-        ...e,
-        attendee_count: e.attendee_count || 0,
-        is_attending: false 
-    })));
-  }
-}
+        setFeedPosts(formattedPosts);
+
+        if (response.events) {
+            setEvents(response.events.map((e: any) => ({
+                ...e,
+                attendee_count: e.attendee_count || 0,
+                is_attending: false 
+            })));
+        }
+      }
     } catch (err) {
       console.error("Smart Feed Error:", err);
       fetchPosts(); 

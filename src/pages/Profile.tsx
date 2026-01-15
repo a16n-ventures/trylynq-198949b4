@@ -1178,7 +1178,11 @@ const Profile = () => {
                       className="h-9 text-sm flex-1"
                     />
                     <Button 
-                      onClick={addLink}
+                      type="button" 
+                      onClick={(e) => {
+                        e.preventDefault();
+                        addLink();
+                      }}
                       size="sm"
                       variant="secondary"
                       disabled={!newLink.title.trim() || !newLink.url.trim()}
