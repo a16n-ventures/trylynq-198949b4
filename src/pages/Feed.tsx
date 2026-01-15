@@ -702,42 +702,45 @@ const Feed = () => {
 
   const fetchSmartFeed = async () => {
     setLoading(true);
-    
     try {
-      // 1. Get current location for AI geo-targeting
-      let lat = null, long = null;
-      if (navigator.geolocation) {
-         // Wrap getPosition in promise to await it (optional, logic simplified for brevity)
-         /* ... get position logic ... */
-      }
-
-      // 2. Invoke the Edge Function "Brain"
+      // 1. Load the feed from the brain
       const { data: response, error } = await supabase.functions.invoke('generate-smart-feed', {
-        body: { 
-          user_id: user?.id,
-          user_lat: lat, 
-          user_long: long 
-        }
+        body: { user_id: user?.id }
       });
 
       if (error) throw error;
 
       if (response && response.posts) {
-        // ✅ CRITICAL FIX: Map over posts to set 'is_liked_by_user' correctly
-        const formattedPosts = response.posts.map((p: any) => ({
+        const rawPosts = response.posts;
+        
+        // --- THE FIX STARTS HERE ---
+        // The Edge function might not return "post_likes". We must fetch YOUR likes specifically.
+        const postIds = rawPosts.map((p: any) => p.id);
+        
+        const { data: myLikes } = await supabase
+          .from('post_likes')
+          .select('post_id')
+          .eq('user_id', user?.id)
+          .in('post_id', postIds);
+
+        // Create a Set of IDs you have liked for instant lookup
+        const likedPostIds = new Set(myLikes?.map((l: any) => l.post_id));
+
+        const formattedPosts = rawPosts.map((p: any) => ({
             ...p,
-            // We check if the 'post_likes' array contains a record with YOUR user_id
-            is_liked_by_user: p.post_likes && Array.isArray(p.post_likes) && p.post_likes.some((l: any) => l.user_id === user?.id)
+            // Check against the Set we just fetched
+            is_liked_by_user: likedPostIds.has(p.id)
         }));
+        // --- THE FIX ENDS HERE ---
 
         setFeedPosts(formattedPosts);
-
+        
         if (response.events) {
-            setEvents(response.events.map((e: any) => ({
-                ...e,
-                attendee_count: e.attendee_count || 0,
-                is_attending: false 
-            })));
+          setEvents(response.events.map((e: any) => ({
+              ...e,
+              attendee_count: e.attendee_count || 0,
+              is_attending: false 
+          })));
         }
       }
     } catch (err) {
