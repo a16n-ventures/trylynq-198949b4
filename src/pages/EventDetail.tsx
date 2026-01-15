@@ -765,7 +765,9 @@ const filteredFriends = useMemo(() => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  }
+  
+  const isCreator = user?.id && event?.creator_id ? user.id === event.creator_id : false;
   
   // Add inside EventDetail component
   const [meetingStatus, setMeetingStatus] = useState(event?.meeting_status || 'scheduled');
@@ -856,7 +858,6 @@ const filteredFriends = useMemo(() => {
     );
   }
 
-  const isCreator = user?.id === event.creator_id;
   const eventDate = new Date(event.start_date);
   const isUpcoming = eventDate > new Date();
 
