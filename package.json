@@ -68,7 +68,10 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@livekit/components-react": "^2.9.17",
+    "@livekit/components-styles": "^1.2.0",
+    "livekit-client": "^2.16.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
