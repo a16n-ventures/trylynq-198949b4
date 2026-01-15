@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
 import { useGeolocation } from '@/contexts/LocationContext';
+import { useProfileLinks } from '@/hooks/useProfileLinks'; 
 
 // --- TYPES ---
 interface ProfileLink {
@@ -156,6 +157,7 @@ const Profile = () => {
   
   // Profile Settings Dialog State
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [newLink, setNewLink] = useState({ title: '', url: '' }); 
   const [settingsForm, setSettingsForm] = useState({
     fullName: '',
     username: '',
@@ -163,10 +165,6 @@ const Profile = () => {
     phone: '',
     bio: ''
   });
-  
-  // Links management state
-  const [profileLinks, setProfileLinks] = useState<ProfileLink[]>([]);
-  const [newLink, setNewLink] = useState({ title: '', url: '' });
 
   // Query with optimized settings
   const { data, isLoading, refetch, isRefetching, error } = useQuery<CombinedProfile, Error>({
@@ -212,6 +210,13 @@ const Profile = () => {
     },
     enabled: !!user
   });
+  
+  const { 
+    links: realLinks, 
+    addLink: addLinkToDb, 
+    deleteLink: deleteLinkFromDb,
+    isAdding: isAddingLink 
+  } = useProfileLinks(user?.id); 
 
   // Sync form state with profile data
   useEffect(() => {
@@ -228,8 +233,6 @@ const Profile = () => {
         bio: profile.bio || ''
       });
       
-      // Sync profile links
-      setProfileLinks(profile.preferences?.links || []);
     }
   }, [profile, user?.email]);
 
@@ -241,7 +244,6 @@ const Profile = () => {
       email?: string; 
       phone?: string;
       bio?: string;
-      links?: ProfileLink[]
     }) => {
       const dbUpdates: any = {
         updated_at: new Date().toISOString(),
@@ -646,9 +648,8 @@ const Profile = () => {
       email: settingsForm.email,
       phone: settingsForm.phone,
       bio: settingsForm.bio,
-      links: profileLinks
     });
-  }, [settingsForm, profileLinks, updateProfileSettingsMutation]);
+  }, [settingsForm, updateProfileSettingsMutation]);
 
   // Links management functions
   const getLinkIcon = (url: string) => {
@@ -664,29 +665,32 @@ const Profile = () => {
       toast.error('Please enter both title and URL');
       return;
     }
-    
-    // Validate URL
+
+    // Basic URL validation
+    let finalUrl = newLink.url;
+    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+        finalUrl = `https://${finalUrl}`;
+    }
+
     try {
-      new URL(newLink.url.startsWith('http') ? newLink.url : `https://${newLink.url}`);
+      new URL(finalUrl);
     } catch {
       toast.error('Please enter a valid URL');
       return;
     }
 
-    const link: ProfileLink = {
-      id: crypto.randomUUID(),
-      title: newLink.title.trim(),
-      url: newLink.url.startsWith('http') ? newLink.url : `https://${newLink.url}`
-    };
-    
-    const updatedLinks = [...profileLinks, link];
-    setProfileLinks(updatedLinks);
-    setNewLink({ title: '', url: '' });
-  }, [newLink, profileLinks]);
+    // Use the Hook to save to DB immediately
+    addLinkToDb(
+      { title: newLink.title, url: finalUrl },
+      {
+        onSuccess: () => setNewLink({ title: '', url: '' })
+      }
+    );
+  }, [newLink, addLinkToDb]);
 
   const removeLink = useCallback((linkId: string) => {
-    setProfileLinks(prev => prev.filter(l => l.id !== linkId));
-  }, []);
+    deleteLinkFromDb(linkId);
+  }, [deleteLinkFromDb]);
 
   // Memoized calculations
   const profileCompletion = useMemo(() => {
@@ -803,7 +807,7 @@ const Profile = () => {
               <div className="flex items-center gap-2 mt-3">
                 <Badge className="bg-amber-100/20 text-amber-200 border-amber-300/30 backdrop-blur-sm px-3 py-1">
                   <Crown className="w-3.5 h-3.5 mr-1.5" />
-                  {hasPremiumBadge ? 'Premium Member' : 'Free Member'}
+                  {hasremiumBadge ? 'Premium Member' : 'Free Member'}
                 </Badge>
               </div>
             </div>
@@ -949,7 +953,7 @@ const Profile = () => {
               <Switch 
                 checked={!!location?.is_sharing_location}
                 onCheckedChange={handleLocationToggle}
-                disabled={toggleLocationMutation.isPending || locationLoading}
+                enabled={toggleLocationMutation.isPending || locationLoading}
                 aria-label="Toggle location sharing"
               />
             </div>
@@ -1185,9 +1189,9 @@ const Profile = () => {
                 </div>
 
                 {/* Existing links list */}
-                {profileLinks.length > 0 && (
+                {realLinks && realLinks.length > 0 && (
                   <div className="space-y-2 pt-2 border-t border-border/50">
-                    {profileLinks.map((link) => {
+                    {realLinks.map((link) => {
                       const LinkIcon = getLinkIcon(link.url);
                       return (
                         <div key={link.id} className="flex items-center gap-2 p-2 rounded bg-background border">
