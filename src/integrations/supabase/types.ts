@@ -679,6 +679,7 @@ export type Database = {
           longitude: number | null
           max_attendees: number | null
           meeting_link: string | null
+          meeting_status: string | null
           requires_approval: boolean
           start_date: string
           ticket_price: number | null
@@ -705,6 +706,7 @@ export type Database = {
           longitude?: number | null
           max_attendees?: number | null
           meeting_link?: string | null
+          meeting_status?: string | null
           requires_approval?: boolean
           start_date: string
           ticket_price?: number | null
@@ -731,6 +733,7 @@ export type Database = {
           longitude?: number | null
           max_attendees?: number | null
           meeting_link?: string | null
+          meeting_status?: string | null
           requires_approval?: boolean
           start_date?: string
           ticket_price?: number | null
@@ -2357,6 +2360,7 @@ export type Database = {
           longitude: number | null
           max_attendees: number | null
           meeting_link: string | null
+          meeting_status: string | null
           requires_approval: boolean
           start_date: string
           ticket_price: number | null

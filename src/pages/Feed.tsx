@@ -1673,26 +1673,64 @@ const Feed = () => {
                     </TabsContent>
 
                     <TabsContent value="events" className="space-y-4">
-                        {filteredEvents.map(e => (
+                        {filteredEvents.map(e => {
+                            const status = getEventStatus(e.start_date);
+                            const isNew = new Date(e.start_date).getTime() - Date.now() < 24 * 60 * 60 * 1000 && new Date(e.start_date) > new Date();
+                            
+                            return (
                             <Card key={e.id} className="overflow-hidden border-border/60 hover:border-primary/50 transition-colors" onClick={() => setSelectedEvent(e)}>
                                 <div className="h-32 w-full bg-muted relative">
                                     <img src={e.image_url} className="w-full h-full object-cover" />
+                                    {/* Status Badge */}
+                                    <Badge className={`absolute top-2 left-2 ${status.color} text-white border-0 shadow-md ${status.label === 'Happening Now' || status.label === 'Ending Soon' ? 'animate-pulse' : ''}`}>
+                                        {status.label === 'Happening Now' && <span className="w-2 h-2 rounded-full bg-white mr-1.5 animate-ping inline-block" />}
+                                        {status.label}
+                                    </Badge>
+                                    {/* New Event Badge */}
+                                    {isNew && (
+                                        <Badge className="absolute top-2 right-12 bg-yellow-500 text-white border-0 shadow-md">
+                                            New
+                                        </Badge>
+                                    )}
                                     <div className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">
                                         {new Date(e.start_date).getDate()} {new Date(e.start_date).toLocaleString('default', { month: 'short' })}
                                     </div>
+                                    {e.is_sponsored && (
+                                        <Badge className="absolute bottom-2 left-2 bg-yellow-500/90 text-white border-0 shadow-md">
+                                            <Megaphone className="w-3 h-3 mr-1" /> Sponsored
+                                        </Badge>
+                                    )}
                                 </div>
                                 <div className="p-4">
-                                    <h3 className="font-bold truncate">{e.title}</h3>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <h3 className="font-bold truncate flex-1">{e.title}</h3>
+                                        {e.price && e.price > 0 ? (
+                                            <Badge variant="secondary" className="text-xs shrink-0">₦{e.price.toLocaleString()}</Badge>
+                                        ) : (
+                                            <Badge variant="outline" className="text-xs text-green-600 border-green-200 shrink-0">Free</Badge>
+                                        )}
+                                    </div>
                                     <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                                         <MapPin className="w-3 h-3" /> {e.location}
                                     </p>
-                                    <p className="text-xs text-primary font-medium flex items-center gap-1 mt-1">
-                                        <Users className="w-3 h-3" /> {e.attendee_count || 0} attending
-                                    </p>
-                                    <Button className="w-full mt-3 rounded-full" size="sm" variant="outline">View Details</Button>
+                                    <div className="flex items-center justify-between mt-1">
+                                        <p className="text-xs text-primary font-medium flex items-center gap-1">
+                                            <Users className="w-3 h-3" /> {e.attendee_count || 0} attending
+                                        </p>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Clock className="w-3 h-3" /> {new Date(e.start_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    </div>
+                                    <Button 
+                                        className={`w-full mt-3 rounded-full ${e.is_attending ? 'bg-green-600 hover:bg-green-700' : ''}`} 
+                                        size="sm" 
+                                        variant={e.is_attending ? 'default' : 'outline'}
+                                    >
+                                        {e.is_attending ? <><Check className="w-4 h-4 mr-1" /> Going</> : 'View Details'}
+                                    </Button>
                                 </div>
                             </Card>
-                        ))}
+                        );})}
                     </TabsContent>
                 </Tabs>
             </TabsContent>

@@ -1,14 +1,113 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
-import { AccessToken } from "npm:livekit-server-sdk@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Simple JWT creation for LiveKit (without external npm dependency)
+function createLiveKitToken(apiKey: string, apiSecret: string, roomName: string, identity: string, participantName: string): string {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + 3600; // 1 hour expiry
+  
+  const payload = {
+    iss: apiKey,
+    sub: identity,
+    name: participantName,
+    exp: exp,
+    nbf: now - 5,
+    iat: now,
+    video: {
+      roomJoin: true,
+      room: roomName,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
+    },
+  };
+
+  const base64UrlEncode = (obj: object): string => {
+    const json = JSON.stringify(obj);
+    const base64 = btoa(json);
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  };
+
+  const encodedHeader = base64UrlEncode(header);
+  const encodedPayload = base64UrlEncode(payload);
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+
+  // Create HMAC-SHA256 signature using Web Crypto API
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(apiSecret);
+  const messageData = encoder.encode(signingInput);
+
+  // Synchronous crypto not available, so we'll use a simple approach
+  // For production, use async crypto. For now, we return the unsigned token parts
+  // and rely on LiveKit's SDK to handle it properly.
+  
+  // Actually, we need to make this async. Let's restructure.
+  return signingInput; // Placeholder - we'll fix this with async
+}
+
+async function createLiveKitTokenAsync(apiKey: string, apiSecret: string, roomName: string, identity: string, participantName: string): Promise<string> {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + 3600; // 1 hour expiry
+  
+  const payload = {
+    iss: apiKey,
+    sub: identity,
+    name: participantName,
+    exp: exp,
+    nbf: now - 5,
+    iat: now,
+    video: {
+      roomJoin: true,
+      room: roomName,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
+    },
+  };
+
+  const base64UrlEncode = (str: string): string => {
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+
+  // Create HMAC-SHA256 signature using Web Crypto API
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(apiSecret);
+  const messageData = encoder.encode(signingInput);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const signatureArray = new Uint8Array(signatureBuffer);
+  
+  // Convert to base64url
+  let signatureBase64 = '';
+  for (let i = 0; i < signatureArray.length; i++) {
+    signatureBase64 += String.fromCharCode(signatureArray[i]);
+  }
+  const encodedSignature = btoa(signatureBase64).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
+  return `${signingInput}.${encodedSignature}`;
+}
+
 serve(async (req) => {
-  // 1. Handle CORS preflight requests (Browser security check)
+  // 1. Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -43,31 +142,24 @@ serve(async (req) => {
       throw new Error("Server Error: LiveKit keys are not configured.");
     }
 
-    // 6. Create the Token
-    // We use the User ID as the identity so we can identify them in the room
-    const at = new AccessToken(apiKey, apiSecret, {
-      identity: user.id, 
-      name: participant_name || user.email,
-    });
+    // 6. Create the Token using Web Crypto API
+    const token = await createLiveKitTokenAsync(
+      apiKey, 
+      apiSecret, 
+      room_name, 
+      user.id, 
+      participant_name || user.email || 'Participant'
+    );
 
-    // 7. Grant Permissions (Join, Publish, Subscribe)
-    at.addGrant({
-      roomJoin: true,
-      room: room_name,
-      canPublish: true,
-      canSubscribe: true,
-    });
-
-    const token = await at.toJwt();
-
-    // 8. Return the token to the frontend
+    // 7. Return the token to the frontend
     return new Response(JSON.stringify({ token }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
 
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(JSON.stringify({ error: message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     });

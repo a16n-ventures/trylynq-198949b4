@@ -608,16 +608,36 @@ const EventDetail = () => {
       // 1. Update DB status to 'live' so attendees see the button
       await supabase
         .from('events')
-        .update({ meeting_status: 'live' })
+        .update({ meeting_status: 'live' } as any)
         .eq('id', eventId);
   
-      // 2. Just open the dialog. The LiveKitRoom component inside 
-      //    will handle the camera/mic connections automatically.
+      // 2. Update local state immediately for responsive UI
+      setMeetingStatus('live');
+      
+      // 3. Open the video dialog
       setIsInCall(true);
       setShowVideoDialog(true);
+      toast.success('Event started! Attendees can now join.');
     } catch (error) {
       console.error('Error:', error);
       toast.error('Failed to start video call. Please check camera permissions.');
+    }
+  };
+  
+  // End meeting function for hosts
+  const endMeeting = async () => {
+    try {
+      await supabase
+        .from('events')
+        .update({ meeting_status: 'ended' } as any)
+        .eq('id', eventId);
+      
+      setMeetingStatus('ended');
+      endVideoCall();
+      toast.success('Meeting ended successfully.');
+    } catch (error) {
+      console.error('Error ending meeting:', error);
+      toast.error('Failed to end meeting.');
     }
   };
   
@@ -1053,14 +1073,26 @@ const EventDetail = () => {
                   </Button>
                   
                   {event.event_type === 'virtual' ? (
-                    <Button 
-                      className="w-full" 
-                      onClick={startVideoCall} 
-                      variant={meetingStatus === 'live' ? "destructive" : "default"}
-                    >
-                      <Video className="w-4 h-4 mr-2" />
-                      {meetingStatus === 'live' ? 'End Meeting' : 'Start In-App Event'}
-                    </Button>
+                    meetingStatus === 'live' ? (
+                      <Button 
+                        className="w-full" 
+                        onClick={endMeeting} 
+                        variant="destructive"
+                      >
+                        <StopCircle className="w-4 h-4 mr-2" />
+                        End Meeting
+                      </Button>
+                    ) : (
+                      <Button 
+                        className="w-full" 
+                        onClick={startVideoCall} 
+                        variant="default"
+                        disabled={meetingStatus === 'ended'}
+                      >
+                        <Video className="w-4 h-4 mr-2" />
+                        {meetingStatus === 'ended' ? 'Meeting Ended' : 'Start In-App Event'}
+                      </Button>
+                    )
                   ) : (
                     <Button
                       className="w-full"

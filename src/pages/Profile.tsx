@@ -313,15 +313,7 @@ const Profile = () => {
         dbUpdates.bio = updates.bio.trim();
       }
 
-      // Links Logic (Preferences)
-      if (updates.links !== undefined) {
-        // Fetch current preferences first to merge
-        const currentPrefs = profile?.preferences || {};
-        dbUpdates.preferences = {
-          ...currentPrefs,
-          links: updates.links
-        };
-      }
+      // Links are managed via the useProfileLinks hook, not here
 
       const { error } = await supabase
         .from('profiles')
@@ -953,7 +945,7 @@ const Profile = () => {
               <Switch 
                 checked={!!location?.is_sharing_location}
                 onCheckedChange={handleLocationToggle}
-                enabled={toggleLocationMutation.isPending || locationLoading}
+                disabled={toggleLocationMutation.isPending || locationLoading}
                 aria-label="Toggle location sharing"
               />
             </div>
