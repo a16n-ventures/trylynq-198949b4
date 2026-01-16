@@ -1400,9 +1400,14 @@ const Feed = () => {
         await supabase.rpc('decrement_event_attendees', { event_id: eventId });
         toast.success("RSVP cancelled");
         
-        setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: false, attendee_count: Math.max((e.attendee_count || 0) - 1, 0) } : e));
+        // UPDATE BOTH LIST AND SELECTED EVENT
+        const updateFn = (e: Event) => ({ ...e, is_attending: false, attendee_count: Math.max((e.attendee_count || 0) - 1, 0) });
+        setEvents(prev => prev.map(e => e.id === eventId ? updateFn(e) : e));
+        if (selectedEvent?.id === eventId) setSelectedEvent(prev => prev ? updateFn(prev) : null);
+
       } else {
         if (event?.price && event.price > 0) {
+          // ... (Payment logic remains unchanged) ...
           const { data: profile } = await supabase.from('profiles').select('email, display_name, phone').eq('user_id', user.id).single();
           if (!profile) { toast.error("Unable to load your profile."); return; }
           
@@ -1425,7 +1430,10 @@ const Feed = () => {
           await supabase.rpc('increment_event_attendees', { event_id: eventId });
           toast.success("You're going! 🎉");
           
-          setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e));
+          // UPDATE BOTH LIST AND SELECTED EVENT
+          const updateFn = (e: Event) => ({ ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 });
+          setEvents(prev => prev.map(e => e.id === eventId ? updateFn(e) : e));
+          if (selectedEvent?.id === eventId) setSelectedEvent(prev => prev ? updateFn(prev) : null);
         }
       }
     } catch (e: any) {
