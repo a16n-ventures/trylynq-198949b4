@@ -26,7 +26,7 @@ export default function AdminMarketplace() {
     queryKey: ['admin_stores'],
     queryFn: async () => {
       const { data, error } = await supabase.from('stores').select('*').order('created_at', { ascending: false });
-      if (error) { console.error("Error fetching stores:", error); throw error; }
+      if (error) throw error;
       return data as Store[];
     }
   });
@@ -37,100 +37,108 @@ export default function AdminMarketplace() {
       const { data, error } = await supabase.from('store_items')
         .select(`*, store:stores!store_id(name, category)`)
         .order('created_at', { ascending: false });
-      if (error) { console.error("Error fetching items:", error); throw error; }
+      if (error) throw error;
       return data as (StoreItem & { store: Pick<Store, 'name' | 'category'> })[];
     }
   });
 
-  // --- NUCLEAR MUTATIONS (OPTIMISTIC UPDATES) ---
+  // --- NUCLEAR MUTATIONS (STRICT VERIFICATION) ---
 
   // 1. Delete Store
   const deleteStoreMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('stores').delete().eq('id', id);
+      // Use select() to confirm row access before delete, or check count after
+      const { error, count } = await supabase.from('stores').delete({ count: 'exact' }).eq('id', id);
       if (error) throw error;
+      if (count === 0) throw new Error("Database permission denied (0 rows affected). Check RLS policies.");
     },
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ['admin_stores'] });
-      const previous = queryClient.getQueryData(['admin_stores']);
-      queryClient.setQueryData(['admin_stores'], (old: Store[] | undefined) => old ? old.filter(s => s.id !== id) : []);
-      return { previous };
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_stores'] });
+      toast.success('Store deleted');
     },
-    onError: (err, id, context) => {
-      console.error("Delete store failed:", err);
-      if (context?.previous) queryClient.setQueryData(['admin_stores'], context.previous);
-      toast.error(`Delete failed: ${err.message}`);
-    },
-    onSuccess: () => toast.success('Store deleted')
+    onError: (err) => toast.error(err.message)
   });
 
   // 2. Toggle Store Status
   const toggleStoreStatusMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      // Direct update, no .select() to avoid RLS strictness
-      const { error } = await supabase.from('stores').update({ is_active }).eq('id', id);
+      // Must use .select() to verify the update actually happened
+      const { data, error } = await supabase
+        .from('stores')
+        .update({ is_active })
+        .eq('id', id)
+        .select();
+      
       if (error) throw error;
+      // If data is empty, RLS blocked the update silently
+      if (!data || data.length === 0) throw new Error("Update blocked by database RLS. You may not have permission.");
+      
+      return data[0];
     },
     onMutate: async ({ id, is_active }) => {
-      // Cancel refetches
       await queryClient.cancelQueries({ queryKey: ['admin_stores'] });
-      // Snapshot previous value
-      const previousStores = queryClient.getQueryData<Store[]>(['admin_stores']);
-      // Optimistically update
-      queryClient.setQueryData<Store[]>(['admin_stores'], (old) => 
+      const previous = queryClient.getQueryData(['admin_stores']);
+      // Optimistic Update
+      queryClient.setQueryData(['admin_stores'], (old: Store[] | undefined) => 
         old ? old.map(s => s.id === id ? { ...s, is_active } : s) : []
       );
-      return { previousStores };
+      return { previous };
     },
-    onError: (err, variables, context) => {
-      console.error("Toggle store failed:", err);
-      // Rollback
-      if (context?.previousStores) queryClient.setQueryData(['admin_stores'], context.previousStores);
-      toast.error(`Update failed: ${err.message}`);
+    onError: (err, _, context) => {
+      // Rollback if DB rejected it
+      if (context?.previous) queryClient.setQueryData(['admin_stores'], context.previous);
+      toast.error(err.message);
     },
-    onSuccess: () => toast.success('Store updated')
+    onSuccess: () => {
+      // Re-fetch to ensure sync
+      queryClient.invalidateQueries({ queryKey: ['admin_stores'] });
+      toast.success('Store updated');
+    }
   });
 
   // 3. Delete Item
   const deleteItemMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('store_items').delete().eq('id', id);
+      const { error, count } = await supabase.from('store_items').delete({ count: 'exact' }).eq('id', id);
       if (error) throw error;
+      if (count === 0) throw new Error("Database permission denied (0 rows affected).");
     },
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ['admin_items'] });
-      const previous = queryClient.getQueryData(['admin_items']);
-      queryClient.setQueryData(['admin_items'], (old: any[] | undefined) => old ? old.filter(i => i.id !== id) : []);
-      return { previous };
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_items'] });
+      toast.success('Item deleted');
     },
-    onError: (err, id, context) => {
-      console.error("Delete item failed:", err);
-      if (context?.previous) queryClient.setQueryData(['admin_items'], context.previous);
-      toast.error(`Delete failed: ${err.message}`);
-    },
-    onSuccess: () => toast.success('Item deleted')
+    onError: (err) => toast.error(err.message)
   });
 
   // 4. Toggle Item Availability
   const toggleItemAvailabilityMutation = useMutation({
     mutationFn: async ({ id, is_available }: { id: string; is_available: boolean }) => {
-      const { error } = await supabase.from('store_items').update({ is_available }).eq('id', id);
+      const { data, error } = await supabase
+        .from('store_items')
+        .update({ is_available })
+        .eq('id', id)
+        .select();
+
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error("Update blocked by database RLS.");
+      return data[0];
     },
     onMutate: async ({ id, is_available }) => {
       await queryClient.cancelQueries({ queryKey: ['admin_items'] });
-      const previousItems = queryClient.getQueryData<any[]>(['admin_items']);
-      queryClient.setQueryData<any[]>(['admin_items'], (old) => 
+      const previous = queryClient.getQueryData(['admin_items']);
+      queryClient.setQueryData(['admin_items'], (old: any[] | undefined) => 
         old ? old.map(i => i.id === id ? { ...i, is_available } : i) : []
       );
-      return { previousItems };
+      return { previous };
     },
-    onError: (err, variables, context) => {
-      console.error("Toggle item failed:", err);
-      if (context?.previousItems) queryClient.setQueryData(['admin_items'], context.previousItems);
-      toast.error(`Update failed: ${err.message}`);
+    onError: (err, _, context) => {
+      if (context?.previous) queryClient.setQueryData(['admin_items'], context.previous);
+      toast.error(err.message);
     },
-    onSuccess: () => toast.success('Item updated')
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin_items'] });
+      toast.success('Item updated');
+    }
   });
 
   const formatPrice = (price: number) => {
