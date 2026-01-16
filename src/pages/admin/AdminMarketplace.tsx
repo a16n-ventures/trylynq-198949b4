@@ -48,33 +48,43 @@ export default function AdminMarketplace() {
   // Store mutations
   const deleteStoreMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.from('stores') as any).delete().eq('id', id);
+      const { error } = await (supabase.from('stores') as any)
+        .delete()
+        .eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin_stores'] });
       toast.success('Store deleted');
     },
-    onError: (error: any) => toast.error(error.message)
+    onError: (error: any) => toast.error(`Failed to delete store: ${error.message}`)
   });
 
   const toggleStoreStatusMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
       const { error } = await (supabase.from('stores') as any)
         .update({ is_active })
-        .eq('id', id);
+        .eq('id', id)
+        .select(); // Added .select() to ensure return and RLS validation
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin_stores'] });
       toast.success('Store status updated');
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to update store: ${error.message}`);
+      // Invalidate to revert UI state if optimistic update failed
+      queryClient.invalidateQueries({ queryKey: ['admin_stores'] });
     }
   });
 
   // Item mutations
   const deleteItemMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.from('store_items') as any).delete().eq('id', id);
+      const { error } = await (supabase.from('store_items') as any)
+        .delete()
+        .eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -82,20 +92,26 @@ export default function AdminMarketplace() {
       queryClient.invalidateQueries({ queryKey: ['marketplace_items'] });
       toast.success('Item deleted');
     },
-    onError: (error: any) => toast.error(error.message)
+    onError: (error: any) => toast.error(`Failed to delete item: ${error.message}`)
   });
 
   const toggleItemAvailabilityMutation = useMutation({
     mutationFn: async ({ id, is_available }: { id: string; is_available: boolean }) => {
       const { error } = await (supabase.from('store_items') as any)
         .update({ is_available })
-        .eq('id', id);
+        .eq('id', id)
+        .select(); // Added .select() to ensure return and RLS validation
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin_items'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace_items'] });
       toast.success('Item availability updated');
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to update item: ${error.message}`);
+      // Invalidate to revert UI state if optimistic update failed
+      queryClient.invalidateQueries({ queryKey: ['admin_items'] });
     }
   });
 
@@ -203,7 +219,11 @@ export default function AdminMarketplace() {
                       <TableCell><Badge variant="outline">{store.category}</Badge></TableCell>
                       <TableCell className="text-sm">{store.location || '-'}</TableCell>
                       <TableCell>
-                        <Switch checked={store.is_active} onCheckedChange={(checked) => toggleStoreStatusMutation.mutate({ id: store.id, is_active: checked })} />
+                        <Switch 
+                          checked={store.is_active} 
+                          onCheckedChange={(checked) => toggleStoreStatusMutation.mutate({ id: store.id, is_active: checked })} 
+                          disabled={toggleStoreStatusMutation.isPending}
+                        />
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{format(new Date(store.created_at), 'MMM d, yyyy')}</TableCell>
                       <TableCell className="text-right">
@@ -268,7 +288,11 @@ export default function AdminMarketplace() {
                         <p className="text-xs text-muted-foreground mt-1">{item.max_delivery_days}d max</p>
                       </TableCell>
                       <TableCell>
-                        <Switch checked={item.is_available} onCheckedChange={(checked) => toggleItemAvailabilityMutation.mutate({ id: item.id, is_available: checked })} />
+                        <Switch 
+                          checked={item.is_available} 
+                          onCheckedChange={(checked) => toggleItemAvailabilityMutation.mutate({ id: item.id, is_available: checked })} 
+                          disabled={toggleItemAvailabilityMutation.isPending}
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         <ItemFormDialog 
