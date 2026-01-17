@@ -567,7 +567,6 @@ const Feed = () => {
     fetchSmartFeed();
     fetchStories();
     fetchRelationships();
-    fetchSpotlightData();
     
     supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle()
       .then(({ data }) => { if (data) setCurrentUserProfile(data); });
@@ -742,8 +741,6 @@ const Feed = () => {
           rawPosts = rawPosts.filter((p: any) => p.post_type !== 'ad');
         }
         
-        setAiInsights(response.ai_insights || null);
-        
         const postIds = rawPosts.map((p: any) => p.id);
 
         // FIX LIKES: Manually fetch YOUR likes for these specific posts
@@ -768,9 +765,19 @@ const Feed = () => {
           setEvents(response.events.map((e: any) => ({
               ...e,
               attendee_count: e.attendee_count || 0,
-              is_attending: false 
+              is_attending: false // You could fetch RSVP status here if needed, but simple is fine for now
           })));
         }
+
+        // 3. HANDLE SMART COMMUNITIES (Exclusive Logic) - THIS WAS MISSING
+        if (response.communities) {
+           setCommunities(response.communities.map((c: any) => ({
+             ...c,
+             avatar_url: c.cover_url || c.avatar_url || null,
+             // The algorithm already calculated 'is_member' and 'my_role'
+           })));
+        }
+        setAiInsights(response.ai_insights || null);
       }
     } catch (err) {
       console.error("Smart Feed Error:", err);
