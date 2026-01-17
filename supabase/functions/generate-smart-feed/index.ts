@@ -284,10 +284,11 @@ serve(async (req) => {
     // 6. AI INSIGHTS (Viewer Premium Benefit)
     let aiInsights = null;
     const openAiKey = Deno.env.get('OPENAI_API_KEY');
+    
 console.log("🔍 DEBUG VARIABLES:", {
-  hasKey: !!openAiKey, // Should be TRUE. If false, your secret is missing.
-  location: locationFilter, // Should be 'Abuja' or your city.
-  isPremium: isViewerPremium // Likely FALSE for your test user.
+  hasKey: !!openAiKey, 
+  location: locationFilter, 
+  isPremium: isViewerPremium 
 });
     
     if (isViewerPremium && openAiKey && locationFilter) {
@@ -309,11 +310,19 @@ console.log("🔍 DEBUG VARIABLES:", {
             max_tokens: 150
           })
         });
-        if (aiResponse.ok) {
+        if (!aiResponse.ok) {
+           // THIS WAS MISSING: Log why it failed if status is not 200
+           const errorData = await aiResponse.text();
+           console.error("❌ OpenAI API Error:", errorData);
+        } else {
           const aiData = await aiResponse.json();
+          console.log("✅ OpenAI Success!"); // Confirm success
           aiInsights = aiData.choices?.[0]?.message?.content || null;
         }
-      } catch (e) { console.error('AI Error', e); }
+
+      } catch (e) { 
+        console.error('❌ AI Exception:', e); 
+      }
     }
 
     return new Response(JSON.stringify({ 
