@@ -84,21 +84,18 @@ const VerifiedBadge = ({ userId }: { userId?: string }) => {
   const [isPremium, setIsPremium] = useState(false);
 
   useEffect(() => {
-    if (!userId) return; // FIX 1: Check userId, not user
-
+    if (!userId) return;
     const checkPremium = async () => {
-      // FIX 2: Use userId (the author), NOT user.id (you)
+      // Check for active subscription OR active premium feature package
       const { data: sub } = await supabase.from('subscriptions')
-        .select('status').eq('user_id', userId).eq('status', 'active').maybeSingle();
-      
-      // FIX 3: Use userId here too
+        .select('status').eq('user_id', user.id).eq('status', 'active').maybeSingle();
       const { data: feat } = await supabase.from('premium_features')
-        .select('is_active').eq('user_id', userId).gt('expires_at', new Date().toISOString()).maybeSingle();
+        .select('is_active').eq('user_id', user.id).gt('expires_at', new Date().toISOString()).maybeSingle();
       
       setIsPremium(!!sub || !!feat);
     };
     checkPremium();
-  }, [userId]); // FIX 4: Depend on userId
+  }, [user]);
 
   if (!isPremium) return null;
 
@@ -729,7 +726,6 @@ const Feed = () => {
   const fetchSmartFeed = async () => {
     setLoading(true);
     try {
-      // 1. Load the feed from the brain
       const { data: response, error } = await supabase.functions.invoke('generate-smart-feed', {
         body: { user_id: user?.id }
       });
@@ -739,28 +735,27 @@ const Feed = () => {
       if (response && response.posts) {
         let rawPosts = response.posts;
       
-        // NUCLEAR FIX 1: Filter ads immediately if premium
+        // FIX ADS: If premium, remove ANYTHING marked as 'ad', regardless of source
         if (isPremium) {
           rawPosts = rawPosts.filter((p: any) => p.post_type !== 'ad');
         }
         
         const postIds = rawPosts.map((p: any) => p.id);
 
-        // 2. Fetch YOUR likes for these specific posts using a robust query
+        // FIX LIKES: Manually fetch YOUR likes for these specific posts
         const { data: myLikes } = await supabase
           .from('post_likes')
           .select('post_id')
           .eq('user_id', user?.id)
           .in('post_id', postIds);
         
-        // 3. Create a Fast Lookup Set
+        // Create a "Set" (Lookup Table) of posts you liked
         const likedPostIds = new Set(myLikes?.map((l: any) => l.post_id));
         
-        // 4. Map the posts confidently
+        // Map the posts and Force 'is_liked_by_user' to match the lookup table
         const formattedPosts = rawPosts.map((p: any) => ({
             ...p,
-            // NUCLEAR FIX 3: Deterministic check against the Set
-            is_liked_by_user: likedPostIds.has(p.id)
+            is_liked_by_user: likedPostIds.has(p.id) 
         }));
         
         setFeedPosts(formattedPosts);
@@ -1036,30 +1031,32 @@ const Feed = () => {
   const handleLikePost = async (post: Post) => {
   if (!user) return;
 
-    // 1. Get current state specifically
+    // 1. Snapshot the current state
     const wasLiked = post.is_liked_by_user;
     
-    // 2. Optimistic Update (Immediate UI Switch)
+    // 2. Optimistic Update (Update UI instantly so it feels fast)
     setFeedPosts(prev => prev.map(p => p.id === post.id ? { 
         ...p, 
+        // If it WAS liked, subtract 1. If it WAS NOT liked, add 1.
         likes_count: wasLiked ? Math.max(0, p.likes_count - 1) : p.likes_count + 1,
-        is_liked_by_user: !wasLiked
+        is_liked_by_user: !wasLiked // Flip the boolean
     } : p));
   
     try {
       if (wasLiked) {
-          // UNLIKE: Remove record first, then decrement count
+          // UNLIKE: Delete the record
           const { error } = await supabase.from('post_likes').delete().match({ post_id: post.id, user_id: user.id });
+          // Only decrement database count if delete worked
           if (!error) await supabase.rpc('decrement_post_likes', { post_id: post.id });
       } else {
-          // LIKE: Insert record first. If conflict (already liked), it fails gracefully.
+          // LIKE: Insert the record
           const { error } = await supabase.from('post_likes').insert({ post_id: post.id, user_id: user.id });
-          // Only increment count if insert succeeded (prevent double counting)
+          // Only increment database count if insert worked
           if (!error) await supabase.rpc('increment_post_likes', { post_id: post.id });
       }
     } catch (err) {
       console.error("Like failed, reverting UI", err);
-      // Revert UI if DB failed
+      // If DB fails, flip the UI back to what it was
       setFeedPosts(prev => prev.map(p => p.id === post.id ? { 
           ...p, 
           likes_count: wasLiked ? p.likes_count + 1 : Math.max(0, p.likes_count - 1),
