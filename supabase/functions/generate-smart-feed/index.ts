@@ -27,9 +27,10 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // 1. FETCH VIEWER CONTEXT (Safe Fetching)
+    // 1. FETCH VIEWER CONTEXT (CRASH PROOFED)
+    // FIX A: Use maybeSingle() instead of single() to prevent 500 Error Crash
     const [profileRes, friendsRes, viewerFeaturesRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('user_id', user_id).maybeSingle(), // FIX 1: maybeSingle() prevents crash
+      supabase.from('profiles').select('*').eq('user_id', user_id).maybeSingle(),
       supabase.from('friendships').select('addressee_id, requester_id').eq('status', 'accepted').or(`requester_id.eq.${user_id},addressee_id.eq.${user_id}`),
       supabase.from('premium_features')
         .select('feature_type')
@@ -39,6 +40,7 @@ serve(async (req) => {
     ]);
 
     const profile = profileRes.data || { is_premium: false, interests: [] };
+    // Handle JSON interests (Supabase returns them as array automatically)
     const viewerInterests = new Set((profile.interests || []).map((i: string) => i.toLowerCase()));
     
     // Viewer Features
@@ -63,7 +65,7 @@ serve(async (req) => {
         .order('member_count', { ascending: false })
         .limit(30),
 
-      // FIX 3: Fetched 'interests' so we can do the context matching
+      // FIX B: We MUST fetch 'interests' in the join to make the algorithm work
       supabase.from('social_posts')
         .select(`*, profiles (display_name, avatar_url, user_id, interests)`)
         .order('created_at', { ascending: false })
@@ -103,7 +105,6 @@ serve(async (req) => {
 
     // 4. SOCIAL GRAPH (Mutual Discovery)
     let friendLikedPosts = new Set<string>();
-
     if (friendIds.length > 0) {
       const { data: fLikes } = await supabase.from('post_likes').select('post_id').in('user_id', friendIds).limit(100);
       fLikes?.forEach((l: any) => friendLikedPosts.add(l.post_id));
@@ -121,28 +122,30 @@ serve(async (req) => {
       
       if (friendIds.includes(post.user_id)) score += 50;
 
-      // >>> CONTEXT-AWARE BOOST <<<
+      // >>> INTELLIGENT PROFILE BOOST <<<
       const authorHasBoost = boostedCreators.has(post.user_id);
       
       if (authorHasBoost) {
-        // Only boost if RELEVANT
         const isLocal = post.location && city && post.location.includes(city);
+        
+        // Retrieve JSON interests safely
         const authorInterests = post.profiles?.interests || [];
-        // Check if ANY of author's interests match ANY of viewer's interests
-        const hasSharedInterest = authorInterests.some((i: string) => viewerInterests.has(i.toLowerCase()));
+        
+        // Check intersection of Viewer Interests vs Author Interests
+        const hasSharedInterest = Array.isArray(authorInterests) && 
+          authorInterests.some((i: string) => viewerInterests.has(i.toLowerCase()));
         
         if (hasSharedInterest) {
-           score += 60; // "Sniper" Match
+           score += 60; // "Sniper" Match (High Relevance)
         } else if (isLocal) {
            score += 40; // Location Match
         } else {
-           score += 10; // Irrelevant Boost (Low priority)
+           score += 10; // Generic Boost (Low Relevance)
         }
         
-        if (score < 10) score = 10; // Minimum visibility guarantee
+        if (score < 10) score = 10; 
       }
 
-      // Premium Viewer Benefit: Mutual Discovery
       if (isViewerPremium) {
          if (friendLikedPosts.has(post.id) && !friendIds.includes(post.user_id)) {
            score += 25; 
@@ -193,7 +196,7 @@ serve(async (req) => {
         }
       }
 
-      // FIX 2: Crash Proofing (Optional Chaining)
+      // FIX C: Safety check for null title to prevent crash
       const nigerianKeywords = ['owambe', 'party', 'tech', 'lagos', 'abuja', 'vibes', 'cruise', 'wedding'];
       if (event.title && nigerianKeywords.some(k => event.title.toLowerCase().includes(k))) {
           matchScore += 15; 
