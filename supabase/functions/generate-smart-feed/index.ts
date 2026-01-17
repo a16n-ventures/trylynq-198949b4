@@ -28,7 +28,7 @@ serve(async (req) => {
     );
 
     // 1. FETCH VIEWER CONTEXT (CRASH PROOFED)
-    // FIX A: Use maybeSingle() instead of single() to prevent 500 Error Crash
+    // DIFFERENCE 1: .maybeSingle() prevents 500 Error Crash if profile is loading
     const [profileRes, friendsRes, viewerFeaturesRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('user_id', user_id).maybeSingle(),
       supabase.from('friendships').select('addressee_id, requester_id').eq('status', 'accepted').or(`requester_id.eq.${user_id},addressee_id.eq.${user_id}`),
@@ -40,7 +40,7 @@ serve(async (req) => {
     ]);
 
     const profile = profileRes.data || { is_premium: false, interests: [] };
-    // Handle JSON interests (Supabase returns them as array automatically)
+    // Safe JSON handling for interests
     const viewerInterests = new Set((profile.interests || []).map((i: string) => i.toLowerCase()));
     
     // Viewer Features
@@ -65,7 +65,7 @@ serve(async (req) => {
         .order('member_count', { ascending: false })
         .limit(30),
 
-      // FIX B: We MUST fetch 'interests' in the join to make the algorithm work
+      // DIFFERENCE 2: Added 'interests' here. Your file was missing it.
       supabase.from('social_posts')
         .select(`*, profiles (display_name, avatar_url, user_id, interests)`)
         .order('created_at', { ascending: false })
@@ -128,7 +128,7 @@ serve(async (req) => {
       if (authorHasBoost) {
         const isLocal = post.location && city && post.location.includes(city);
         
-        // Retrieve JSON interests safely
+        // Safely access the JSON interests we fetched
         const authorInterests = post.profiles?.interests || [];
         
         // Check intersection of Viewer Interests vs Author Interests
@@ -196,7 +196,7 @@ serve(async (req) => {
         }
       }
 
-      // FIX C: Safety check for null title to prevent crash
+      // DIFFERENCE 3: Safety check for null title to prevent crash
       const nigerianKeywords = ['owambe', 'party', 'tech', 'lagos', 'abuja', 'vibes', 'cruise', 'wedding'];
       if (event.title && nigerianKeywords.some(k => event.title.toLowerCase().includes(k))) {
           matchScore += 15; 
