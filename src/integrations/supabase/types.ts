@@ -1334,6 +1334,7 @@ export type Database = {
           preferences: Json | null
           premium_tier: string | null
           profile_views_30d: number | null
+          referral_code: string | null
           travel_propensity: number | null
           updated_at: string
           user_id: string
@@ -1359,6 +1360,7 @@ export type Database = {
           preferences?: Json | null
           premium_tier?: string | null
           profile_views_30d?: number | null
+          referral_code?: string | null
           travel_propensity?: number | null
           updated_at?: string
           user_id: string
@@ -1384,10 +1386,47 @@ export type Database = {
           preferences?: Json | null
           premium_tier?: string | null
           profile_views_30d?: number | null
+          referral_code?: string | null
           travel_propensity?: number | null
           updated_at?: string
           user_id?: string
           username?: string | null
+        }
+        Relationships: []
+      }
+      referrals: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          referral_code: string
+          referred_id: string
+          referrer_id: string
+          reward_amount: number | null
+          reward_claimed: boolean | null
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          referral_code: string
+          referred_id: string
+          referrer_id: string
+          reward_amount?: number | null
+          reward_claimed?: boolean | null
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          referral_code?: string
+          referred_id?: string
+          referrer_id?: string
+          reward_amount?: number | null
+          reward_claimed?: boolean | null
+          status?: string
         }
         Relationships: []
       }

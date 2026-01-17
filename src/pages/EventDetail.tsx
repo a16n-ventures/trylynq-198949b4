@@ -788,15 +788,16 @@ const EventDetail = () => {
   
   const isCreator = user?.id && event?.creator_id ? user.id === event.creator_id : false;
 
-  // 2. Define Meeting Status State (Initialize safely)
-  const [meetingStatus, setMeetingStatus] = useState('scheduled');
+  // 2. Define Meeting Status State - Initialize from DB or default to 'scheduled' (not 'ended')
+  const [meetingStatus, setMeetingStatus] = useState<string | null>(null);
 
-  // 3. Sync State with Event Data
+  // 3. Sync State with Event Data - use DB value or fallback to 'scheduled'
   useEffect(() => {
-    if (event?.meeting_status) {
-      setMeetingStatus(event.meeting_status);
+    if (event) {
+      // Only use DB value if it exists, otherwise default to 'scheduled'
+      setMeetingStatus(event.meeting_status || 'scheduled');
     }
-  }, [event?.meeting_status]);
+  }, [event]);
 
   // 4. Realtime Listener
   useEffect(() => {
@@ -832,6 +833,9 @@ const EventDetail = () => {
     }
   }, [showEditDialog, event]);
   
+  // LiveKit URL state
+  const [livekitUrl, setLivekitUrl] = useState<string | null>(null);
+
   useEffect(() => {
     if (!showVideoDialog || !user || !eventId) return;
 
@@ -846,6 +850,10 @@ const EventDetail = () => {
         
         if (error) throw error;
         setToken(data.token);
+        // Use the URL from response if provided, otherwise fallback to app_settings
+        if (data.livekit_url) {
+          setLivekitUrl(data.livekit_url);
+        }
       } catch (e) {
         console.error(e);
         toast.error("Failed to connect to server");
@@ -854,6 +862,22 @@ const EventDetail = () => {
 
     fetchToken();
   }, [showVideoDialog, user, eventId]);
+  
+  // Fetch LiveKit URL from app_settings as fallback
+  useEffect(() => {
+    const fetchLivekitUrl = async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'livekit_url')
+        .maybeSingle();
+      
+      if (data?.value && !livekitUrl) {
+        setLivekitUrl(data.value as string);
+      }
+    };
+    fetchLivekitUrl();
+  }, [livekitUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1082,15 +1106,23 @@ const EventDetail = () => {
                         <StopCircle className="w-4 h-4 mr-2" />
                         End Meeting
                       </Button>
+                    ) : meetingStatus === 'ended' ? (
+                      <Button 
+                        className="w-full" 
+                        variant="outline"
+                        disabled
+                      >
+                        <Video className="w-4 h-4 mr-2" />
+                        Meeting Ended
+                      </Button>
                     ) : (
                       <Button 
                         className="w-full" 
                         onClick={startVideoCall} 
                         variant="default"
-                        disabled={meetingStatus === 'ended'}
                       >
                         <Video className="w-4 h-4 mr-2" />
-                        {meetingStatus === 'ended' ? 'Meeting Ended' : 'Start In-App Event'}
+                        Start In-App Event
                       </Button>
                     )
                   ) : (
@@ -1189,14 +1221,14 @@ const EventDetail = () => {
       <Dialog open={showVideoDialog} onOpenChange={setShowVideoDialog}><DialogContent className="max-w-4xl h-[80vh] p-0">
           <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
             {/* ✅ FIX: Only render LiveKitRoom when token is ready */}
-            {token === "" ? (
+            {token === "" || !livekitUrl ? (
               <div className="flex flex-col items-center justify-center h-full text-white gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 <p className="text-sm font-medium">Connecting to secure room...</p>
               </div>
             ) : (
               <LiveKitRoom
-                serverUrl={import.meta.env.VITE_LIVEKIT_URL}
+                serverUrl={livekitUrl}
                 token={token}
                 connect={true}
                 video={true}

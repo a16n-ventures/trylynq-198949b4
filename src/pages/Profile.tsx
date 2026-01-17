@@ -36,6 +36,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useGeolocation } from '@/contexts/LocationContext';
 import { useProfileLinks } from '@/hooks/useProfileLinks'; 
+import { useReferrals } from '@/hooks/useReferrals';
 
 // --- TYPES ---
 interface ProfileLink {
@@ -142,6 +143,84 @@ const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
       event_views_30d: totalEventViews
     },
   };
+};
+
+// --- REFERRAL SECTION COMPONENT ---
+const ReferralSection = () => {
+  const { 
+    referralCode, 
+    referralSettings, 
+    stats, 
+    isLoading, 
+    copyReferralCode, 
+    shareInvite 
+  } = useReferrals();
+
+  // Don't render if referrals are disabled
+  if (!referralSettings?.enabled) return null;
+
+  return (
+    <div className="p-5 space-y-4 border-t border-border/50">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+        <Gift className="w-3.5 h-3.5" />
+        Invite Friends & Earn
+      </div>
+      
+      {/* Referral Code Card */}
+      <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-xl p-4 border border-primary/20">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Your Referral Code</p>
+            {isLoading ? (
+              <div className="h-6 w-24 bg-muted animate-pulse rounded" />
+            ) : (
+              <p className="text-xl font-bold text-primary tracking-wider">{referralCode || 'N/A'}</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              size="icon" 
+              variant="outline" 
+              className="h-9 w-9 rounded-full"
+              onClick={copyReferralCode}
+              disabled={!referralCode}
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+            <Button 
+              size="icon" 
+              variant="default" 
+              className="h-9 w-9 rounded-full"
+              onClick={shareInvite}
+              disabled={!referralCode}
+            >
+              <Share2 className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+        
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-primary/10">
+          <div className="text-center">
+            <p className="text-lg font-bold text-foreground">{stats.total_referrals}</p>
+            <p className="text-[10px] text-muted-foreground">Invited</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-bold text-green-600">{stats.completed_referrals}</p>
+            <p className="text-[10px] text-muted-foreground">Joined</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-bold text-primary">₦{stats.total_earnings.toLocaleString()}</p>
+            <p className="text-[10px] text-muted-foreground">Earned</p>
+          </div>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground text-center">
+        Earn ₦{referralSettings?.reward_amount || 500} for each friend who joins using your code!
+      </p>
+    </div>
+  );
 };
 
 // --- COMPONENT ---
@@ -945,7 +1024,7 @@ const Profile = () => {
               <Switch 
                 checked={!!location?.is_sharing_location}
                 onCheckedChange={handleLocationToggle}
-                enabled={toggleLocationMutation.isPending || locationLoading}
+                disabled={toggleLocationMutation.isPending || locationLoading}
                 aria-label="Toggle location sharing"
               />
             </div>
@@ -993,6 +1072,9 @@ const Profile = () => {
     <ChevronRight className="w-5 h-5 text-amber-500 group-hover:translate-x-1 transition-transform" />
   </div>
 )}
+
+          {/* REFERRAL SECTION */}
+          <ReferralSection />
           </Card>
         </div>
             

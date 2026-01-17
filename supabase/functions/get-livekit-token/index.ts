@@ -137,6 +137,7 @@ serve(async (req) => {
     // 5. Get LiveKit Credentials from Env Vars
     const apiKey = Deno.env.get('LIVEKIT_API_KEY');
     const apiSecret = Deno.env.get('LIVEKIT_API_SECRET');
+    const livekitUrl = Deno.env.get('LIVEKIT_URL');
     
     if (!apiKey || !apiSecret) {
       throw new Error("Server Error: LiveKit keys are not configured.");
@@ -151,8 +152,8 @@ serve(async (req) => {
       participant_name || user.email || 'Participant'
     );
 
-    // 7. Return the token to the frontend
-    return new Response(JSON.stringify({ token }), {
+    // 7. Return the token and URL to the frontend
+    return new Response(JSON.stringify({ token, livekit_url: livekitUrl }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
