@@ -1645,7 +1645,7 @@ const fetchCurrentLocation = (): Promise<{ lat: number; long: number; city: stri
             {/* FEED CONTENT */}
             <TabsContent value="feed" className="space-y-4">
                 
-                {isPremium && aiInsights && (
+                {aiInsights && (
                   <Card className="border-amber-200/50 bg-gradient-to-r from-amber-50/50 to-orange-50/50 shadow-sm mb-4 overflow-hidden">
                     <CardContent className="p-4 flex gap-3">
                       <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shrink-0 shadow-sm">
