@@ -285,7 +285,7 @@ serve(async (req) => {
     let aiInsights = null;
     const openAiKey = Deno.env.get('OPENAI_API_KEY'); 
 
-    if (isViewerPremium && openAiKey && locationFilter) {
+    if (openAiKey && locationFilter) {
       try {
          const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
@@ -294,7 +294,7 @@ serve(async (req) => {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: 'gpt-3.5-turbo',
             messages: [{
               role: 'system',
               content: `You are a hype-man for ${locationFilter}, Nigeria. 
