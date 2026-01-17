@@ -28,11 +28,6 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-    
-    const nigerianKeywords = ['owambe', 'party', 'tech', 'lagos', 'abuja', 'vibes', 'cruise', 'wedding'];
-      if (nigerianKeywords.some(k => event.title.toLowerCase().includes(k))) {
-          matchScore += 15; // Local Relevance Boost
-      }
 
     // --- FETCH DATA ---
     const [profileRes, friendsRes, adsRes] = await Promise.all([
@@ -145,6 +140,11 @@ const { data: rawAds } = await supabase
 
       eventsData = events.map((event: any) => {
         let matchScore = 50; // Base score
+        
+        const nigerianKeywords = ['owambe', 'party', 'tech', 'lagos', 'abuja', 'vibes', 'cruise', 'wedding'];
+          if (nigerianKeywords.some(k => event.title.toLowerCase().includes(k))) {
+              matchScore += 15; // Local Relevance Boost
+          }
         
         // Location proximity boost
         if (user_lat && user_long && event.latitude && event.longitude) {
