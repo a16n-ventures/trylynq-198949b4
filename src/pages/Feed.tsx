@@ -763,13 +763,15 @@ const fetchCurrentLocation = (): Promise<{ lat: number; long: number; city: stri
       
   const fetchSmartFeed = async () => {
     setLoading(true);
+    
+    // 1. Start with base payload
     let payload: any = { user_id: user?.id };
 
     try {
-      // 2. REUSE THE SHARED LOGIC
+      // 2. Try to get Real GPS Location
       const locData = await fetchCurrentLocation();
       
-      // Merge location into payload
+      // If successful, add it to payload
       payload = {
         ...payload,
         user_lat: locData.lat,
@@ -777,12 +779,20 @@ const fetchCurrentLocation = (): Promise<{ lat: number; long: number; city: stri
         city: locData.city 
       };
       
-      // Optional: If you want the feed to auto-update the "Create Post" location state too
-       setLocationData(locData.formattedAddress) 
+      // Optional: Update UI state if you want
+      if (locData.formattedAddress) setLocationData(locData.formattedAddress);
 
     } catch (e) {
-      console.log("Location access denied or failed, loading standard feed.");
-  }
+      console.log("Location access denied or failed, switching to fallback.");
+    }
+
+    // 3. THE FIX: The "Safety Net"
+    // If GPS failed (or returned no city), we MUST provide a fallback city
+    // otherwise the AI will not trigger.
+    if (!payload.city) {
+        payload.city = currentUserProfile?.city || 'Abuja';
+    }
+
     try {
       const { data: response, error } = await supabase.functions.invoke('generate-smart-feed', {
         body: payload 
