@@ -90,7 +90,7 @@ const VerifiedBadge = ({ userId }: { userId?: string }) => {
       const { data: sub } = await supabase.from('subscriptions')
         .select('status').eq('user_id', userId).eq('status', 'active').maybeSingle();
       const { data: feat } = await supabase.from('premium_features')
-        .select('is_active').eq('user_id', user.id).gt('expires_at', new Date().toISOString()).maybeSingle();
+        .select('is_active').eq('user_id', userId).gt('expires_at', new Date().toISOString()).maybeSingle();
       
       setIsPremium(!!sub || !!feat);
     };
