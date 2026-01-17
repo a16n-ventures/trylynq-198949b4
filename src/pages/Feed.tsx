@@ -1029,38 +1029,34 @@ const Feed = () => {
   };
 
   const handleLikePost = async (post: Post) => {
-  if (!user) return;
+    if (!user) return;
 
-    // 1. Snapshot the current state
-    const wasLiked = post.is_liked_by_user;
+    // KEY FIX: Force boolean with !! to ensure instant reaction
+    const wasLiked = !!post.is_liked_by_user;
     
-    // 2. Optimistic Update (Update UI instantly so it feels fast)
+    // 1. Optimistic Update (INSTANT UI FLIP)
     setFeedPosts(prev => prev.map(p => p.id === post.id ? { 
         ...p, 
-        // If it WAS liked, subtract 1. If it WAS NOT liked, add 1.
         likes_count: wasLiked ? Math.max(0, p.likes_count - 1) : p.likes_count + 1,
-        is_liked_by_user: !wasLiked // Flip the boolean
+        is_liked_by_user: !wasLiked 
     } : p));
   
     try {
       if (wasLiked) {
-          // UNLIKE: Delete the record
+          // Database call happens in background
           const { error } = await supabase.from('post_likes').delete().match({ post_id: post.id, user_id: user.id });
-          // Only decrement database count if delete worked
           if (!error) await supabase.rpc('decrement_post_likes', { post_id: post.id });
       } else {
-          // LIKE: Insert the record
           const { error } = await supabase.from('post_likes').insert({ post_id: post.id, user_id: user.id });
-          // Only increment database count if insert worked
           if (!error) await supabase.rpc('increment_post_likes', { post_id: post.id });
       }
     } catch (err) {
-      console.error("Like failed, reverting UI", err);
-      // If DB fails, flip the UI back to what it was
+      console.error("Like failed", err);
+      // Revert if DB fails
       setFeedPosts(prev => prev.map(p => p.id === post.id ? { 
           ...p, 
-          likes_count: wasLiked ? p.likes_count + 1 : Math.max(0, p.likes_count - 1),
-          is_liked_by_user: wasLiked
+          likes_count: wasLiked ? p.likes_count : p.likes_count,
+          is_liked_by_user: wasLiked 
       } : p));
     }
   };
@@ -1678,7 +1674,14 @@ const Feed = () => {
                                       className="w-full max-h-[500px] bg-black aspect-video" 
                                     />
                                 ) : (
-                                    <img src={post.image_url} alt="Post content" className="w-full h-auto object-cover max-h-[600px] object-top" loading="lazy" />
+                                  <div className="w-full aspect-[4/5] bg-muted relative overflow-hidden border-y border-border/40">
+                                      <img 
+                                        src={post.image_url} 
+                                        alt="Post content" 
+                                        className="w-full h-full object-cover" 
+                                        loading="lazy" 
+                                      />
+                                  </div>
                                 )}
                             </div>
                           )}
