@@ -84,14 +84,18 @@ const VerifiedBadge = ({ userId }: { userId?: string }) => {
   const [isPremium, setIsPremium] = useState(false);
 
   useEffect(() => {
-    if (!userId) return;
-    const checkStatus = async () => {
-        const { data: pf } = await supabase.from('premium_features').select('is_active').eq('user_id', userId).eq('is_active', true).gt('expires_at', new Date().toISOString()).maybeSingle();
-        const { data: sub } = await supabase.from('subscriptions').select('status').eq('user_id', userId).eq('status', 'active').maybeSingle();
-        if (pf || sub) setIsPremium(true);
+    if (!user) return;
+    const checkPremium = async () => {
+      // Check for active subscription OR active premium feature package
+      const { data: sub } = await supabase.from('subscriptions')
+        .select('status').eq('user_id', user.id).eq('status', 'active').maybeSingle();
+      const { data: feat } = await supabase.from('premium_features')
+        .select('is_active').eq('user_id', user.id).gt('expires_at', new Date().toISOString()).maybeSingle();
+      
+      setIsPremium(!!sub || !!feat);
     };
-    checkStatus();
-  }, [userId]);
+    checkPremium();
+  }, [user]);
 
   if (!isPremium) return null;
 
@@ -489,6 +493,7 @@ const Feed = () => {
   const [postText, setPostText] = useState('');
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isPremium, setIsPremium] = useState(false);
   
   // Tagging
   const [friends, setFriends] = useState<any[]>([]);
@@ -564,6 +569,16 @@ const Feed = () => {
     
     supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle()
       .then(({ data }) => { if (data) setCurrentUserProfile(data); });
+      
+    const checkPremium = async () => {
+        const { data: sub } = await supabase.from('subscriptions')
+          .select('status').eq('user_id', user.id).eq('status', 'active').maybeSingle();
+        const { data: feat } = await supabase.from('premium_features')
+          .select('is_active').eq('user_id', user.id).gt('expires_at', new Date().toISOString()).maybeSingle();
+        
+        setIsPremium(!!sub || !!feat);
+    };
+    checkPremium();
 
     const fetchMyFriends = async () => {
         const { data } = await supabase.from('friendships').select('requester_id, addressee_id').or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).eq('status', 'accepted');
@@ -711,28 +726,32 @@ const Feed = () => {
       if (error) throw error;
 
       if (response && response.posts) {
-        const rawPosts = response.posts;
+        let rawPosts = response.posts;
+      
+        // NUCLEAR FIX 1: Filter ads immediately if premium
+        if (isPremium) {
+          rawPosts = rawPosts.filter((p: any) => p.post_type !== 'ad');
+        }
         
-        // --- THE FIX STARTS HERE ---
-        // The Edge function might not return "post_likes". We must fetch YOUR likes specifically.
         const postIds = rawPosts.map((p: any) => p.id);
-        
+
+        // 2. Fetch YOUR likes for these specific posts using a robust query
         const { data: myLikes } = await supabase
           .from('post_likes')
           .select('post_id')
           .eq('user_id', user?.id)
           .in('post_id', postIds);
-
-        // Create a Set of IDs you have liked for instant lookup
+        
+        // 3. Create a Fast Lookup Set
         const likedPostIds = new Set(myLikes?.map((l: any) => l.post_id));
-
+        
+        // 4. Map the posts confidently
         const formattedPosts = rawPosts.map((p: any) => ({
             ...p,
-            // Check against the Set we just fetched
+            // NUCLEAR FIX 3: Deterministic check against the Set
             is_liked_by_user: likedPostIds.has(p.id)
         }));
-        // --- THE FIX ENDS HERE ---
-
+        
         setFeedPosts(formattedPosts);
         
         if (response.events) {
@@ -1254,6 +1273,21 @@ const Feed = () => {
   // ✅ ADDED: Handlers for Modals
   const handleJoinCommunity = async (communityId: string) => {
     if (!user) return;
+  
+    // Find the community to check its type/status
+    const targetCommunity = communities.find(c => c.id === communityId);
+  
+    // NUCLEAR FIX 5: Gatekeeping
+    // Assuming 'is_exclusive' or checking specific criteria. 
+    // You can also add a column 'requires_premium' to your communities table.
+    if (targetCommunity?.name.toLowerCase().includes('exclusive') || targetCommunity?.description?.toLowerCase().includes('premium')) {
+       if (!isPremium) {
+          toast.error("This community is for Premium members only. Please upgrade to join!");
+          // Optional: Trigger upgrade modal here
+          return; 
+       }
+    }
+  
     try {
       // Check if already a member
       const { data: existing } = await supabase
@@ -1762,11 +1796,15 @@ const Feed = () => {
                        <div className="h-8 w-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-3"><Type className="w-4 h-4" /></div>
                       Post
                   </DropdownMenuItem>
-                  {/* Added Ad Button to FAB */}
+                  {/* Added Ad Button to FAB - Only for Premium */}
+                  {isPremium && (
                   <DropdownMenuItem onClick={() => openCreateModal('ad')} className="p-2.5 rounded-lg focus:bg-muted font-medium cursor-pointer">
-                       <div className="h-8 w-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mr-3"><Megaphone className="w-4 h-4" /></div>
+                       <div className="h-8 w-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mr-3">
+                          <Megaphone className="w-4 h-4" />
+                       </div>
                       Ad
                   </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
           </DropdownMenu>
       </div>
