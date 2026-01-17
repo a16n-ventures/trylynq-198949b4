@@ -942,10 +942,6 @@ const fetchCurrentLocation = (): Promise<{ lat: number; long: number; city: stri
           toast.error("Could not get location");
       }
   };
-      } else {
-          toast.error("Geolocation not supported");
-      }
-  };
 
   const handleCreatePost = async () => {
     if (!postText.trim() && !postMedia) {
