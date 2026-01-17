@@ -27,7 +27,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // 1. FETCH VIEWER CONTEXT (Profile, Friends, Active Features)
+    // 1. FETCH VIEWER CONTEXT
     const [profileRes, friendsRes, viewerFeaturesRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('user_id', user_id).single(),
       supabase.from('friendships').select('addressee_id, requester_id').eq('status', 'accepted').or(`requester_id.eq.${user_id},addressee_id.eq.${user_id}`),
@@ -40,10 +40,12 @@ serve(async (req) => {
     ]);
 
     const profile = profileRes.data || { is_premium: false, interests: [] };
+    const viewerInterests = new Set((profile.interests || []).map((i: string) => i.toLowerCase()));
     
-    // Map viewer features to a simple Set for fast lookup
+    // Viewer Features Map
     const viewerFeatures = new Set(viewerFeaturesRes.data?.map((f: any) => f.feature_type) || []);
     const hasFullPackage = viewerFeatures.has('full_package');
+    // "No Limitations" = Full Package OR basic Premium subscription
     const isViewerPremium = profile.is_premium || hasFullPackage || viewerFeatures.size > 0;
 
     const friendIds = friendsRes.data?.map((f: any) => 
@@ -51,9 +53,7 @@ serve(async (req) => {
     ) || [];
 
     // 2. FETCH CONTENT POOL
-    // We fetch a larger pool (70 posts, 50 events) to let the algorithm filter down to the best gems
     const [eventsRes, communitiesRes, postsRes] = await Promise.all([
-      // Events: Select user_id (creator) to check for boosts
       supabase.from('events')
         .select(`*, event_attendees(count)`)
         .gt('start_date', new Date().toISOString())
@@ -65,8 +65,9 @@ serve(async (req) => {
         .order('member_count', { ascending: false })
         .limit(30),
 
+      // INTELLIGENT UPDATE: Fetch 'interests' from post authors to match with viewer
       supabase.from('social_posts')
-        .select(`*, profiles (display_name, avatar_url, user_id)`)
+        .select(`*, profiles (display_name, avatar_url, user_id, interests)`)
         .order('created_at', { ascending: false })
         .limit(70)
     ]);
@@ -75,15 +76,14 @@ serve(async (req) => {
     const communities = communitiesRes.data || [];
     const posts = postsRes.data || [];
 
-    // 3. FETCH CREATOR "BOOST" STATUS (The Intelligent Layer)
-    // We need to know which creators have paid for boosts
+    // 3. FETCH CREATOR "BOOST" STATUS
     const creatorIds = new Set([
-      ...events.map((e: any) => e.user_id), // Event Creators
-      ...posts.map((p: any) => p.user_id)   // Post Authors
+      ...events.map((e: any) => e.user_id),
+      ...posts.map((p: any) => p.user_id)
     ].filter(Boolean));
 
-    let boostedCreators = new Set<string>(); // Users with 'profile_boost'
-    let boostedEventCreators = new Set<string>(); // Users with 'event_boost'
+    let boostedCreators = new Set<string>(); // profile_boost
+    let boostedEventCreators = new Set<string>(); // event_boost
 
     if (creatorIds.size > 0) {
       const { data: creatorFeatures } = await supabase
@@ -103,58 +103,55 @@ serve(async (req) => {
       });
     }
 
-    // 4. PREPARE SOCIAL GRAPH DATA (For "Clyx" Logic)
-    let friendInterests: string[] = [];
+    // 4. SOCIAL GRAPH DATA
     let friendAttendance = new Set<string>();
     let friendLikedPosts = new Set<string>();
 
     if (friendIds.length > 0) {
-      const [fProfiles, fAttendance, fLikes] = await Promise.all([
-        supabase.from('profiles').select('interests').in('user_id', friendIds),
+      const [fAttendance, fLikes] = await Promise.all([
         supabase.from('event_attendees').select('event_id').in('user_id', friendIds),
         supabase.from('post_likes').select('post_id').in('user_id', friendIds).limit(100)
       ]);
-
-      fProfiles.data?.forEach((p: any) => { if (p.interests) friendInterests.push(...p.interests); });
       fAttendance.data?.forEach((a: any) => friendAttendance.add(a.event_id));
       fLikes.data?.forEach((l: any) => friendLikedPosts.add(l.post_id));
     }
 
     // --- ALGORITHMIC PROCESSING ---
 
-    // A. POSTS ALGORITHM (Profile Boost Logic)
+    // A. POSTS ALGORITHM (Profile Boost + Intelligent Matching)
     const feedData = posts.map((post: any) => {
       let score = 0;
       
-      // Base Score
       const hoursOld = (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60);
-      score -= Math.min(hoursOld * 0.5, 20); // Decay
+      score -= Math.min(hoursOld * 0.5, 20); 
       score += (post.likes_count || 0) * 0.5;
       
-      // Friends (Always priority)
-      if (friendIds.includes(post.user_id)) score += 30;
+      // 1. Friend Priority (Always top)
+      if (friendIds.includes(post.user_id)) score += 50;
 
-      // >>> INTELLIGENT BOOST: PROFILE VISIBILITY <<<
+      // 2. INTELLIGENT PROFILE BOOST
       const authorHasBoost = boostedCreators.has(post.user_id);
       
       if (authorHasBoost) {
-        // Rule: Only boost to strangers if there is SOME relevance (Location or Mutuals)
+        // Calculate Relevance
         const isLocal = post.location && city && post.location.includes(city);
+        const authorInterests = post.profiles?.interests || [];
+        const hasSharedInterest = authorInterests.some((i: string) => viewerInterests.has(i.toLowerCase()));
         
-        if (isLocal) {
-          score += 40; // Massive boost for local discovery
+        // RELEVANCE MATRIX
+        if (hasSharedInterest) {
+           score += 60; // Huge boost: "You share interests with this Premium Creator"
+        } else if (isLocal) {
+           score += 40; // High boost: "Popular in your city"
         } else {
-          score += 15; // General visibility boost
+           score += 10; // Minor boost: General visibility
         }
-        
-        // "Profile Badge" effect: always ensure they don't get buried
-        if (score < 10) score = 10;
       }
 
-      // Premium Viewer Benefits (Wanderlust Discovery)
+      // 3. Mutual Discovery (Premium Viewer Benefit)
       if (isViewerPremium) {
          if (friendLikedPosts.has(post.id) && !friendIds.includes(post.user_id)) {
-           score += 25; // "Friend liked this"
+           score += 25; 
          }
       }
 
@@ -166,26 +163,24 @@ serve(async (req) => {
       };
     }).sort((a: any, b: any) => b.sortScore - a.sortScore).slice(0, 40);
 
-    // B. EVENTS ALGORITHM (Event Boost Logic)
+    // B. EVENTS ALGORITHM (Event Boost + 20x Multiplier)
     const { data: userAttendance } = await supabase.from('event_attendees').select('event_id').eq('user_id', user_id);
     const attendingEventIds = new Set(userAttendance?.map(a => a.event_id) || []);
 
     const eventsData = events.map((event: any) => {
-      let matchScore = 50; 
+      let matchScore = 50; // Base score
 
-      // 1. Distance Logic (Wanderlust)
+      // 1. Distance (Full Package = No Limits)
       if (user_lat && user_long && event.latitude && event.longitude) {
         const distance = calculateDistance(user_lat, user_long, event.latitude, event.longitude);
-        
-        // Premium Viewers see further
-        const maxDist = isViewerPremium ? 150 : 20; 
+        const maxDist = isViewerPremium ? 500 : 20; // 500km radius for Full Package users
         
         if (distance < 5) matchScore += 40;
         else if (distance < maxDist) matchScore += 20;
-        else matchScore -= 20;
+        else matchScore -= 30;
       }
 
-      // 2. Interest Matching
+      // 2. Interest Check
       let interestMatch = false;
       if (profile.interests && event.category) {
         const userInterests = profile.interests.map((i: string) => i.toLowerCase());
@@ -195,42 +190,44 @@ serve(async (req) => {
         }
       }
 
-      // >>> INTELLIGENT BOOST: EVENT VISIBILITY (20x) <<<
+      // 3. INTELLIGENT EVENT BOOST (The 20x Logic)
       const creatorHasBoost = boostedEventCreators.has(event.user_id);
       
       if (creatorHasBoost) {
         if (interestMatch) {
-           // INTELLIGENT SUGGESTION: Match found + Paid Boost = EXPLOSIVE VISIBILITY
-           matchScore += 500; // Guarantee top slot
+           // THE "20x" VISIBILITY PROMISE
+           // We multiply the score instead of adding to it, sending it to 1000+
+           matchScore = (matchScore + 50) * 20; 
         } else {
-           // Paid boost but no interest match? Smaller boost (Don't spam irrelevant users)
+           // Boosted but no match? Just a nudge.
            matchScore += 50; 
         }
       }
 
-      // 3. Nigerian Context
+      // 4. Nigerian Context
       const nigerianKeywords = ['owambe', 'party', 'tech', 'lagos', 'abuja', 'vibes', 'cruise', 'wedding'];
-      if (nigerianKeywords.some(k => event.title.toLowerCase().includes(k))) matchScore += 15;
+      if (nigerianKeywords.some(k => event.title.toLowerCase().includes(k))) {
+          matchScore += 15; 
+      }
 
       return {
         ...event,
         type: 'event',
-        match_score: Math.min(matchScore, 100), // Cap for UI, but sort uses raw score
-        raw_score: matchScore, // Internal score for debugging
+        match_score: Math.min(matchScore, 100), // UI cap (Sort uses raw score)
+        raw_score: matchScore, // Sort by this
         attendee_count: event.event_attendees?.[0]?.count || 0,
         is_attending: attendingEventIds.has(event.id),
-        is_sponsored: event.is_boosted || (creatorHasBoost && interestMatch) // Mark as sponsored if boosted
+        is_sponsored: event.is_boosted || (creatorHasBoost && interestMatch)
       };
-    }).sort((a: any, b: any) => b.raw_score - a.raw_score);
+    }).sort((a: any, b: any) => b.raw_score - a.raw_score); // Sort by raw_score to respect 20x boost
 
-    // C. COMMUNITIES (Standard Logic)
+    // C. COMMUNITIES
     const { data: userMemberships } = await supabase.from('community_members').select('community_id, role').eq('user_id', user_id);
     const membershipMap = new Map(userMemberships?.map(m => [m.community_id, m.role]) || []);
 
     const communitiesData = communities.map((community: any) => {
       let matchScore = 40;
       if (membershipMap.has(community.id)) matchScore += 30;
-      // Premium Viewers see Exclusive communities
       if (isViewerPremium && (community.name.includes('Exclusive') || community.name.includes('Premium'))) matchScore += 20;
       
       return {
@@ -242,17 +239,10 @@ serve(async (req) => {
       };
     }).sort((a: any, b: any) => b.match_score - a.match_score);
 
-    // 5. USER ADS (Targeting Regular Users Only)
-    // Only fetch if viewer is NOT premium/full_package
+    // 5. USER ADS (Skip for Premium)
     let processedAds: any[] = [];
-    
     if (!hasFullPackage && !isViewerPremium) {
-       const { data: rawAds } = await supabase
-        .from('user_ads')
-        .select('*')
-        .eq('status', 'active') 
-        .limit(10);
-        
+       const { data: rawAds } = await supabase.from('user_ads').select('*').eq('status', 'active').limit(10);
        processedAds = (rawAds || []).map((ad: any) => ({
         id: `sponsored-${ad.id}`,
         type: 'ad',
@@ -268,7 +258,6 @@ serve(async (req) => {
       }));
     }
 
-    // Inject Ads
     const finalFeed: any[] = [];
     let adIndex = 0;
     feedData.forEach((item, index) => {
@@ -279,38 +268,29 @@ serve(async (req) => {
       finalFeed.push(item);
     });
 
-    // 6. AI INSIGHTS (Viewer Premium Benefit)
+    // 6. AI INSIGHTS (Premium Only)
     let aiInsights = null;
     const openAiKey = Deno.env.get('OPENAI_API_KEY'); 
 
     if (isViewerPremium && openAiKey && locationFilter) {
       try {
-        const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+         const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openAiKey}`,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Authorization': `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
             messages: [{
               role: 'system',
-              content: `You are a hype-man for ${locationFilter}, Nigeria. 
-                Look at these events: ${eventsData.slice(0, 5).map(e => e.title).join(', ')}.
-                Give a 2-sentence "Vibe Check". Tell me where the action is. 
-                Keep it slang-heavy and fun (use words like 'Owambe', 'Detty December'). Don't be formal, make it sound like a text from a friend.`
+              content: `You are a hype-man for ${locationFilter}, Nigeria. Look at these events: ${eventsData.slice(0, 5).map(e => e.title).join(', ')}. Give a 2-sentence "Vibe Check". Tell me where the action is.`
             }],
             max_tokens: 150
           })
         });
-
         if (aiResponse.ok) {
           const aiData = await aiResponse.json();
           aiInsights = aiData.choices?.[0]?.message?.content || null;
         }
-      } catch (aiError) {
-        console.error('OpenAI aggregation failed:', aiError);
-      }
+      } catch (e) { console.error('AI Error', e); }
     }
 
     return new Response(JSON.stringify({ 
@@ -320,21 +300,13 @@ serve(async (req) => {
       communities: communitiesData,
       ads: processedAds,
       ai_insights: aiInsights,
-      is_premium: profile.is_premium,
+      is_premium: isViewerPremium,
       location_context: locationFilter || null
-    }), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    });
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error: any) {
-    console.error('Feed generation error:', error);
-    return new Response(JSON.stringify({ 
-      error: error.message,
-      success: false 
-    }), { 
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    console.error('Feed error:', error);
+    return new Response(JSON.stringify({ error: error.message, success: false }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
 
