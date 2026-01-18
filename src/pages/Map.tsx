@@ -340,7 +340,7 @@ const MapPage = () => {
                 </Button>
               </div>
 
-              <div className="justify-self-center w-full max-w-[180px]">
+              <div className="flex justify-between items-center">
                 <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-full p-1 flex shadow-lg">
                   <button 
                     onClick={() => setActiveView('friends')}
@@ -372,7 +372,7 @@ const MapPage = () => {
         <div className="flex-grow" />
 
         {/* B. BOTTOM SHEET */}
-        <div className="pointer-events-auto px-4 pb-24 z-[60] mb-3 max-h-[50vh] flex flex-col justify-end">
+        <div className="pointer-events-auto px-4 pb-24 z-[60] mb-1 max-h-[50vh] flex flex-col justify-end">
           
           {/* Recenter FAB */}
           {!selectedFriend && !selectedEvent && !isNavigating && (
