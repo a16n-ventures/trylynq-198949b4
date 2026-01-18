@@ -224,6 +224,62 @@ function EventDetailModal({ event, isOpen, onClose, onRSVP }: {
             )}
           </div>
 
+         {/* 2.b THE FACEPILE (Social Proof) */}
+  <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border">
+     <div className="flex items-center -space-x-3">
+        {/* Render Friend Faces if available, else generic placeholders */}
+        {(event.friend_images && event.friend_images.length > 0 ? event.friend_images : [null, null, null]).slice(0, 3).map((img: string | null, i: number) => (
+           <Avatar key={i} className="border-2 border-background w-8 h-8">
+             <AvatarImage src={img || undefined} />
+             <AvatarFallback className="text-[10px] bg-muted-foreground/20">{img ? '' : '?'}</AvatarFallback>
+           </Avatar>
+        ))}
+        {event.attendee_count && event.attendee_count > 3 && (
+           <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium">
+             +{event.attendee_count - 3}
+           </div>
+        )}
+     </div>
+     <div className="text-xs text-muted-foreground">
+        {event.friend_images?.length ? 
+          <span className="font-semibold text-primary">{event.friend_images.length} friends going</span> : 
+          <span>{event.attendee_count || 0} people going</span>
+        }
+     </div>
+  </div>
+
+  {/* 2.c VIBE CHECK CHAT */}
+  <Button 
+    variant="outline" 
+    className="w-full gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/5"
+    onClick={() => {
+       // Navigate to a dedicated chat channel for this event
+       // You would handle this route in your router
+       onClose();
+       navigate(`/app/messages?channel=${event.id}`); // Uncomment when route exists
+       toast.success("Joining Event Vibe Chat..."); 
+    }}
+  >
+    <MessageCircle className="w-4 h-4" />
+    Join "Vibe Check" Group Chat
+  </Button>
+
+  {/* 3.d RECURRING PROGRAM */}
+  {event.recurrence_rule && (
+     <div className="flex items-center justify-between p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
+        <div className="flex gap-2 items-center">
+           <Repeat className="w-4 h-4 text-blue-600" />
+           <div className="text-xs">
+              <p className="font-semibold text-blue-900">This is a Series</p>
+              <p className="text-blue-700">Happens {event.recurrence_rule.toLowerCase()}</p>
+           </div>
+        </div>
+        <Button size="sm" variant="ghost" className="text-blue-600 h-8 text-xs hover:bg-blue-100">
+           Subscribe
+        </Button>
+     </div>
+  )}
+
           <div className="space-y-3 border-t pt-4">
             <div className="flex items-start gap-3">
               <Calendar className="w-5 h-5 text-primary mt-0.5" />
@@ -267,28 +323,19 @@ function EventDetailModal({ event, isOpen, onClose, onRSVP }: {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 border-t pt-4">
-            <Button variant="outline" onClick={onClose}>Close</Button>
-            <Button 
-              onClick={() => {
-                onRSVP(event.id);
-                onClose();
-              }}
-              className={event.is_attending ? "bg-green-600 hover:bg-green-700" : ""}
-            >
-              {event.is_attending ? (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Going
-                </>
-              ) : (
-                <>
-                  <Ticket className="w-4 h-4 mr-2" />
-                  RSVP
-                </>
-              )}
-            </Button>
-          </DialogFooter>
+          <DialogFooter className="gap-2 border-t pt-4 grid grid-cols-2">
+    {/* 3.c CALENDAR SYNC */}
+    <Button variant="outline" onClick={() => addToCalendar(event)} className="w-full">
+      <Calendar className="w-4 h-4 mr-2" /> Add to Cal
+    </Button>
+    
+    <Button 
+      onClick={() => { onRSVP(event.id); onClose(); }}
+      className={event.is_attending ? "bg-green-600 hover:bg-green-700 w-full" : "w-full"}
+    >
+      {event.is_attending ? <><Check className="w-4 h-4 mr-2" />Going</> : <><Ticket className="w-4 h-4 mr-2" />RSVP</>}
+    </Button>
+  </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>
