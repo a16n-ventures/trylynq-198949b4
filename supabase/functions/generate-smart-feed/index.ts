@@ -182,7 +182,7 @@ serve(async (req) => {
         // Premium Viewers see further
         const maxDist = isViewerPremium ? 150 : 75; 
         
-        if (distance < 5) matchScore += 40;
+        if (distance < 25) matchScore += 40;
         else if (distance < maxDist) matchScore += 20;
         else matchScore -= 20;
       }
@@ -283,24 +283,24 @@ serve(async (req) => {
 
     // 6. AI INSIGHTS (Viewer Premium Benefit)
     let aiInsights = null;
-    const openAiKey = Deno.env.get('OPENAI_API_KEY');
+    const groqApiKey = Deno.env.get('GROQ_API_KEY');
     
 console.log("🔍 DEBUG VARIABLES:", {
-  hasKey: !!openAiKey, 
+  hasKey: !!groqApiKey, 
   location: locationFilter, 
   isPremium: isViewerPremium 
 });
     
-    if (isViewerPremium && openAiKey && locationFilter) {
+    if (isViewerPremium && groqApiKey && locationFilter) {
       try {
-         const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+         const aiResponse = await fetch('https://api.groq.com/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${openAiKey}`,
+            'Authorization': `Bearer ${groqApiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
+            model: 'llama-3.3-70b-versatile',
             messages: [{
               role: 'system',
               content: `You are a hype-man for ${locationFilter}, Nigeria. 
@@ -313,7 +313,7 @@ console.log("🔍 DEBUG VARIABLES:", {
         if (!aiResponse.ok) {
            // THIS WAS MISSING: Log why it failed if status is not 200
            const errorData = await aiResponse.text();
-           console.error("❌ OpenAI API Error:", errorData);
+           console.error("❌ GROQ API Error:", errorData);
         } else {
           const aiData = await aiResponse.json();
           console.log("✅ OpenAI Success!"); // Confirm success
