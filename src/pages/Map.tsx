@@ -97,6 +97,24 @@ const MapPage = () => {
     },
     enabled: friendIds.length > 0 && activeView === 'friends',
     refetchInterval: 30000, 
+  }); 
+  
+  const { data: premiumStatus = {} } = useQuery({
+    queryKey: ['premium-status', friendIds],
+    queryFn: async () => {
+      if (friendIds.length === 0) return {};
+      const { data } = await supabase
+        .from('profiles')
+        .select('user_id, is_premium')
+        .in('user_id', friendIds);
+      
+      const statusMap: Record<string, boolean> = {};
+      data?.forEach(p => {
+        statusMap[p.user_id] = p.is_premium || false;
+      });
+      return statusMap;
+    },
+    enabled: friendIds.length > 0,
   });
 
   // --- 2. Process Friends (Discovery Logic) ---
