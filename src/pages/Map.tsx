@@ -19,7 +19,6 @@ import { useNavigate } from 'react-router-dom';
 import LeafletMap from '@/components/map/LeafletMap';
 import type { LeafletMapHandle } from '@/components/map/LeafletMap';
 import { useQuery } from '@tanstack/react-query';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
 
 // --- Types ---
@@ -162,7 +161,6 @@ const MapPage = () => {
     queryFn: async () => {
       if (!location) return [];
       
-      // Fetch events + Attendees for Facepiles
       const { data } = await supabase
         .from('events')
         .select(`
@@ -181,7 +179,6 @@ const MapPage = () => {
         
         if (dist > discoveryRadiusKm) return null;
 
-        // Extract Facepile Images
         const friendImages = e.event_attendees
           ?.map((a: any) => a.profiles?.avatar_url)
           .filter(Boolean)
@@ -265,8 +262,8 @@ const MapPage = () => {
         <LeafletMap
           ref={mapRef}
           userLocation={location}
-          friendsLocations={activeView === 'friends' ? nearbyFriendsRaw : []} // Map component needs to support this
-          eventsLocations={activeView === 'events' ? events : []} // Assuming map supports separate event markers
+          friendsLocations={activeView === 'friends' ? friendsMapped : []} // FIXED: Used correct variable
+          eventsLocations={activeView === 'events' ? events : []} 
           loading={locationLoading}
           error={locationError}
           mapStyle={mapStyle} 
@@ -277,11 +274,10 @@ const MapPage = () => {
       {/* LAYER 2: CLYX UI OVERLAY */}
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
-        {/* A. COMMAND ISLAND (Top Floating Header) */}
+        {/* A. COMMAND ISLAND */}
         {!isNavigating && (
           <div className="pt-safe-top px-4 mt-4 pointer-events-auto">
             <div className="flex flex-col gap-3">
-              {/* Search & Actions Bar */}
               <div className="flex items-center gap-2">
                 <div className="relative flex-1 h-12 bg-background/80 backdrop-blur-xl border border-white/20 rounded-2xl shadow-lg flex items-center px-4">
                   <Search className="w-5 h-5 text-muted-foreground mr-3" />
@@ -302,7 +298,6 @@ const MapPage = () => {
                 </Button>
               </div>
 
-              {/* Toggles */}
               <div className="flex justify-between items-center">
                 <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-full p-1 flex shadow-lg">
                   <button 
@@ -334,7 +329,7 @@ const MapPage = () => {
 
         <div className="flex-grow" />
 
-        {/* B. BOTTOM SHEET (Interaction Area) */}
+        {/* B. BOTTOM SHEET */}
         <div className="pointer-events-auto px-4 pb-24 max-h-[50vh] flex flex-col justify-end">
           
           {/* Recenter FAB */}
@@ -365,7 +360,7 @@ const MapPage = () => {
                      <Button size="icon" variant="destructive" className="rounded-full h-12 w-12" onClick={() => { setIsNavigating(false); setRouteCoordinates(null); }}>
                       <X className="w-6 h-6" />
                     </Button>
-                    <Button size="icon" className="rounded-full h-12 w-12 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${navigationTarget.lat},${navigationTarget.lng}`, '_blank')}>
+                    <Button size="icon" className="rounded-full h-12 w-12 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => window.open(`http://maps.google.com/maps?q=${navigationTarget.lat},${navigationTarget.lng}`, '_blank')}>
                       <CornerUpRight className="w-6 h-6" />
                     </Button>
                   </div>
@@ -374,7 +369,7 @@ const MapPage = () => {
             </Card>
           )}
 
-          {/* 2. FRIEND CARD (Clyx Style) */}
+          {/* 2. FRIEND CARD */}
           {!isNavigating && selectedFriend && (
             <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500" />
@@ -411,7 +406,7 @@ const MapPage = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <Button 
                     className="h-12 rounded-xl text-base font-semibold bg-primary/10 text-primary hover:bg-primary/20 border-0"
-                    onClick={() => navigate(`/app/messages?userId=${selectedFriend.id}`)}
+                    onClick={() => navigate(`/app/messages?type=dm&id=${selectedFriend.id}`)}
                   >
                     <MessageCircle className="w-5 h-5 mr-2" /> Message
                   </Button>
@@ -426,7 +421,7 @@ const MapPage = () => {
             </Card>
           )}
 
-          {/* 3. EVENT CARD (The Clyx "Decide" Hub) */}
+          {/* 3. EVENT CARD */}
           {!isNavigating && selectedEvent && (
             <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
               <div className="relative h-32 w-full">
@@ -450,7 +445,6 @@ const MapPage = () => {
                   </div>
                 </div>
 
-                {/* SOCIAL PROOF (Facepile) */}
                 <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
                   <div className="flex items-center -space-x-3">
                     {selectedEvent.friend_images.length > 0 ? (
@@ -472,7 +466,6 @@ const MapPage = () => {
                   </div>
                 </div>
 
-                {/* ACTIONS */}
                 <div className="grid grid-cols-2 gap-3">
                   <Button 
                     className="h-12 rounded-xl border-dashed border-2 border-primary/20 text-primary hover:bg-primary/5 bg-transparent"
@@ -482,10 +475,7 @@ const MapPage = () => {
                   </Button>
                   <Button 
                     className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white"
-                    onClick={() => {
-                        // Navigate to Feed to trigger RSVP modal logic or handle here
-                        navigate(`/app/feed?event=${selectedEvent.id}`);
-                    }}
+                    onClick={() => navigate(`/app/feed?event=${selectedEvent.id}`)}
                   >
                     <Calendar className="w-4 h-4 mr-2" /> RSVP
                   </Button>
@@ -494,7 +484,7 @@ const MapPage = () => {
             </Card>
           )}
 
-          {/* 4. DEFAULT HORIZONTAL LIST (When nothing selected) */}
+          {/* 4. DEFAULT LIST */}
           {!isNavigating && !selectedFriend && !selectedEvent && (
             <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
               {activeView === 'friends' && (
