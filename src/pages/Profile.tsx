@@ -29,6 +29,10 @@ interface UserProfile {
   avatar_url?: string | null;
   is_premium?: boolean;
   friends_count?: number;
+  preferences?: {
+    discovery_radius?: number; 
+    ghost_mode?: boolean;
+  };
 }
 
 const Profile = () => {
@@ -92,20 +96,40 @@ const Profile = () => {
   };
 
   const updatePreference = async (key: string, value: any) => {
-    if (!user?.id) return;
+    if (!user?.id || !profile) return;
+    
+    // Create new preferences object merging existing ones
+    const newPreferences = {
+      ...(profile.preferences || {}),
+      [key]: value
+    };
+
+    // Optimistically update cache
+    queryClient.setQueryData(['profile-main', user.id], (old: UserProfile | undefined) => ({
+      ...old!,
+      preferences: newPreferences
+    }));
     
     const { error } = await supabase
       .from('profiles')
-      .update({ [key]: value })
+      .update({ preferences: newPreferences })
       .eq('user_id', user.id);
     
     if (error) {
       toast.error('Failed to save preference');
-      console.error('Preference update error:', error);
+      // Revert on error would go here
       return;
     }
     
-    toast.success("Preference saved");
+    // Invalidate profile query to ensure sync
+    queryClient.invalidateQueries({ queryKey: ['profile-main'] });
+    
+    if (key === 'discovery_radius') {
+        // Debounce toast could be better, but this confirms save
+        // toast.success(`Radius updated to ${value / 1000}km`);
+    } else {
+        toast.success("Preference saved");
+    }
   };
 
   // --- 3. LOADING & ERROR STATES (FIXED) ---
@@ -156,6 +180,9 @@ const Profile = () => {
   const displayName = profile.display_name || 'User';
   const username = profile.username || 'user';
   const initial = displayName[0]?.toUpperCase() || 'U';
+  
+  const currentRadiusKm = (profile.preferences?.discovery_radius || 20000) / 1000;
+  const isGhostMode = profile.preferences?.ghost_mode || false;
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -205,17 +232,17 @@ const Profile = () => {
 
                 {/* Preferences Section */}
                 <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Discovery</h3>
-                  <div className="space-y-4 px-1">
+                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Discovery</h3><div className="space-y-4 px-1">
                     <div className="flex justify-between text-sm">
                       <Label>Max Distance</Label>
-                      <span className="text-muted-foreground font-mono">20km</span>
+                      <span className="text-muted-foreground font-mono">{currentRadiusKm}km</span>
                     </div>
                     <Slider 
-                      defaultValue={[20]} 
-                      max={100} 
+                      defaultValue={[currentRadiusKm]} 
+                      max={100} // 100km max
                       step={1}
-                      onValueChange={(val) => updatePreference('max_distance', val[0])}
+                      // Convert KM back to Meters for DB
+                      onValueChange={(val) => updatePreference('discovery_radius', val[0] * 1000)}
                     />
                   </div>
                   <div className="flex items-center justify-between">
