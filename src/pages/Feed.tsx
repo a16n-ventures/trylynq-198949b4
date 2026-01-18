@@ -435,6 +435,30 @@ const Feed = () => {
             </div>
             
             <div className="p-5 space-y-6">
+              {/* 2.b THE FACEPILE (Social Proof) */}
+              <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border">
+                 <div className="flex items-center -space-x-3">
+                    {/* Render Friend Faces if available, else generic placeholders */}
+                    {(event.friend_images && event.friend_images.length > 0 ? event.friend_images : [null, null, null]).slice(0, 3).map((img: string | null, i: number) => (
+                       <Avatar key={i} className="border-2 border-background w-8 h-8">
+                         <AvatarImage src={img || undefined} />
+                         <AvatarFallback className="text-[10px] bg-muted-foreground/20">{img ? '' : '?'}</AvatarFallback>
+                       </Avatar>
+                    ))}
+                    {event.attendee_count && event.attendee_count > 3 && (
+                       <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium">
+                         +{event.attendee_count - 3}
+                       </div>
+                    )}
+                 </div>
+                 <div className="text-xs text-muted-foreground">
+                    {event.friend_images?.length ? 
+                      <span className="font-semibold text-primary">{event.friend_images.length} friends going</span> : 
+                      <span>{event.attendee_count || 0} people going</span>
+                    }
+                 </div>
+              </div>
+              
               <Button variant="outline" className="w-full gap-2 border-dashed border-primary/40 text-primary h-12" onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}>
                 <MessageCircle className="w-5 h-5" /> Join Vibe Check Chat
               </Button>
