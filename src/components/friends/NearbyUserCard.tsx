@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { FriendProfilePreview } from "@/components/friends/FriendProfilePreview";
+import { BlockReportDialog } from "@/components/friends/BlockReportDialog";
+import { toast } from "sonner";
 import type { NearbyProfile } from "@/hooks/useNearbyUsers";
 
 // Premium-aware Verified Badge
@@ -50,6 +52,13 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
   const [mutuals, setMutuals] = useState<any[]>([]);
   const [showMutuals, setShowMutuals] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  
+  // Block/Report dialog state
+  const [blockReportDialog, setBlockReportDialog] = useState<{
+    open: boolean;
+    type: 'block' | 'report';
+  }>({ open: false, type: 'block' });
+  const [isBlockingOrReporting, setIsBlockingOrReporting] = useState(false);
   
   // State to hold fetched profile details - ALWAYS fetch to guarantee real data
   const [fetchedDetails, setFetchedDetails] = useState<{ 
@@ -255,8 +264,50 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         open={showProfile}
         onClose={() => setShowProfile(false)}
         onRemoveFriend={() => {}} 
-        onBlockUser={() => {}}
-        onReportUser={() => {}}
+        onBlockUser={() => {
+          setShowProfile(false);
+          setBlockReportDialog({ open: true, type: 'block' });
+        }}
+        onReportUser={() => {
+          setShowProfile(false);
+          setBlockReportDialog({ open: true, type: 'report' });
+        }}
+      />
+
+      <BlockReportDialog
+        open={blockReportDialog.open}
+        onClose={() => setBlockReportDialog({ open: false, type: 'block' })}
+        type={blockReportDialog.type}
+        userName={finalDisplayName}
+        onConfirm={async (reason: string) => {
+          if (!user || !profile.user_id) return;
+          setIsBlockingOrReporting(true);
+          try {
+            if (blockReportDialog.type === 'block') {
+              await supabase.from('blocked_users').insert({
+                blocker_id: user.id,
+                blocked_id: profile.user_id,
+                reason
+              });
+              toast.success('User blocked');
+            } else {
+              await supabase.from('reports').insert({
+                reporter_id: user.id,
+                target_id: profile.user_id,
+                target_type: 'user',
+                reason,
+                status: 'pending'
+              });
+              toast.success('Report submitted');
+            }
+            setBlockReportDialog({ open: false, type: 'block' });
+          } catch (e: any) {
+            toast.error(e.message || 'Failed to process request');
+          } finally {
+            setIsBlockingOrReporting(false);
+          }
+        }}
+        isPending={isBlockingOrReporting}
       />
     </>
   );

@@ -1096,26 +1096,41 @@ const EventDetail = () => {
                     Edit Event
                   </Button>
                   
-                  {event.event_type === 'virtual' ? (
-                    meetingStatus === 'live' ? (
-                      <Button 
-                        className="w-full" 
-                        onClick={endMeeting} 
-                        variant="destructive"
-                      >
-                        <StopCircle className="w-4 h-4 mr-2" />
-                        End Meeting
-                      </Button>
-                    ) : meetingStatus === 'ended' ? (
-                      <Button 
-                        className="w-full" 
-                        variant="outline"
-                        disabled
-                      >
-                        <Video className="w-4 h-4 mr-2" />
-                        Meeting Ended
-                      </Button>
-                    ) : (
+                  {event.event_type === 'virtual' ? (() => {
+                    const eventDate = new Date(event.start_date);
+                    const now = new Date();
+                    const isEventPast = eventDate < now && meetingStatus !== 'live';
+                    
+                    // If meeting is currently live - show End Meeting button
+                    if (meetingStatus === 'live') {
+                      return (
+                        <Button 
+                          className="w-full" 
+                          onClick={endMeeting} 
+                          variant="destructive"
+                        >
+                          <StopCircle className="w-4 h-4 mr-2" />
+                          End Meeting
+                        </Button>
+                      );
+                    }
+                    
+                    // If meeting has explicitly ended OR event is in the past
+                    if (meetingStatus === 'ended' || isEventPast) {
+                      return (
+                        <Button 
+                          className="w-full" 
+                          variant="outline"
+                          disabled
+                        >
+                          <Video className="w-4 h-4 mr-2" />
+                          Meeting Ended
+                        </Button>
+                      );
+                    }
+                    
+                    // Event is in the future or scheduled - show Start button
+                    return (
                       <Button 
                         className="w-full" 
                         onClick={startVideoCall} 
@@ -1124,8 +1139,8 @@ const EventDetail = () => {
                         <Video className="w-4 h-4 mr-2" />
                         Start In-App Event
                       </Button>
-                    )
-                  ) : (
+                    );
+                  })() : (
                     <Button
                       className="w-full"
                       onClick={startRecording}

@@ -26,7 +26,7 @@ import { Slider } from "@/components/ui/slider"; import { VideoPlayer } from '@/
 // Assuming you have this or I will use standard input range if not available in your UI kit, will use standard range for safety
 
 // --- TYPES ---
-interface Profile { id: string; display_name: string | null; avatar_url: string | null; user_id?: string; }
+interface Profile { id: string; display_name: string | null; avatar_url: string | null; user_id?: string; location?: string | null; }
 interface Story { 
   id: string; 
   content: string | null; 
@@ -105,6 +105,34 @@ const VerifiedBadge = ({ userId }: { userId?: string }) => {
     </svg>
   );
 };
+
+// --- EXPANDABLE POST CONTENT ---
+function ExpandablePostContent({ content }: { content: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const truncatedContent = content.slice(0, 500);
+  
+  return (
+    <div className="text-sm leading-relaxed whitespace-pre-wrap">
+      {isExpanded ? content : truncatedContent}
+      {!isExpanded && (
+        <button 
+          onClick={() => setIsExpanded(true)}
+          className="text-primary font-medium hover:underline ml-1"
+        >
+          ... more
+        </button>
+      )}
+      {isExpanded && content.length > 500 && (
+        <button 
+          onClick={() => setIsExpanded(false)}
+          className="text-primary font-medium hover:underline ml-1 block mt-1"
+        >
+          Show less
+        </button>
+      )}
+    </div>
+  );
+}
 
 // --- EVENT STATUS HELPER ---
 const getEventStatus = (startDate: string) => {
@@ -790,7 +818,7 @@ const fetchCurrentLocation = (): Promise<{ lat: number; long: number; city: stri
     // If GPS failed (or returned no city), we MUST provide a fallback city
     // otherwise the AI will not trigger.
     if (!payload.city) {
-        payload.city = currentUserProfile?.city || 'Abuja';
+        payload.city = currentUserProfile?.location || 'Abuja';
     }
 
     try {
@@ -1745,7 +1773,12 @@ const fetchCurrentLocation = (): Promise<{ lat: number; long: number; city: stri
                           </DropdownMenu>
                         </CardHeader>
                         <CardContent className="p-4 pt-0 space-y-3">
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                          {/* Post content with truncation for long posts */}
+                          {post.content && post.content.length > 500 ? (
+                            <ExpandablePostContent content={post.content} />
+                          ) : (
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                          )}
                           {post.image_url && (
                             <div className="rounded-xl overflow-hidden bg-muted">
                           {post.post_type === 'video' || post.image_url?.includes('.mp4') || post.image_url?.includes('.webm') || post.image_url?.includes('.mov') ? (
@@ -1876,8 +1909,16 @@ const fetchCurrentLocation = (): Promise<{ lat: number; long: number; city: stri
                                         className={`w-full mt-3 rounded-full ${e.is_attending ? 'bg-green-600 hover:bg-green-700' : ''}`} 
                                         size="sm" 
                                         variant={e.is_attending ? 'default' : 'outline'}
+                                        onClick={(ev) => {
+                                          ev.stopPropagation();
+                                          setSelectedEvent(e);
+                                        }}
                                     >
-                                        {e.is_attending ? <><Check className="w-4 h-4 mr-1" /> Going</> : 'View Details'}
+                                        {e.is_attending ? (
+                                          <><Check className="w-4 h-4 mr-1" /> Going</>
+                                        ) : (
+                                          <><Ticket className="w-4 h-4 mr-1" /> RSVP</>
+                                        )}
                                     </Button>
                                 </div>
                             </Card>

@@ -175,15 +175,15 @@ export function FriendProfilePreview({
               )}
             </div>
 
-            {/* Profile Links - Instagram style */}
+            {/* Profile Links - Centered and Compact */}
             {fullProfile.links && fullProfile.links.length > 0 && (
-              <div className="w-full space-y-2">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+              <div className="w-full max-w-xs mx-auto">
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-medium mb-2">
                   <Link2 className="w-3 h-3" />
                   Links
                 </div>
-                <div className="space-y-1.5">
-                  {fullProfile.links.slice(0, 3).map((link: ProfileLink) => {
+                <div className="flex flex-wrap justify-center gap-2">
+                  {fullProfile.links.slice(0, 4).map((link: ProfileLink) => {
                     const LinkIcon = getLinkIcon(link.url);
                     return (
                       <a
@@ -191,22 +191,20 @@ export function FriendProfilePreview({
                         href={link.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2.5 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-all group text-sm"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/40 hover:bg-muted/60 transition-all group text-xs"
+                        title={link.title}
                       >
-                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <LinkIcon className="w-3.5 h-3.5 text-primary" />
-                        </div>
-                        <span className="flex-1 truncate font-medium">{link.title}</span>
-                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                        <LinkIcon className="w-3 h-3 text-primary" />
+                        <span className="font-medium truncate max-w-[80px]">{link.title}</span>
                       </a>
                     );
                   })}
-                  {fullProfile.links.length > 3 && (
-                    <p className="text-xs text-center text-muted-foreground">
-                      +{fullProfile.links.length - 3} more links
-                    </p>
-                  )}
                 </div>
+                {fullProfile.links.length > 4 && (
+                  <p className="text-[10px] text-center text-muted-foreground mt-2">
+                    +{fullProfile.links.length - 4} more
+                  </p>
+                )}
               </div>
             )}
 
