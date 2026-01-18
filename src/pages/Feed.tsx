@@ -134,6 +134,19 @@ function ExpandablePostContent({ content }: { content: string }) {
   );
 }
 
+// - Add near other helper functions
+const addToCalendar = (event: Event) => {
+  const start = new Date(event.start_date).toISOString().replace(/-|:|\.\d\d\d/g, "");
+  const end = event.end_date 
+    ? new Date(event.end_date).toISOString().replace(/-|:|\.\d\d\d/g, "") 
+    : new Date(new Date(event.start_date).getTime() + 2 * 60 * 60 * 1000).toISOString().replace(/-|:|\.\d\d\d/g, ""); // Default 2 hours
+
+ const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.title)}&dates=${start}/${end}&details=${encodeURIComponent(event.description || "")}&location=${encodeURIComponent(event.location || "")}`;
+  
+  window.open(googleUrl, '_blank');
+  toast.success("Opening Google Calendar...");
+};
+
 // --- EVENT STATUS HELPER ---
 const getEventStatus = (startDate: string) => {
   const date = new Date(startDate);
