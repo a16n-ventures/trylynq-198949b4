@@ -5,12 +5,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // ✅ TABS RESTORED
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
   Clock, Check, Megaphone, SlidersHorizontal, Repeat,
-  ArrowRight, Music, Martini, Palette, Zap
+  ArrowRight
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,8 +18,9 @@ import { toast } from 'sonner';
 import { isPast, isFuture, isToday, addHours, differenceInMinutes } from "date-fns";
 import { useNavigate } from 'react-router-dom';
 import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
+import { useGeolocation } from '@/contexts/LocationContext';
 
-// --- TYPES ---
+// --- TYPES (Streamlined) ---
 interface Event { 
   id: string; 
   title: string;
@@ -34,8 +35,7 @@ interface Event {
   is_attending?: boolean;
   is_sponsored?: boolean;
   recurrence_rule?: string;
-  category?: string;
-  friend_images?: string[]; 
+  friend_images?: string[]; // The Facepile Data
 }
 
 interface Community { 
@@ -46,9 +46,11 @@ interface Community {
   avatar_url: string | null;
   cover_url?: string | null;
   is_member?: boolean;
+  my_role?: string | null;
+  match_score?: number; 
 }
 
-// --- HELPER: Calendar Sync ---
+// --- HELPER: Calendar Sync (Phase 3: Do) ---
 const addToCalendar = (event: Event) => {
   const start = new Date(event.start_date).toISOString().replace(/-|:|\.\d\d\d/g, "");
   const end = event.end_date 
@@ -86,10 +88,11 @@ const Feed = () => {
   const [aiInsights, setAiInsights] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const { location, isLoading: locationLoading, error: locationError } = useGeolocation();
   const [locationName, setLocationName] = useState("Detecting...");
   
   // UI State
-  const [activeTab, setActiveTab] = useState("for_you"); // Default to Clyx "For You"
+  const [activeTab, setActiveTab] = useState("discover");
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
@@ -106,47 +109,53 @@ const Feed = () => {
     setIsPremium(!!data);
   };
 
-  // --- FETCHING ---
+  // --- FETCHING (The Clyx Engine) ---
+    // --- FETCHING (The Clyx Engine) ---
   const fetchSmartFeed = async () => {
     setLoading(true);
     try {
-      // 1. Get Location
-      let userLat, userLong, city;
-      if (navigator.geolocation) {
+      // 1. Get Location from Context (Single Source of Truth)
+      let currentLat = location?.latitude;
+      let currentLong = location?.longitude;
+      let city = 'Detecting...';
+
+      // If Context is ready, reverse geocode for the header name
+      if (currentLat && currentLong) {
         try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) => 
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
-          );
-          userLat = pos.coords.latitude;
-          userLong = pos.coords.longitude;
-          
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${userLat}&lon=${userLong}`);
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLong}`);
           const data = await res.json();
-          city = data.address.city || data.address.town || data.address.state;
-          setLocationName(city || "Unknown Location");
+          city = data.address.city || data.address.town || data.address.state || "Nearby";
+          setLocationName(city);
         } catch (e) {
-          console.warn("Location failed", e);
+          console.warn("Reverse geocoding failed", e);
           setLocationName("Global Mode");
         }
       }
 
-      // 2. Call Intelligent Backend
+      // 2. Call the Intelligent Backend
       const { data: response, error } = await supabase.functions.invoke('generate-smart-feed', {
-        body: { user_id: user?.id, user_lat: userLat, user_long: userLong, city }
+        body: { 
+          user_id: user?.id, 
+          user_lat: currentLat, 
+          user_long: currentLong, 
+          city: city 
+        }
       });
 
       if (error) throw error;
 
       if (response) {
+        // Events (The Core)
         if (response.events) {
           setEvents(response.events.map((e: any) => ({
             ...e,
             attendee_count: e.attendee_count || 0,
-            is_attending: false,
-            friend_images: e.friend_images || [] 
+            is_attending: false, 
+            friend_images: e.friend_images || [] // Facepile Data
           })));
         }
         
+        // Communities
         if (response.communities) {
           setCommunities(response.communities.map((c: any) => ({
             ...c,
@@ -158,7 +167,7 @@ const Feed = () => {
       }
     } catch (err) {
       console.error("Feed Error:", err);
-      toast.error("Could not load feed");
+      toast.error("Could not load discovery feed");
     } finally {
       setLoading(false);
     }
@@ -176,301 +185,272 @@ const Feed = () => {
         await supabase.from('event_attendees').insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
         toast.success("You're going! 🎉");
         setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e));
-        navigate(`/app/messages?type=event&id=${eventId}`); // Clyx Flow: Auto-join Chat
+        
+        // AUTO-OPEN CHAT (Clyx "Decide" Flow)
+        navigate(`/app/messages?type=event&id=${eventId}`);
       }
     } catch (e) {
       toast.error("Action failed");
     }
   };
 
-  // --- FILTER LOGIC (Simulating Clyx Categories) ---
-  const getFilteredEvents = () => {
-    let filtered = events;
-    if (searchQuery) {
-        filtered = filtered.filter(e => e.title.toLowerCase().includes(searchQuery.toLowerCase()));
-    }
-
-    switch (activeTab) {
-        case 'for_you': return filtered; // Algorithm default
-        case 'trending': return filtered.filter(e => (e.attendee_count || 0) > 10 || e.match_score && e.match_score > 80);
-        case 'music': return filtered.filter(e => e.category?.toLowerCase() === 'music' || e.description?.toLowerCase().includes('music'));
-        case 'nightlife': return filtered.filter(e => e.category?.toLowerCase() === 'party' || e.title.toLowerCase().includes('party'));
-        case 'art': return filtered.filter(e => e.category?.toLowerCase() === 'arts' || e.title.toLowerCase().includes('art'));
-        default: return filtered;
-    }
-  };
-
-  const displayEvents = getFilteredEvents();
-
+  // --- RENDER ---
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-20">
       
-      {/* 1. HEADER (Fixed Top) */}
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b pb-0">
-        <div className="px-4 py-3">
-            <div className="flex items-center justify-between mb-3">
-            <div>
-                <h1 className="text-xl font-bold flex items-center gap-2">
-                Discover <span className="text-primary">{locationName}</span>
-                </h1>
-                <p className="text-xs text-muted-foreground">Find your vibe for today</p>
-            </div>
-            {isPremium && (
-                <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
-                <Sparkles className="w-3 h-3 mr-1" /> Premium
-                </Badge>
-            )}
-            </div>
-
-            <div className="relative mb-2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                    placeholder="Search events, vibes, people..." 
-                    className="pl-9 bg-muted/50 border-0 rounded-xl"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
-            </div>
+      {/* 1. HEADER (Location & Search) */}
+      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-xl border-b px-4 py-3">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              Discover <span className="text-primary">{locationName}</span>
+            </h1>
+            <p className="text-xs text-muted-foreground">Find your vibe for today</p>
+          </div>
+          {isPremium && (
+            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+              <Sparkles className="w-3 h-3 mr-1" /> Premium
+            </Badge>
+          )}
         </div>
 
-        {/* 2. CLYX CATEGORY TABS (Scrollable) */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input 
+            placeholder="Search events, vibes, people..." 
+            className="pl-9 bg-muted/50 border-0 rounded-xl"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* 2. MAIN CONTENT AREA */}
+      <div className="container-mobile py-4 space-y-6">
+        
+        {/* A. PREMIUM AI INSIGHT (The "Hype Man") */}
+        {isPremium && aiInsights && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 rounded-xl p-4 flex gap-3 shadow-sm">
+            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-amber-900">Vibe Check</h3>
+              <p className="text-xs text-amber-800/80 mt-1 leading-relaxed">{aiInsights}</p>
+            </div>
+          </div>
+        )}
+
+        {/* B. CATEGORY TABS */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="w-full overflow-x-auto scrollbar-hide px-4 pb-3">
-                <TabsList className="bg-transparent p-0 gap-2 h-auto flex justify-start">
-                    <TabsTrigger value="for_you" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
-                        <Sparkles className="w-3 h-3 mr-1.5" /> For You
-                    </TabsTrigger>
-                    <TabsTrigger value="trending" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
-                        <Zap className="w-3 h-3 mr-1.5" /> Trending
-                    </TabsTrigger>
-                    <TabsTrigger value="communities" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
-                        <Users className="w-3 h-3 mr-1.5" /> Communities
-                    </TabsTrigger>
-                    <TabsTrigger value="music" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
-                        <Music className="w-3 h-3 mr-1.5" /> Music
-                    </TabsTrigger>
-                    <TabsTrigger value="nightlife" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
-                        <Martini className="w-3 h-3 mr-1.5" /> Nightlife
-                    </TabsTrigger>
-                    <TabsTrigger value="art" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
-                        <Palette className="w-3 h-3 mr-1.5" /> Art
-                    </TabsTrigger>
-                </TabsList>
-            </div>
+          <TabsList className="w-full bg-transparent p-0 justify-start gap-2 overflow-x-auto scrollbar-hide">
+            <TabsTrigger value="discover" className="rounded-full border data-[state=active]:bg-primary data-[state=active]:text-white">For You</TabsTrigger>
+            <TabsTrigger value="communities" className="rounded-full border data-[state=active]:bg-primary data-[state=active]:text-white">Communities</TabsTrigger>
+            <TabsTrigger value="today" className="rounded-full border data-[state=active]:bg-primary data-[state=active]:text-white">Today</TabsTrigger>
+          </TabsList>
 
-            {/* CONTENT AREA */}
-            <div className="container-mobile py-2 space-y-6">
+          {/* C. DISCOVER FEED (Events First) */}
+          <TabsContent value="discover" className="space-y-5 mt-4">
+            {loading ? (
+              <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+            ) : events.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">Nothing happening nearby. Be the first to create a plan!</div>
+            ) : (
+              events.filter(e => e.title.toLowerCase().includes(searchQuery.toLowerCase())).map((event) => {
+                const status = getEventStatus(event.start_date);
                 
-                {/* AI Insight (Visible on all tabs) */}
-                {isPremium && aiInsights && activeTab === 'for_you' && (
-                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 rounded-xl p-4 flex gap-3 shadow-sm mx-4 mt-2">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
-                        <Sparkles className="w-5 h-5" />
-                        </div>
-                        <div>
-                        <h3 className="font-bold text-sm text-amber-900">Vibe Check</h3>
-                        <p className="text-xs text-amber-800/80 mt-1 leading-relaxed">{aiInsights}</p>
-                        </div>
+                return (
+                  <Card key={event.id} className="overflow-hidden border-0 shadow-md group cursor-pointer" onClick={() => setSelectedEvent(event)}>
+                    {/* Visual Cover */}
+                    <div className="relative h-48 w-full bg-muted">
+                      <img src={event.image_url || '/placeholder-event.jpg'} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                      
+                      <div className="absolute top-3 left-3 flex gap-2">
+                        <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>
+                          {status.label}
+                        </Badge>
+                        {event.match_score && event.match_score > 80 && (
+                          <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
+                            <Sparkles className="w-3 h-3 mr-1 text-yellow-400" /> {event.match_score}% Match
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Date Badge */}
+                      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur text-black px-2.5 py-1.5 rounded-lg text-center shadow-sm min-w-[50px]">
+                        <span className="block text-xs font-bold uppercase text-red-500">{new Date(event.start_date).toLocaleString('default', { month: 'short' })}</span>
+                        <span className="block text-lg font-black leading-none">{new Date(event.start_date).getDate()}</span>
+                      </div>
                     </div>
-                )}
 
-                {/* EVENTS FEED */}
-                <TabsContent value={activeTab} className="mt-0 space-y-5 px-4 min-h-[50vh]">
-                    {activeTab === 'communities' ? (
-                        // COMMUNITIES VIEW
-                        <div className="space-y-3">
-                            {communities.map(c => (
-                            <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => navigate(`/app/messages?type=community&id=${c.id}`)}>
-                                <Avatar className="h-14 w-14 rounded-xl border">
-                                <AvatarImage src={c.avatar_url || undefined} className="object-cover" />
-                                <AvatarFallback>{c.name[0]}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                <h4 className="font-bold truncate">{c.name}</h4>
-                                <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
-                                <div className="flex items-center gap-1 mt-1 text-xs font-medium text-primary">
-                                    <Users className="w-3 h-3" /> {c.member_count} members
-                                </div>
-                                </div>
-                                <Button size="icon" variant="ghost"><ArrowRight className="w-5 h-5 text-muted-foreground" /></Button>
-                            </div>
-                            ))}
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-bold text-lg leading-tight mb-1">{event.title}</h3>
+                          <div className="flex items-center text-xs text-muted-foreground gap-3">
+                            <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || "TBD"}</span>
+                            <span className="flex items-center"><Clock className="w-3 h-3 mr-1" /> {new Date(event.start_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                          </div>
                         </div>
-                    ) : (
-                        // EVENTS VIEW (Generic for all event tabs)
-                        <>
-                            {loading ? (
-                                <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-                            ) : displayEvents.length === 0 ? (
-                                <div className="text-center py-12 text-muted-foreground flex flex-col items-center">
-                                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                                        <Calendar className="w-8 h-8 opacity-20" />
-                                    </div>
-                                    <p>No events found for this vibe.</p>
-                                </div>
-                            ) : (
-                                displayEvents.map((event) => {
-                                    const status = getEventStatus(event.start_date);
-                                    
-                                    return (
-                                    <Card key={event.id} className="overflow-hidden border-0 shadow-md group cursor-pointer active:scale-[0.98] transition-transform" onClick={() => setSelectedEvent(event)}>
-                                        <div className="relative h-48 w-full bg-muted">
-                                        <img src={event.image_url || '/placeholder-event.jpg'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                                        
-                                        <div className="absolute top-3 left-3 flex gap-2">
-                                            <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>
-                                            {status.label}
-                                            </Badge>
-                                            {event.match_score && event.match_score > 80 && (
-                                            <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
-                                                <Sparkles className="w-3 h-3 mr-1 text-yellow-400" /> {event.match_score}% Match
-                                            </Badge>
-                                            )}
-                                        </div>
+                      </div>
 
-                                        <div className="absolute top-3 right-3 bg-white/90 backdrop-blur text-black px-2.5 py-1.5 rounded-lg text-center shadow-sm min-w-[50px]">
-                                            <span className="block text-xs font-bold uppercase text-red-500">{new Date(event.start_date).toLocaleString('default', { month: 'short' })}</span>
-                                            <span className="block text-lg font-black leading-none">{new Date(event.start_date).getDate()}</span>
-                                        </div>
-                                        </div>
+                      {/* THE "DECIDE" PHASE: Facepile + Social Proof */}
+                      <div className="mt-4 flex items-center justify-between">
+                        <div className="flex items-center -space-x-2">
+                          {(event.friend_images || []).slice(0, 3).map((img, i) => (
+                            <Avatar key={i} className="w-7 h-7 border-2 border-background">
+                              <AvatarImage src={img} />
+                              <AvatarFallback>?</AvatarFallback>
+                            </Avatar>
+                          ))}
+                          <div className="text-xs text-muted-foreground pl-3">
+                            {event.friend_images?.length ? 
+                              <span className="font-semibold text-foreground">{event.friend_images.length} friends</span> : 
+                              <span>{event.attendee_count} attending</span>
+                            }
+                          </div>
+                        </div>
 
-                                        <CardContent className="p-4">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                            <h3 className="font-bold text-lg leading-tight mb-1 line-clamp-2">{event.title}</h3>
-                                            <div className="flex items-center text-xs text-muted-foreground gap-3">
-                                                <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || "TBD"}</span>
-                                                <span className="flex items-center"><Clock className="w-3 h-3 mr-1" /> {new Date(event.start_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                            </div>
-                                            </div>
-                                        </div>
+                        {/* THE "DO" PHASE: Instant Action */}
+                        <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="secondary" 
+                            className="h-8 w-8 rounded-full p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/app/messages?type=event&id=${event.id}`);
+                            }}
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            className={`h-8 rounded-full px-4 ${event.is_attending ? "bg-green-600 hover:bg-green-700" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRSVP(event.id);
+                            }}
+                          >
+                            {event.is_attending ? "Going" : "RSVP"}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </TabsContent>
 
-                                        {/* SOCIAL PROOF & ACTION */}
-                                        <div className="mt-4 flex items-center justify-between">
-                                            <div className="flex items-center -space-x-2">
-                                            {(event.friend_images || []).slice(0, 3).map((img, i) => (
-                                                <Avatar key={i} className="w-7 h-7 border-2 border-background">
-                                                <AvatarImage src={img} />
-                                                <AvatarFallback>?</AvatarFallback>
-                                                </Avatar>
-                                            ))}
-                                            <div className="text-xs text-muted-foreground pl-3 font-medium">
-                                                {event.friend_images?.length ? 
-                                                <span className="text-foreground">{event.friend_images.length} friends going</span> : 
-                                                <span>{event.attendee_count} attending</span>
-                                                }
-                                            </div>
-                                            </div>
-
-                                            <div className="flex gap-2">
-                                            <Button 
-                                                size="sm" 
-                                                variant="secondary" 
-                                                className="h-8 w-8 rounded-full p-0 bg-muted hover:bg-muted/80"
-                                                onClick={(e) => {
-                                                e.stopPropagation();
-                                                navigate(`/app/messages?type=event&id=${event.id}`);
-                                                }}
-                                            >
-                                                <MessageCircle className="w-4 h-4 text-primary" />
-                                            </Button>
-                                            <Button 
-                                                size="sm" 
-                                                className={`h-8 rounded-full px-4 shadow-sm ${event.is_attending ? "bg-green-600 hover:bg-green-700" : ""}`}
-                                                onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleRSVP(event.id);
-                                                }}
-                                            >
-                                                {event.is_attending ? "Going" : "RSVP"}
-                                            </Button>
-                                            </div>
-                                        </div>
-                                        </CardContent>
-                                    </Card>
-                                    );
-                                })
-                            )}
-                        </>
-                    )}
-                </TabsContent>
-            </div>
+          {/* D. COMMUNITIES FEED */}
+          <TabsContent value="communities" className="space-y-3 mt-4">
+            {communities.map(c => (
+              <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50" onClick={() => navigate(`/app/messages?type=community&id=${c.id}`)}>
+                <Avatar className="h-14 w-14 rounded-xl border">
+                  <AvatarImage src={c.avatar_url || undefined} className="object-cover" />
+                  <AvatarFallback>{c.name[0]}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold truncate">{c.name}</h4>
+                  <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
+                  <div className="flex items-center gap-1 mt-1 text-xs font-medium text-primary">
+                    <Users className="w-3 h-3" /> {c.member_count} members
+                  </div>
+                </div>
+                <Button size="icon" variant="ghost"><ArrowRight className="w-5 h-5 text-muted-foreground" /></Button>
+              </div>
+            ))}
+          </TabsContent>
         </Tabs>
       </div>
 
-      {/* 3. EVENT DETAIL MODAL */}
+      {/* 3. EVENT DETAIL MODAL (Enhanced) */}
       {selectedEvent && (
         <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-          <DialogContent className="p-0 overflow-hidden sm:max-w-[420px] border-0">
-            <div className="relative h-64 w-full">
+          <DialogContent className="p-0 overflow-hidden sm:max-w-[420px]">
+            <div className="relative h-56 w-full">
               <img src={selectedEvent.image_url || '/placeholder.jpg'} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
-              
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="absolute top-2 right-2 text-white hover:bg-white/20 rounded-full"
-                onClick={() => setSelectedEvent(null)}
-              >
-                <ArrowRight className="w-6 h-6 rotate-180" />
-              </Button>
-
-              <div className="absolute bottom-0 left-0 p-5 text-white w-full">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+              <div className="absolute bottom-4 left-4 text-white">
                 <Badge className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-md mb-2">
-                  {selectedEvent.is_sponsored ? 'Sponsored' : 'Event'}
+                  {selectedEvent.is_sponsored ? 'Sponsored Event' : 'Public Event'}
                 </Badge>
-                <h2 className="text-2xl font-bold leading-tight mb-1">{selectedEvent.title}</h2>
-                <div className="flex items-center gap-2 text-white/80 text-sm">
-                    <Calendar className="w-4 h-4" /> {new Date(selectedEvent.start_date).toLocaleDateString()}
-                </div>
+                <h2 className="text-2xl font-bold leading-none">{selectedEvent.title}</h2>
               </div>
             </div>
             
             <div className="p-5 space-y-6">
-              <Button variant="outline" className="w-full gap-2 border-dashed border-primary/40 text-primary h-12" onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}>
-                <MessageCircle className="w-5 h-5" /> Join Vibe Check Chat
+                {/* 2.b THE FACEPILE (Social Proof) */}
+                <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border">
+                   <div className="flex items-center -space-x-3">
+                      {/* Render Friend Faces if available, else generic placeholders */}
+                      {(event.friend_images && event.friend_images.length > 0 ? event.friend_images : [null, null, null]).slice(0, 3).map((img: string | null, i: number) => (
+                         <Avatar key={i} className="border-2 border-background w-8 h-8">
+                           <AvatarImage src={img || undefined} />
+                           <AvatarFallback className="text-[10px] bg-muted-foreground/20">{img ? '' : '?'}</AvatarFallback>
+                         </Avatar>
+                      ))}
+                      {event.attendee_count && event.attendee_count > 3 && (
+                         <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium">
+                           +{event.attendee_count - 3}
+                         </div>
+                      )}
+                   </div>
+                   <div className="text-xs text-muted-foreground">
+                      {event.friend_images?.length ? 
+                        <span className="font-semibold text-primary">{event.friend_images.length} friends going</span> : 
+                        <span>{event.attendee_count || 0} people going</span>
+                      }
+                   </div>
+              </div>
+              
+              {/* Vibe Check Action */}
+              <Button variant="outline" className="w-full gap-2 border-dashed border-primary/40 text-primary" onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}>
+                <MessageCircle className="w-4 h-4" /> Join Vibe Check Chat
               </Button>
 
+              {/* Details Grid */}
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="bg-muted/30 p-3 rounded-xl">
-                  <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider mb-1">Time</p>
-                  <p className="font-semibold">{new Date(selectedEvent.start_date).toLocaleTimeString([], {timeStyle: 'short'})}</p>
+                <div>
+                  <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Date</p>
+                  <p className="font-semibold mt-0.5">{new Date(selectedEvent.start_date).toDateString()}</p>
                 </div>
-                <div className="bg-muted/30 p-3 rounded-xl">
-                  <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider mb-1">Price</p>
-                  <p className="font-semibold">{selectedEvent.price ? `₦${selectedEvent.price.toLocaleString()}` : 'Free'}</p>
+                <div>
+                  <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Time</p>
+                  <p className="font-semibold mt-0.5">{new Date(selectedEvent.start_date).toLocaleTimeString([], {timeStyle: 'short'})}</p>
                 </div>
-                <div className="col-span-2 bg-muted/30 p-3 rounded-xl">
-                  <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider mb-1">Location</p>
-                  <p className="font-semibold flex items-center gap-1"><MapPin className="w-4 h-4 text-primary" /> {selectedEvent.location}</p>
+                <div className="col-span-2">
+                  <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Location</p>
+                  <p className="font-semibold mt-0.5 flex items-center gap-1"><MapPin className="w-4 h-4 text-primary" /> {selectedEvent.location}</p>
                 </div>
               </div>
 
+              {/* Description */}
               {selectedEvent.description && (
-                <div className="text-sm text-muted-foreground leading-relaxed">
+                <div className="text-sm text-muted-foreground leading-relaxed bg-muted/30 p-3 rounded-lg">
                   {selectedEvent.description}
                 </div>
               )}
 
+              {/* Recurrence */}
               {selectedEvent.recurrence_rule && (
-                <div className="flex items-center gap-3 p-3 border border-blue-100 bg-blue-50/50 rounded-xl">
-                  <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><Repeat className="w-5 h-5" /></div>
+                <div className="flex items-center gap-3 p-3 border border-blue-100 bg-blue-50/50 rounded-lg">
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><Repeat className="w-4 h-4" /></div>
                   <div className="flex-1">
-                    <p className="text-sm font-bold text-blue-900">Weekly Series</p>
-                    <p className="text-xs text-blue-700">Get auto-invited to future events</p>
+                    <p className="text-xs font-bold text-blue-900">Weekly Series</p>
+                    <p className="text-[10px] text-blue-700">Get auto-invited to future events</p>
                   </div>
-                  <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white border-0">Subscribe</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-blue-600">Subscribe</Button>
                 </div>
               )}
             </div>
 
-            <DialogFooter className="p-4 border-t bg-background sticky bottom-0 z-10 grid grid-cols-2 gap-3">
-              <Button variant="outline" className="h-12 rounded-xl" onClick={() => addToCalendar(selectedEvent)}>
-                  <Calendar className="w-4 h-4 mr-2" /> Calendar
-              </Button>
+            <DialogFooter className="p-4 border-t bg-muted/10 grid grid-cols-2 gap-3">
+              <Button variant="outline" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> Calendar</Button>
               <Button 
                 onClick={() => handleRSVP(selectedEvent.id)} 
-                className={`h-12 rounded-xl ${selectedEvent.is_attending ? "bg-green-600 hover:bg-green-700" : "bg-primary hover:bg-primary/90"}`}
+                className={selectedEvent.is_attending ? "bg-green-600 hover:bg-green-700" : ""}
               >
                 {selectedEvent.is_attending ? <><Check className="w-4 h-4 mr-2"/> Going</> : <><Ticket className="w-4 h-4 mr-2"/> RSVP</>}
               </Button>
