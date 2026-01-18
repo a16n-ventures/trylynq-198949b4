@@ -293,7 +293,7 @@ console.log("🔍 DEBUG VARIABLES:", {
     
     if (isViewerPremium && groqApiKey && locationFilter) {
       try {
-         const aiResponse = await fetch('https://api.groq.com/v1/chat/completions', {
+         const aiResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${groqApiKey}`,
