@@ -355,6 +355,7 @@ const MapPage = () => {
                     Events
                   </button>
                 </div>
+              </div>
 
                 <Button
                   size="icon"
@@ -364,7 +365,7 @@ const MapPage = () => {
                 >
                   {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
                 </Button>
-              </div>
+              
             </div>
           </div>
         )}
@@ -447,7 +448,7 @@ const MapPage = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <Button 
-                    className="h-12 rounded-xl text-base font-semibold bg-primary/10 text-primary hover:bg-primary/20 border-0"
+                    className="h-12 rounded-xl text-base font-semibold bg-primary/10 text-white hover:bg-primary/20 border-0"
                     onClick={() => navigate(`/app/messages?type=dm&id=${selectedFriend.id}`)}
                   >
                     <MessageCircle className="w-5 h-5 mr-2" /> Message
