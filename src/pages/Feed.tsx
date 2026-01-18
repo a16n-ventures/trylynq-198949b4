@@ -30,7 +30,7 @@ interface Event {
   image_url?: string; 
   match_score?: number;
   description?: string;
-  price?: number;
+  ticket_price?: number;
   attendee_count?: number;
   is_attending?: boolean;
   is_sponsored?: boolean;
@@ -470,7 +470,7 @@ const Feed = () => {
                 </div>
                 <div className="bg-muted/30 p-3 rounded-xl">
                   <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider mb-1">Price</p>
-                  <p className="font-semibold">{selectedEvent.price ? `₦${selectedEvent.price.toLocaleString()}` : 'Free'}</p>
+                  <p className="font-semibold">{selectedEvent.ticket_price ? `₦${selectedEvent.ticket_price.toLocaleString()}` : 'Free'}</p>
                 </div>
                 <div className="col-span-2 bg-muted/30 p-3 rounded-xl">
                   <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider mb-1">Location</p>
