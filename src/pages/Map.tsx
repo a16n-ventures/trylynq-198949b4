@@ -5,8 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
-  MessageSquare, Calendar, Users, Loader2, X, MapPinned,
-  Video, Globe, Layers, Radar, CornerUpRight
+  MessageCircle, Calendar, Users, Loader2, X, 
+  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -34,7 +34,7 @@ type FriendOnMap = {
   distanceKm?: number | null;
   latitude?: number | null;
   longitude?: number | null;
-  is_premium?: boolean; // Added premium status
+  is_premium?: boolean;
 };
 
 // --- Helpers ---
@@ -47,16 +47,10 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-// Premium Badge Component
 const PremiumBadge = () => (
-  <svg 
-    className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 ml-1" 
-    viewBox="0 0 22 22" 
-    fill="currentColor"
-    aria-label="Verified"
-  >
-    <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
-  </svg>
+  <span className="inline-flex items-center justify-center bg-blue-500 text-white text-[8px] font-bold px-1 rounded-sm ml-1 h-3.5">
+    PRO
+  </span>
 );
 
 const MapPage = () => {
@@ -64,12 +58,11 @@ const MapPage = () => {
   const navigate = useNavigate();
   const mapRef = useRef<LeafletMapHandle>(null);
   
-  // --- Global State ---
+  // Global State
   const { location, requestLocation, isLoading: locationLoading, error: locationError } = useGeolocation();
-  // Using your existing hook to get the friendship list
   const { friends = [] } = useFriends(user?.id);
 
-  // --- Local State ---
+  // Local State
   const [searchQuery, setSearchQuery] = useState('');
   const [friendsPresence, setFriendsPresence] = useState<Record<string, 'online' | 'offline'>>({});
   const [showContactImport, setShowContactImport] = useState(false);
@@ -79,47 +72,19 @@ const MapPage = () => {
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   
-  // --- Navigation State (Refactored) ---
+  // Navigation State
   const [isNavigating, setIsNavigating] = useState(false);
   const [navigationTarget, setNavigationTarget] = useState<{ lat: number; lng: number; name: string } | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null);
   const [isRouting, setIsRouting] = useState(false);
 
-  // --- 1. Fetch Friend Locations ---
+  // --- 1. Fetch Friend Data ---
   const friendIds = useMemo(() => {
     if (!user || !friends) return [];
     return friends.map((f: any) => 
       f.requester_id === user.id ? f.addressee_id : f.requester_id
     ).filter(Boolean);
   }, [friends, user]);
-
-  // --- 1.5 Fetch Friend Premium Status ---
-  const { data: premiumStatus = {} } = useQuery({
-    queryKey: ['map_friends_premium', friendIds],
-    queryFn: async () => {
-      if (friendIds.length === 0) return {};
-      
-      const { data: premiumFeatures } = await supabase
-        .from('premium_features')
-        .select('user_id')
-        .in('user_id', friendIds)
-        .eq('is_active', true)
-        .gt('expires_at', new Date().toISOString());
-
-      const { data: subscriptions } = await supabase
-        .from('subscriptions')
-        .select('user_id, status')
-        .in('user_id', friendIds)
-        .eq('status', 'active');
-
-      const premiumMap: Record<string, boolean> = {};
-      premiumFeatures?.forEach(pf => { premiumMap[pf.user_id] = true; });
-      subscriptions?.forEach(s => { premiumMap[s.user_id] = true; });
-
-      return premiumMap;
-    },
-    enabled: friendIds.length > 0
-  });
 
   const { data: friendLocations = [] } = useQuery({
     queryKey: ['friend-locations', friendIds],
@@ -129,123 +94,82 @@ const MapPage = () => {
         .from('user_locations')
         .select('user_id, latitude, longitude, is_sharing_location, updated_at')
         .in('user_id', friendIds);
-        
       return data || [];
     },
     enabled: friendIds.length > 0 && activeView === 'friends',
     refetchInterval: 30000, 
   });
 
-  // --- 2. Data Processing & Deduplication ---
-  const nearbyFriendsRaw = useMemo(() => {
-    if (!location) return [];
-
-    const uniqueFriendsMap = new Map();
-
-    friends.forEach((friendship: any) => {
-      const isRequester = friendship.requester_id === user?.id;
-      const profile = isRequester ? friendship.addressee : friendship.requester;
-      const friendId = isRequester ? friendship.addressee_id : friendship.requester_id;
-      
-      const loc = friendLocations.find(l => l.user_id === friendId);
-
-      if (loc && loc.latitude && loc.longitude) {
-        uniqueFriendsMap.set(friendId, {
-          user_id: friendId,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          updated_at: loc.updated_at,
-          is_sharing: loc.is_sharing_location,
-          profiles: {
-            display_name: profile?.display_name || 'Friend',
-            avatar_url: profile?.avatar_url
-          }
-        });
-      }
-    });
-
-    return Array.from(uniqueFriendsMap.values());
-  }, [friends, friendLocations, location, user?.id]);
-
-  // --- Fetch User's Discovery Radius from Profile ---
+  // --- 2. Process Friends (Discovery Logic) ---
   const { data: userProfile } = useQuery({
     queryKey: ['user-profile', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase
-        .from('profiles')
-        .select('preferences')
-        .eq('user_id', user.id)
-        .single();
+      const { data } = await supabase.from('profiles').select('preferences').eq('user_id', user.id).single();
       return data;
     },
-    enabled: !!user?.id,
-    staleTime: 60000, 
+    enabled: !!user?.id
   });
 
-  const discoveryRadiusMeters = useMemo(() => {
+  const discoveryRadiusKm = useMemo(() => {
     const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
-    const savedRadius = prefs?.discovery_radius;
-    return savedRadius ?? 10000; 
+    return (prefs?.discovery_radius ?? 20000) / 1000; // Default 20km for Map (wider than feed)
   }, [userProfile]);
 
-  const discoveryRadiusKm = discoveryRadiusMeters / 1000;
-
-  // --- UPDATE friendsMapped logic to use user's radius ---
-    // --- UPDATE friendsMapped logic to use user's radius ---
   const friendsMapped: FriendOnMap[] = useMemo(() => {
     if (!location) return [];
     
-    console.log(`🎯 Filtering friends within ${discoveryRadiusKm}km radius`);
-    
-    return (nearbyFriendsRaw
+    const uniqueFriendsMap = new Map();
+    friends.forEach((friendship: any) => {
+      const isRequester = friendship.requester_id === user?.id;
+      const profile = isRequester ? friendship.addressee : friendship.requester;
+      const friendId = isRequester ? friendship.addressee_id : friendship.requester_id;
+      const loc = friendLocations.find(l => l.user_id === friendId);
+
+      if (loc && loc.latitude && loc.longitude) {
+        uniqueFriendsMap.set(friendId, { ...loc, profile });
+      }
+    });
+
+    return Array.from(uniqueFriendsMap.values())
       .map((loc: any) => {
         const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
-        
-        // ✅ USE USER'S DISCOVERY RADIUS
-        if (dist > discoveryRadiusKm) {
-          console.log(`⏭️ Friend "${loc.profiles?.display_name}" is ${dist.toFixed(1)}km away (outside ${discoveryRadiusKm}km radius)`);
-          return null;
-        }
+        if (dist > discoveryRadiusKm) return null;
 
         const online = friendsPresence[loc.user_id] === 'online';
-        
-        let statusText = 'Offline';
-        if (online) statusText = 'Active now';
-        else if (!loc.is_sharing) statusText = 'Location paused';
-        else statusText = 'Active recently';
-
-        const isPremium = premiumStatus[loc.user_id] || false;
+        const isPremium = false; // Add logic if needed
 
         return {
           id: loc.user_id,
-          name: loc.profiles?.display_name || 'Friend',
-          avatar: loc.profiles?.avatar_url,
-          locationLabel: 'On the map',
+          name: loc.profile?.display_name || 'Friend',
+          avatar: loc.profile?.avatar_url,
+          locationLabel: 'Nearby',
           coordinates: { lat: loc.latitude, lng: loc.longitude },
           status: online ? 'online' : 'offline',
-          lastSeen: statusText,
+          lastSeen: online ? 'Active Now' : 'Recently',
           distanceKm: Number(dist.toFixed(1)),
           latitude: loc.latitude,
           longitude: loc.longitude,
           is_premium: isPremium
         };
       })
-      .filter(Boolean) as FriendOnMap[])
-      // ✅ SORT BY DISTANCE (Closest first)
-      .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-  }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus]);
+      .filter(Boolean) as FriendOnMap[];
+  }, [friends, friendLocations, location, friendsPresence, discoveryRadiusKm]);
 
-  // --- UPDATE events query to use user's radius ---
-    // --- UPDATE events query to use user's radius ---
-  const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm],
+  // --- 3. Events (With Clyx "Decide" Data) ---
+  const { data: events = [] } = useQuery({
+    queryKey: ['events', 'map', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
       if (!location) return [];
       
+      // Fetch events + Attendees for Facepiles
       const { data } = await supabase
         .from('events')
-        .select('*, creator:profiles!creator_id(display_name, avatar_url)')
+        .select(`
+          *, 
+          creator:profiles!creator_id(display_name, avatar_url),
+          event_attendees(user_id, profiles(avatar_url))
+        `)
         .gt('start_date', new Date().toISOString());
         
       if (!data) return [];
@@ -255,80 +179,37 @@ const MapPage = () => {
         const eLng = e.longitude || 3.3792;
         const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
         
-        // ✅ USE USER'S DISCOVERY RADIUS
-        if (dist > discoveryRadiusKm) {
-          return null;
-        }
+        if (dist > discoveryRadiusKm) return null;
+
+        // Extract Facepile Images
+        const friendImages = e.event_attendees
+          ?.map((a: any) => a.profiles?.avatar_url)
+          .filter(Boolean)
+          .slice(0, 3) || [];
 
         return {
           id: e.id,
           title: e.title,
           location: e.location,
           start_date: e.start_date,
-          event_type: e.event_type,
-          category: e.category,
-          ticket_price: e.ticket_price,
           image_url: e.image_url,
-          creator: Array.isArray(e.creator) ? e.creator[0] : e.creator,
           latitude: eLat,
           longitude: eLng,
-          distanceKm: Number(dist.toFixed(1))
+          distanceKm: Number(dist.toFixed(1)),
+          friend_images: friendImages,
+          attendee_count: e.event_attendees?.length || 0
         };
-      })
-      .filter(Boolean))
-      // ✅ SORT BY DISTANCE (Closest first)
-      .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
+      }).filter(Boolean)).sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
     },
     enabled: !!location && activeView === 'events',
   });
 
-  const nearbyEventsForMap = useMemo(() => {
-    return events.map((e: any) => ({
-      user_id: e.id, 
-      latitude: e.latitude,
-      longitude: e.longitude,
-      is_sharing: true, 
-      updated_at: new Date().toISOString(),
-      profiles: {
-        display_name: e.title,
-        avatar_url: e.image_url || e.creator?.avatar_url
-      }
-    }));
-  }, [events]);
-
-  // --- 4. Ghost Mode ---
+  // --- 4. Ghost Mode & Presence ---
   useEffect(() => {
     if (!user) return;
-    const checkStatus = async () => {
-      const { data } = await supabase
-        .from('user_locations')
-        .select('is_sharing_location')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (data) setIsGhostMode(!data.is_sharing_location);
-    };
-    checkStatus();
-  }, [user]);
+    supabase.from('user_locations').select('is_sharing_location').eq('user_id', user.id).maybeSingle()
+      .then(({ data }) => { if (data) setIsGhostMode(!data.is_sharing_location); });
 
-  const toggleGhostMode = async () => {
-    if (!user) return;
-    const newValue = !isGhostMode;
-    try {
-      await supabase.from('user_locations').upsert({ 
-        user_id: user.id, 
-        is_sharing_location: !newValue,
-        updated_at: new Date().toISOString()
-      } as any);
-      setIsGhostMode(newValue);
-      toast.success(newValue ? "You are now invisible" : "You are visible");
-    } catch {
-      toast.error("Failed to update status");
-    }
-  };
-
-  // --- 5. Presence ---
-  useEffect(() => {
-    if (!user) return;
     const channel = supabase.channel('online-users', { config: { presence: { key: user.id } } });
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState();
@@ -341,72 +222,51 @@ const MapPage = () => {
     return () => { channel.unsubscribe(); };
   }, [user]);
 
-  // --- Directions Logic (In-App with OSRM) ---
+  const toggleGhostMode = async () => {
+    if (!user) return;
+    const newValue = !isGhostMode;
+    await supabase.from('user_locations').upsert({ 
+      user_id: user.id, is_sharing_location: !newValue, updated_at: new Date().toISOString()
+    } as any);
+    setIsGhostMode(newValue);
+    toast.success(newValue ? "Ghost Mode On 👻" : "You are visible on map");
+  };
+
+  // --- 5. Navigation ---
   const handleGetDirections = async (destLat: number, destLng: number, destName: string) => {
-    if (!location) {
-      toast.error("Your location is unavailable");
-      return;
-    }
-    
+    if (!location) return toast.error("Location unavailable");
     setIsRouting(true);
-    // Optimistic UI Update
     setNavigationTarget({ lat: destLat, lng: destLng, name: destName });
     setIsNavigating(true);
     setSelectedFriend(null);
     setSelectedEvent(null);
 
     try {
-      // Fetch driving route from OSRM (Open Source Routing Machine) public API
-      // Format: {longitude},{latitude};{longitude},{latitude}
-      const response = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${location.longitude},${location.latitude};${destLng},${destLat}?overview=full&geometries=geojson`
-      );
-      
+      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${location.longitude},${location.latitude};${destLng},${destLat}?overview=full&geometries=geojson`);
       const data = await response.json();
-      
-      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-        // OSRM returns [lng, lat], Leaflet needs [lat, lng]
-        const coordinates = data.routes[0].geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
-        setRouteCoordinates(coordinates);
+      if (data.code === 'Ok' && data.routes?.[0]) {
+        const coords = data.routes[0].geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
+        setRouteCoordinates(coords);
       } else {
-        toast.error("No route found");
-        setIsNavigating(false);
+        toast.error("Route not found");
       }
-    } catch (error) {
-      console.error('Routing error:', error);
-      toast.error("Could not fetch directions");
-      setIsNavigating(false);
+    } catch {
+      toast.error("Routing failed");
     } finally {
       setIsRouting(false);
     }
   };
 
-  const cancelNavigation = () => {
-    setIsNavigating(false);
-    setNavigationTarget(null);
-    setRouteCoordinates(null);
-  };
-
-  // --- Filtered Lists ---
-  const filteredList = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    const list = activeView === 'friends' ? friendsMapped : events;
-    if (!q) return list;
-    return list.filter((item: any) => 
-      (item.name || item.title).toLowerCase().includes(q) || 
-      (item.locationLabel || item.location).toLowerCase().includes(q)
-    );
-  }, [searchQuery, friendsMapped, events, activeView]);
-
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background">
+      
       {/* LAYER 1: MAP */}
       <div className="absolute inset-0 z-0 h-full w-full">
-        {/* Pass routeCoordinates to LeafletMap for drawing the polyline */}
         <LeafletMap
           ref={mapRef}
           userLocation={location}
-          friendsLocations={activeView === 'friends' ? nearbyFriendsRaw : nearbyEventsForMap} 
+          friendsLocations={activeView === 'friends' ? nearbyFriendsRaw : []} // Map component needs to support this
+          eventsLocations={activeView === 'events' ? events : []} // Assuming map supports separate event markers
           loading={locationLoading}
           error={locationError}
           mapStyle={mapStyle} 
@@ -414,297 +274,269 @@ const MapPage = () => {
         />
       </div>
 
-      {/* LAYER 2: UI OVERLAY */}
+      {/* LAYER 2: CLYX UI OVERLAY */}
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
-        {/* Header - Hide during navigation for cleaner view */}
+        {/* A. COMMAND ISLAND (Top Floating Header) */}
         {!isNavigating && (
-          <div className="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 pointer-events-auto">
-            <div className="container-mobile flex items-center gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70" />
-                <Input 
-                  placeholder={activeView === 'friends' ? "Find friends..." : "Find events..."}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/60 backdrop-blur-md"
-                />
-              </div>
-              
-              <Button 
-                size="icon" 
-                variant={isGhostMode ? "destructive" : "secondary"}
-                className="rounded-full shadow-lg backdrop-blur-md bg-white/20 border-white/20 text-white"
-                onClick={toggleGhostMode}
-              >
-                {isGhostMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </Button>
-
-              <Button 
-                size="icon" 
-                variant="secondary" 
-                className="rounded-full shadow-lg backdrop-blur-md bg-white/20 border-white/20 text-white"
-                onClick={() => setShowContactImport(true)}
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-
-            <div className="container-mobile mt-3 flex justify-between items-center">
-              <Tabs value={activeView} onValueChange={(v: any) => setActiveView(v)} className="w-[200px]">
-                <TabsList className="grid w-full grid-cols-2 bg-white/10 backdrop-blur-md border border-white/10">
-                  <TabsTrigger value="friends" className="text-white data-[state=active]:bg-white/20">Friends</TabsTrigger>
-                  <TabsTrigger value="events" className="text-white data-[state=active]:bg-white/20">Events</TabsTrigger>
-                </TabsList>
-              </Tabs> 
-
-              <div className="mt-2 px-1">
-                <div className="flex items-center gap-2 text-xs text-white/80 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-md">
-                  <Radar className="w-3 h-3" />
-                  <span>Showing {activeView} within <strong>{discoveryRadiusKm}km</strong></span>
+          <div className="pt-safe-top px-4 mt-4 pointer-events-auto">
+            <div className="flex flex-col gap-3">
+              {/* Search & Actions Bar */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 h-12 bg-background/80 backdrop-blur-xl border border-white/20 rounded-2xl shadow-lg flex items-center px-4">
+                  <Search className="w-5 h-5 text-muted-foreground mr-3" />
+                  <Input 
+                    placeholder={activeView === 'friends' ? "Find friends..." : "Find vibes..."}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="flex-1 bg-transparent border-0 h-full focus-visible:ring-0 p-0 text-base"
+                  />
                 </div>
+                
+                <Button 
+                  size="icon" 
+                  className={`h-12 w-12 rounded-2xl shadow-lg border border-white/10 ${isGhostMode ? "bg-purple-600 text-white" : "bg-background/80 backdrop-blur-xl text-foreground"}`}
+                  onClick={toggleGhostMode}
+                >
+                  {isGhostMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </Button>
               </div>
 
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-white hover:bg-white/20 gap-2 backdrop-blur-md bg-white/5 rounded-full px-3"
-                onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
-              >
-                {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
-                <span className="text-xs">{mapStyle === 'standard' ? 'Satellite' : 'Standard'}</span>
-              </Button>
+              {/* Toggles */}
+              <div className="flex justify-between items-center">
+                <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-full p-1 flex shadow-lg">
+                  <button 
+                    onClick={() => setActiveView('friends')}
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'friends' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
+                  >
+                    Friends
+                  </button>
+                  <button 
+                    onClick={() => setActiveView('events')}
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'events' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
+                  >
+                    Events
+                  </button>
+                </div>
+
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-9 w-9 rounded-full bg-background/60 backdrop-blur-md shadow-sm border border-white/10"
+                  onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
+                >
+                  {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
+                </Button>
+              </div>
             </div>
           </div>
         )}
 
         <div className="flex-grow" />
 
-        {/* BOTTOM SHEET */}
-        <div className="fixed bottom-20 left-0 right-0 z-20 pointer-events-auto px-4 pb-2 max-h-[45vh]">
-          {/* Recenter Button */}
-          <div className="flex justify-end mb-3">
-            <Button
-              onClick={() => location ? mapRef.current?.recenter() : requestLocation()}
-              className="rounded-full shadow-lg h-12 w-12 bg-white text-black hover:bg-gray-100"
-            >
-              {locationLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Crosshair className="h-6 w-6" />}
-            </Button>
-          </div>
+        {/* B. BOTTOM SHEET (Interaction Area) */}
+        <div className="pointer-events-auto px-4 pb-24 max-h-[50vh] flex flex-col justify-end">
+          
+          {/* Recenter FAB */}
+          {!selectedFriend && !selectedEvent && !isNavigating && (
+            <div className="flex justify-end mb-4">
+              <Button
+                onClick={() => location ? mapRef.current?.recenter() : requestLocation()}
+                className="rounded-full h-12 w-12 shadow-xl bg-background/90 text-primary border border-white/20"
+              >
+                {locationLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Crosshair className="h-6 w-6" />}
+              </Button>
+            </div>
+          )}
 
-          {/* CONTENT AREA */}
-          <div className="overflow-y-auto max-h-[35vh]">
-            
-            {/* 1. Navigation Active Card */}
-            {isNavigating && navigationTarget ? (
-              <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90 border-l-4 border-l-blue-500">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 text-blue-500 font-bold mb-1 text-xs uppercase tracking-wider">
-                        <Navigation className="w-3 h-3 animate-pulse" />
-                        Navigating to
-                      </div>
-                      <h3 className="font-bold text-lg leading-tight truncate max-w-[200px]">
-                        {navigationTarget.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {isRouting ? "Calculating best route..." : "Follow the path on the map"}
-                      </p>
+          {/* 1. NAVIGATION ACTIVE CARD */}
+          {isNavigating && navigationTarget && (
+            <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2 text-blue-500 font-bold mb-1 text-xs uppercase tracking-wider animate-pulse">
+                      <Navigation className="w-3 h-3" /> Navigating
                     </div>
-                    
-                    <div className="flex gap-2">
-                       <Button 
-                        size="icon"
-                        variant="destructive"
-                        className="rounded-full h-10 w-10 shadow-md"
-                        onClick={cancelNavigation}
-                      >
-                        <X className="w-5 h-5" />
-                      </Button>
-                      <Button 
-                        size="icon"
-                        className="rounded-full h-10 w-10 shadow-md gradient-primary text-white"
-                        onClick={() => {
-                          // External backup just in case
-                          const url = `https://www.google.com/maps/dir/?api=1&destination=${navigationTarget.lat},${navigationTarget.lng}&travelmode=driving`;
-                          window.open(url, '_blank');
-                        }}
-                      >
-                        <CornerUpRight className="w-5 h-5" />
-                      </Button>
+                    <h3 className="font-bold text-xl leading-tight">{navigationTarget.name}</h3>
+                    <p className="text-sm text-muted-foreground">{isRouting ? "Routing..." : "Follow path on map"}</p>
+                  </div>
+                  <div className="flex gap-2">
+                     <Button size="icon" variant="destructive" className="rounded-full h-12 w-12" onClick={() => { setIsNavigating(false); setRouteCoordinates(null); }}>
+                      <X className="w-6 h-6" />
+                    </Button>
+                    <Button size="icon" className="rounded-full h-12 w-12 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${navigationTarget.lat},${navigationTarget.lng}`, '_blank')}>
+                      <CornerUpRight className="w-6 h-6" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 2. FRIEND CARD (Clyx Style) */}
+          {!isNavigating && selectedFriend && (
+            <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500" />
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <Avatar className="w-16 h-16 border-4 border-background shadow-md">
+                        <AvatarImage src={selectedFriend.avatar} />
+                        <AvatarFallback>{selectedFriend.name[0]}</AvatarFallback>
+                      </Avatar>
+                      {selectedFriend.status === 'online' && (
+                        <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-background ring-2 ring-green-500/20" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-xl flex items-center gap-2">
+                        {selectedFriend.name}
+                        {selectedFriend.is_premium && <PremiumBadge />}
+                      </h3>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
+                        <span className="flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded-full">
+                          <MapPin className="w-3 h-3" /> {selectedFriend.distanceKm}km
+                        </span>
+                        <span className="text-xs">• {selectedFriend.lastSeen}</span>
+                      </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ) : selectedFriend && activeView === 'friends' ? (
-                // 2. Selected Friend Card
-                <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <Avatar className="w-14 h-14 border-2 border-white/20">
-                            <AvatarImage src={selectedFriend.avatar || undefined} />
-                            <AvatarFallback>{selectedFriend.name.slice(0,2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          {selectedFriend.status === 'online' && (
-                            <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-background rounded-full" />
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-lg leading-tight flex items-center gap-1">
-                            {selectedFriend.name}
-                            {selectedFriend.is_premium && <PremiumBadge />}
-                          </h3>
-                          <p className="text-sm text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3 h-3" /> 
-                            {selectedFriend.locationLabel}
-                            {selectedFriend.distanceKm && ` • ${selectedFriend.distanceKm}km away`}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{selectedFriend.lastSeen}</p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="icon" onClick={() => setSelectedFriend(null)}>
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
+                  <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setSelectedFriend(null)}>
+                    <X className="w-5 h-5" />
+                  </Button>
+                </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        className="gradient-primary text-white"
-                        onClick={() => navigate(`/messages?userId=${selectedFriend.id}`)}
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Message
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          if (selectedFriend.latitude && selectedFriend.longitude) {
-                            handleGetDirections(selectedFriend.latitude, selectedFriend.longitude, selectedFriend.name);
-                          } else {
-                            toast.error('Location unavailable');
-                          }
-                        }}
-                        disabled={!selectedFriend.latitude || !selectedFriend.longitude}
-                      >
-                        <Navigation className="w-4 h-4 mr-2" />
-                        Directions
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-            ) : selectedEvent && activeView === 'events' ? (
-                // 3. Selected Event Card
-                <Card className="gradient-card shadow-card border-0 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-background/90">
-                  <CardContent className="p-4">
-                    <div className="flex gap-3 mb-4">
-                      {selectedEvent.image_url && (
-                        <img 
-                          src={selectedEvent.image_url} 
-                          alt={selectedEvent.title}
-                          className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
-                        />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start gap-2 mb-2">
-                          <h3 className="font-bold text-lg leading-tight truncate">{selectedEvent.title}</h3>
-                          <Button variant="ghost" size="icon" className="flex-shrink-0" onClick={() => setSelectedEvent(null)}>
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        <div className="space-y-1 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{format(new Date(selectedEvent.start_date), 'MMM d, h:mm a')}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{selectedEvent.location}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button 
+                    className="h-12 rounded-xl text-base font-semibold bg-primary/10 text-primary hover:bg-primary/20 border-0"
+                    onClick={() => navigate(`/app/messages?userId=${selectedFriend.id}`)}
+                  >
+                    <MessageCircle className="w-5 h-5 mr-2" /> Message
+                  </Button>
+                  <Button 
+                    className="h-12 rounded-xl text-base font-semibold shadow-lg bg-primary hover:bg-primary/90 text-white"
+                    onClick={() => handleGetDirections(selectedFriend.latitude!, selectedFriend.longitude!, selectedFriend.name)}
+                  >
+                    <Navigation className="w-5 h-5 mr-2" /> Meet
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        className="gradient-primary text-white"
-                        onClick={() => navigate(`/events/${selectedEvent.id}`)}
-                      >
-                        View Details
-                      </Button>
-                      {selectedEvent.latitude && selectedEvent.longitude && (
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            handleGetDirections(selectedEvent.latitude, selectedEvent.longitude, selectedEvent.title);
-                          }}
-                        >
-                          <Navigation className="w-4 h-4 mr-2" />
-                          Directions
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-            ) : (
-                // 4. Default Nearby List
-                <Card className="gradient-card shadow-card border-0 backdrop-blur-xl bg-background/85">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold">{activeView === 'friends' ? 'Nearby Friends' : 'Nearby Events'}</h3>
-                      <Badge variant="secondary" className="text-xs">{filteredList.length}</Badge>
-                    </div>
+          {/* 3. EVENT CARD (The Clyx "Decide" Hub) */}
+          {!isNavigating && selectedEvent && (
+            <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
+              <div className="relative h-32 w-full">
+                <img src={selectedEvent.image_url || '/placeholder.jpg'} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+                <Button variant="secondary" size="icon" className="absolute top-2 right-2 rounded-full h-8 w-8 shadow-md" onClick={() => setSelectedEvent(null)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <CardContent className="p-5 pt-2">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <Badge variant="secondary" className="mb-2 bg-primary/10 text-primary hover:bg-primary/20 border-0">
+                      {format(new Date(selectedEvent.start_date), 'MMM d, h:mm a')}
+                    </Badge>
+                    <h3 className="font-bold text-xl leading-tight">{selectedEvent.title}</h3>
+                    <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                      <MapPin className="w-3.5 h-3.5" /> {selectedEvent.location}
+                    </p>
+                  </div>
+                </div>
 
-                    {filteredList.length === 0 ? (
-                      <div className="text-center py-6 text-muted-foreground text-sm">
-                        {searchQuery ? `No ${activeView} match your search.` : `No ${activeView} found nearby.`}
-                      </div>
+                {/* SOCIAL PROOF (Facepile) */}
+                <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
+                  <div className="flex items-center -space-x-3">
+                    {selectedEvent.friend_images.length > 0 ? (
+                      selectedEvent.friend_images.map((img: string, i: number) => (
+                        <Avatar key={i} className="w-8 h-8 border-2 border-background">
+                          <AvatarImage src={img} />
+                        </Avatar>
+                      ))
                     ) : (
-                      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
-                        {filteredList.map((item: any) => (
-                          <div
-                            key={item.id}
-                            className="flex-shrink-0 w-32 p-3 rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors cursor-pointer"
-                            onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
-                          >
-                            {activeView === 'friends' ? (
-                              <div className="flex flex-col items-center text-center gap-2">
-                                <div className="relative">
-                                  <Avatar className="w-12 h-12">
-                                    <AvatarImage src={item.avatar} />
-                                    <AvatarFallback>{item.name[0]}</AvatarFallback>
-                                  </Avatar>
-                                  {item.status === 'online' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />}
-                                </div>
-                                <div className="w-full">
-                                  <h4 className="font-medium text-xs truncate flex items-center justify-center gap-1">
-                                    {item.name}
-                                    {item.is_premium && <PremiumBadge />}
-                                  </h4>
-                                  <p className="text-[10px] text-muted-foreground">{item.distanceKm}km away</p>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center text-center gap-2">
-                                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-                                  {format(new Date(item.start_date), 'd')}
-                                </div>
-                                <div className="w-full">
-                                  <h4 className="font-medium text-xs truncate">{item.title}</h4>
-                                  <p className="text-[10px] text-muted-foreground">{item.distanceKm}km away</p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                      <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] text-muted-foreground">?</div>
                     )}
-                  </CardContent>
-                </Card>
-            )}
-          </div>
+                    <div className="w-8 h-8 rounded-full bg-background border-2 border-muted flex items-center justify-center text-[10px] font-bold z-10 shadow-sm">
+                      +{selectedEvent.attendee_count}
+                    </div>
+                  </div>
+                  <div className="text-xs font-medium text-right">
+                    <p className="text-primary">{selectedEvent.friend_images.length} friends</p>
+                    <p className="text-muted-foreground">are going</p>
+                  </div>
+                </div>
+
+                {/* ACTIONS */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Button 
+                    className="h-12 rounded-xl border-dashed border-2 border-primary/20 text-primary hover:bg-primary/5 bg-transparent"
+                    onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" /> Vibe Chat
+                  </Button>
+                  <Button 
+                    className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white"
+                    onClick={() => {
+                        // Navigate to Feed to trigger RSVP modal logic or handle here
+                        navigate(`/app/feed?event=${selectedEvent.id}`);
+                    }}
+                  >
+                    <Calendar className="w-4 h-4 mr-2" /> RSVP
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 4. DEFAULT HORIZONTAL LIST (When nothing selected) */}
+          {!isNavigating && !selectedFriend && !selectedEvent && (
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
+              {activeView === 'friends' && (
+                <div className="flex-shrink-0 w-36 snap-start">
+                  <Button 
+                    variant="outline" 
+                    className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-accent/50"
+                    onClick={() => setShowContactImport(true)}
+                  >
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                      <UserPlus className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-medium">Invite Friends</span>
+                  </Button>
+                </div>
+              )}
+              
+              {(activeView === 'friends' ? friendsMapped : events).map((item: any) => (
+                <div
+                  key={item.id}
+                  className="flex-shrink-0 w-36 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-start flex flex-col items-center justify-center gap-2 text-center"
+                  onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
+                >
+                  <div className="relative">
+                    <Avatar className="w-14 h-14 shadow-md">
+                      <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
+                      <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
+                    </Avatar>
+                    {activeView === 'friends' && item.status === 'online' && (
+                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
+                    )}
+                  </div>
+                  <div className="w-full px-1">
+                    <h4 className="font-bold text-sm truncate">{item.name || item.title}</h4>
+                    <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
+                      <MapPin className="w-3 h-3" /> {item.distanceKm}km
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
