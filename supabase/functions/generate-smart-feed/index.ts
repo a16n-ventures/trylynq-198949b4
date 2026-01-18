@@ -105,22 +105,33 @@ serve(async (req) => {
       });
     }
 
-    // 4. PREPARE SOCIAL GRAPH DATA (For "Clyx" Logic)
-    let friendInterests: string[] = [];
-    let friendAttendance = new Set<string>();
+    // 4. SOCIAL GRAPH (Mutual Discovery & Facepiles)
     let friendLikedPosts = new Set<string>();
+    let friendAttendanceMap = new Map<string, string[]>(); // Map event_id -> [friend_avatar_urls]
 
     if (friendIds.length > 0) {
-      const [fProfiles, fAttendance, fLikes] = await Promise.all([
-        supabase.from('profiles').select('interests').in('user_id', friendIds),
-        supabase.from('event_attendees').select('event_id').in('user_id', friendIds),
-        supabase.from('post_likes').select('post_id').in('user_id', friendIds).limit(100)
+      const [fLikes, fAttendance] = await Promise.all([
+        supabase.from('post_likes').select('post_id').in('user_id', friendIds).limit(100),
+        // FETCH FRIEND FACES for events
+        supabase.from('event_attendees')
+          .select('event_id, user_id, profiles(avatar_url)')
+          .in('user_id', friendIds)
       ]);
 
-      fProfiles.data?.forEach((p: any) => { if (p.interests) friendInterests.push(...p.interests); });
-      fAttendance.data?.forEach((a: any) => friendAttendance.add(a.event_id));
       fLikes.data?.forEach((l: any) => friendLikedPosts.add(l.post_id));
-    }
+      
+      // Group friend avatars by event
+      fAttendance.data?.forEach((a: any) => {
+        const avatar = a.profiles?.avatar_url;
+        if (avatar) {
+          const current = friendAttendanceMap.get(a.event_id) || [];
+          if (current.length < 3) { // Limit to 3 faces per card
+            current.push(avatar);
+            friendAttendanceMap.set(a.event_id, current);
+          }
+        }
+      });
+     }
 
     // --- ALGORITHMIC PROCESSING ---
 
@@ -221,6 +232,8 @@ serve(async (req) => {
         raw_score: matchScore, // Internal score for debugging
         attendee_count: event.event_attendees?.[0]?.count || 0,
         is_attending: attendingEventIds.has(event.id),
+        // NEW: Inject Friend Faces
+        friend_images: friendAttendanceMap.get(event.id) || [], 
         is_sponsored: event.is_boosted || (creatorHasBoost && interestMatch) // Mark as sponsored if boosted
       };
     }).sort((a: any, b: any) => b.raw_score - a.raw_score);
