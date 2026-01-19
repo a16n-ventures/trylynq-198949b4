@@ -24,6 +24,7 @@ import { format } from 'date-fns';
 // --- Types ---
 type FriendOnMap = {
   id: string;
+  user_id: string;
   name: string;
   avatar?: string;
   locationLabel: string;
@@ -34,6 +35,7 @@ type FriendOnMap = {
   latitude?: number | null;
   longitude?: number | null;
   is_premium?: boolean;
+  profiles?: { display_name?: string | null; avatar_url?: string | null } | null;
 };
 
 // --- Helpers ---
@@ -172,6 +174,7 @@ const MapPage = () => {
 
         return {
           id: loc.user_id,
+          user_id: loc.user_id,
           name: loc.profiles?.display_name || 'Friend',
           avatar: loc.profiles?.avatar_url,
           locationLabel: 'On the map',
@@ -181,7 +184,8 @@ const MapPage = () => {
           distanceKm: Number(dist.toFixed(1)),
           latitude: loc.latitude,
           longitude: loc.longitude,
-          is_premium: premiumStatus[loc.user_id] || false
+          is_premium: premiumStatus[loc.user_id] || false,
+          profiles: loc.profiles
         };
       })
       .filter(Boolean) as FriendOnMap[])
@@ -304,8 +308,7 @@ const MapPage = () => {
         <LeafletMap
           ref={mapRef}
           userLocation={location}
-          friendsLocations={activeView === 'friends' ? friendsMapped : []} // FIXED: Used correct variable
-          eventsLocations={activeView === 'events' ? events : []} 
+          friendsLocations={activeView === 'friends' ? friendsMapped : []}
           loading={locationLoading}
           error={locationError}
           mapStyle={mapStyle} 

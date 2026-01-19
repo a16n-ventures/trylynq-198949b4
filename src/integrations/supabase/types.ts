@@ -464,6 +464,45 @@ export type Database = {
           },
         ]
       }
+      event_chats: {
+        Row: {
+          created_at: string | null
+          event_id: string
+          id: string
+          message: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          event_id: string
+          id?: string
+          message: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          event_id?: string
+          id?: string
+          message?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_chats_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "event_stats"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "event_chats_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_invitations: {
         Row: {
           created_at: string | null
@@ -674,12 +713,15 @@ export type Database = {
           image_url: string | null
           is_boosted: boolean | null
           is_public: boolean | null
+          is_sponsored: boolean | null
           latitude: number | null
           location: string | null
           longitude: number | null
+          match_score: number | null
           max_attendees: number | null
           meeting_link: string | null
           meeting_status: string | null
+          recurrence_rule: string | null
           requires_approval: boolean
           start_date: string
           ticket_price: number | null
@@ -701,12 +743,15 @@ export type Database = {
           image_url?: string | null
           is_boosted?: boolean | null
           is_public?: boolean | null
+          is_sponsored?: boolean | null
           latitude?: number | null
           location?: string | null
           longitude?: number | null
+          match_score?: number | null
           max_attendees?: number | null
           meeting_link?: string | null
           meeting_status?: string | null
+          recurrence_rule?: string | null
           requires_approval?: boolean
           start_date: string
           ticket_price?: number | null
@@ -728,12 +773,15 @@ export type Database = {
           image_url?: string | null
           is_boosted?: boolean | null
           is_public?: boolean | null
+          is_sponsored?: boolean | null
           latitude?: number | null
           location?: string | null
           longitude?: number | null
+          match_score?: number | null
           max_attendees?: number | null
           meeting_link?: string | null
           meeting_status?: string | null
+          recurrence_rule?: string | null
           requires_approval?: boolean
           start_date?: string
           ticket_price?: number | null
@@ -2394,12 +2442,15 @@ export type Database = {
           image_url: string | null
           is_boosted: boolean | null
           is_public: boolean | null
+          is_sponsored: boolean | null
           latitude: number | null
           location: string | null
           longitude: number | null
+          match_score: number | null
           max_attendees: number | null
           meeting_link: string | null
           meeting_status: string | null
+          recurrence_rule: string | null
           requires_approval: boolean
           start_date: string
           ticket_price: number | null

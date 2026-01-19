@@ -439,22 +439,22 @@ const Feed = () => {
               <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border">
                  <div className="flex items-center -space-x-3">
                     {/* Render Friend Faces if available, else generic placeholders */}
-                    {(event.friend_images && event.friend_images.length > 0 ? event.friend_images : [null, null, null]).slice(0, 3).map((img: string | null, i: number) => (
+                    {(selectedEvent.friend_images && selectedEvent.friend_images.length > 0 ? selectedEvent.friend_images : [null, null, null]).slice(0, 3).map((img: string | null, i: number) => (
                        <Avatar key={i} className="border-2 border-background w-8 h-8">
                          <AvatarImage src={img || undefined} />
                          <AvatarFallback className="text-[10px] bg-muted-foreground/20">{img ? '' : '?'}</AvatarFallback>
                        </Avatar>
                     ))}
-                    {event.attendee_count && event.attendee_count > 3 && (
+                    {selectedEvent.attendee_count && selectedEvent.attendee_count > 3 && (
                        <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium">
-                         +{event.attendee_count - 3}
+                         +{selectedEvent.attendee_count - 3}
                        </div>
                     )}
                  </div>
                  <div className="text-xs text-muted-foreground">
-                    {event.friend_images?.length ? 
-                      <span className="font-semibold text-primary">{event.friend_images.length} friends going</span> : 
-                      <span>{event.attendee_count || 0} people going</span>
+                    {selectedEvent.friend_images?.length ? 
+                      <span className="font-semibold text-primary">{selectedEvent.friend_images.length} friends going</span> : 
+                      <span>{selectedEvent.attendee_count || 0} people going</span>
                     }
                  </div>
               </div>

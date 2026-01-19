@@ -79,7 +79,7 @@ export default function Messages() {
     } else if (type === 'community') {
       const { data } = await supabase.from('communities').select('*').eq('id', id).single();
       return data ? {
-        id: data.id, type: 'community', name: data.name, avatar: data.cover_url || data.avatar_url
+        id: data.id, type: 'community', name: data.name, avatar: data.cover_url
       } : null;
     } else {
       const { data } = await supabase.from('profiles').select('*').eq('user_id', id).single();
@@ -96,19 +96,53 @@ export default function Messages() {
     queryKey: ['dm_list', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      // Fetch distinct conversations
-      const { data: msgs } = await supabase.rpc('get_dm_conversations', { p_user_id: user.id });
-      // Fallback if RPC doesn't exist (simpler query logic for now)
-      if (!msgs) return []; 
-      return msgs.map((m: any) => ({
-        id: m.partner_id,
-        type: 'dm',
-        name: m.display_name,
-        avatar: m.avatar_url,
-        subtitle: m.last_message,
-        partner_id: m.partner_id,
-        badge: m.unread_count > 0 ? m.unread_count : undefined
-      })) as ChatItem[];
+      // Fetch recent messages to build conversation list
+      const { data: msgs } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      
+      if (!msgs || msgs.length === 0) return [];
+      
+      // Build unique partner list
+      const partnerMap = new Map<string, { partner_id: string; last_message: string; unread_count: number }>();
+      for (const m of msgs) {
+        const partnerId = m.sender_id === user.id ? m.receiver_id : m.sender_id;
+        if (!partnerMap.has(partnerId)) {
+          partnerMap.set(partnerId, {
+            partner_id: partnerId,
+            last_message: m.content || '',
+            unread_count: m.receiver_id === user.id && !m.is_read ? 1 : 0
+          });
+        } else if (m.receiver_id === user.id && !m.is_read) {
+          const existing = partnerMap.get(partnerId)!;
+          existing.unread_count++;
+        }
+      }
+      
+      // Fetch profiles for partners
+      const partnerIds = Array.from(partnerMap.keys());
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', partnerIds);
+      
+      const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
+      
+      return Array.from(partnerMap.values()).map(p => {
+        const profile = profileMap.get(p.partner_id);
+        return {
+          id: p.partner_id,
+          type: 'dm' as const,
+          name: profile?.display_name || 'User',
+          avatar: profile?.avatar_url,
+          subtitle: p.last_message,
+          partner_id: p.partner_id,
+          badge: p.unread_count > 0 ? p.unread_count : undefined
+        };
+      });
     },
     enabled: !!user && activeTab === 'dm'
   });
@@ -127,7 +161,7 @@ export default function Messages() {
         id: item.community.id,
         type: 'community',
         name: item.community.name,
-        avatar: item.community.cover_url || item.community.avatar_url,
+        avatar: item.community.cover_url,
         subtitle: `${item.community.member_count || 0} members`,
       })) as ChatItem[];
     },
@@ -341,6 +375,11 @@ export default function Messages() {
                     msg={msg} 
                     prevMsg={i > 0 ? messages[i-1] : null}
                     isComm={selectedChat.type !== 'dm'}
+                    canModerate={false}
+                    onDelete={() => {}}
+                    onReply={() => {}}
+                    onEdit={async () => {}}
+                    scrollToId={() => {}}
                   />
                ))}
                {messages.length === 0 && (

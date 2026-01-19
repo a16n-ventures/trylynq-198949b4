@@ -19,7 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 // --- TYPES ---
 interface UserProfile {
@@ -38,6 +38,7 @@ interface UserProfile {
 const Profile = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('tickets');
 
   // --- 1. DATA FETCHING (FIXED) ---

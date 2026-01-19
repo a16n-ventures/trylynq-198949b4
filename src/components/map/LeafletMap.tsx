@@ -9,8 +9,8 @@ export interface LeafletMapHandle {
 
 interface FriendLocation {
   user_id: string;
-  latitude: string | number | null;
-  longitude: string | number | null;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
   profiles?: {
     display_name?: string | null;
     avatar_url?: string | null;
