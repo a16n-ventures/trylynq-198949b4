@@ -1,14 +1,16 @@
 /**
  * Optimized VerifiedBadge component
  * 
- * This component should ONLY be used with isPremium prop that's already fetched.
- * Do NOT use this to fetch premium status - that causes N+1 queries!
- * 
- * For single user checks, use useSinglePremiumStatus hook instead.
+ * Supports two modes:
+ * 1. isPremium prop: Use when premium status is already fetched (preferred)
+ * 2. userId prop: Will fetch premium status internally (use sparingly to avoid N+1)
  */
+
+import { useSinglePremiumStatus } from '@/hooks/usePremiumStatus';
 
 interface VerifiedBadgeProps {
   isPremium?: boolean;
+  userId?: string;
   className?: string;
   size?: 'sm' | 'md' | 'lg';
 }
@@ -19,8 +21,17 @@ const sizeClasses = {
   lg: 'w-5 h-5'
 };
 
-export function VerifiedBadge({ isPremium, className, size = 'sm' }: VerifiedBadgeProps) {
-  if (!isPremium) return null;
+export function VerifiedBadge({ isPremium, userId, className, size = 'sm' }: VerifiedBadgeProps) {
+  // If userId is provided but isPremium is not, fetch the status
+  const { isPremium: fetchedPremium, isLoading } = useSinglePremiumStatus(
+    isPremium === undefined ? userId : undefined
+  );
+  
+  // Use prop if provided, otherwise use fetched value
+  const showBadge = isPremium !== undefined ? isPremium : fetchedPremium;
+  
+  // Don't show while loading or if not premium
+  if (isLoading || !showBadge) return null;
 
   return (
     <svg

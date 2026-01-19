@@ -79,3 +79,12 @@ export const useHasPremiumBadge = (userId?: string) => {
   const { hasBadge, isLoading } = usePremiumStatus(userId);
   return { hasBadge, isLoading };
 };
+
+/**
+ * Hook to check premium status for a single user
+ * Used in components that need to display the verified badge
+ */
+export const useSinglePremiumStatus = (userId?: string) => {
+  const { isPremium, hasBadge, isLoading } = usePremiumStatus(userId);
+  return { isPremium: isPremium || hasBadge, isLoading };
+};

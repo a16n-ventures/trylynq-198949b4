@@ -374,8 +374,8 @@ const MapPage = () => {
 
         <div className="flex-grow" />
 
-        {/* B. BOTTOM SHEET */}
-        <div className="pointer-events-auto px-4 pb-24 z-[60] mb-1 max-h-[50vh] flex flex-col justify-end">
+        {/* B. BOTTOM SHEET - Positioned above bottom navigation */}
+        <div className="pointer-events-auto px-4 pb-2 z-[60] mb-20 max-h-[45vh] flex flex-col justify-end">
           
           {/* Recenter FAB */}
           {!selectedFriend && !selectedEvent && !isNavigating && (
