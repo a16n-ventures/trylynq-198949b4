@@ -54,7 +54,7 @@ serve(async (req) => {
 
     // 2. FETCH CONTENT POOL
     // We fetch a larger pool (70 posts, 50 events) to let the algorithm filter down to the best gems
-    const [eventsRes, communitiesRes, postsRes] = await Promise.all([
+    const [eventsRes, communitiesRes] = await Promise.all([
       // Events: Select user_id (creator) to check for boosts
       supabase.from('events')
         .select(`*, event_attendees(count)`)
@@ -66,22 +66,15 @@ serve(async (req) => {
         .select(`*, community_members!inner(user_id, role)`)
         .order('member_count', { ascending: false })
         .limit(30),
-
-      supabase.from('social_posts')
-        .select(`*, profiles (display_name, avatar_url, user_id)`)
-        .order('created_at', { ascending: false })
-        .limit(70)
     ]);
 
     const events = eventsRes.data || [];
     const communities = communitiesRes.data || [];
-    const posts = postsRes.data || [];
 
     // 3. FETCH CREATOR "BOOST" STATUS (The Intelligent Layer)
     // We need to know which creators have paid for boosts
     const creatorIds = new Set([
       ...events.map((e: any) => e.user_id), // Event Creators
-      ...posts.map((p: any) => p.user_id)   // Post Authors
     ].filter(Boolean));
 
     let boostedCreators = new Set<string>(); // Users with 'profile_boost'
@@ -106,19 +99,15 @@ serve(async (req) => {
     }
 
     // 4. SOCIAL GRAPH (Mutual Discovery & Facepiles)
-    let friendLikedPosts = new Set<string>();
     let friendAttendanceMap = new Map<string, string[]>(); // Map event_id -> [friend_avatar_urls]
 
     if (friendIds.length > 0) {
-      const [fLikes, fAttendance] = await Promise.all([
-        supabase.from('post_likes').select('post_id').in('user_id', friendIds).limit(100),
+      const [fAttendance] = await Promise.all([
         // FETCH FRIEND FACES for events
         supabase.from('event_attendees')
           .select('event_id, user_id, profiles(avatar_url)')
           .in('user_id', friendIds)
       ]);
-
-      fLikes.data?.forEach((l: any) => friendLikedPosts.add(l.post_id));
       
       // Group friend avatars by event
       fAttendance.data?.forEach((a: any) => {
@@ -135,51 +124,7 @@ serve(async (req) => {
 
     // --- ALGORITHMIC PROCESSING ---
 
-    // A. POSTS ALGORITHM (Profile Boost Logic)
-    const feedData = posts.map((post: any) => {
-      let score = 0;
-      
-      // Base Score
-      const hoursOld = (Date.now() - new Date(post.created_at).getTime()) / (1000 * 60 * 60);
-      score -= Math.min(hoursOld * 0.5, 20); // Decay
-      score += (post.likes_count || 0) * 0.5;
-      
-      // Friends (Always priority)
-      if (friendIds.includes(post.user_id)) score += 30;
-
-      // >>> INTELLIGENT BOOST: PROFILE VISIBILITY <<<
-      const authorHasBoost = boostedCreators.has(post.user_id);
-      
-      if (authorHasBoost) {
-        // Rule: Only boost to strangers if there is SOME relevance (Location or Mutuals)
-        const isLocal = post.location && city && post.location.includes(city);
-        
-        if (isLocal) {
-          score += 40; // Massive boost for local discovery
-        } else {
-          score += 15; // General visibility boost
-        }
-        
-        // "Profile Badge" effect: always ensure they don't get buried
-        if (score < 10) score = 10;
-      }
-
-      // Premium Viewer Benefits (Wanderlust Discovery)
-      if (isViewerPremium) {
-         if (friendLikedPosts.has(post.id) && !friendIds.includes(post.user_id)) {
-           score += 25; // "Friend liked this"
-         }
-      }
-
-      return { 
-        ...post, 
-        type: 'post', 
-        sortScore: score,
-        profiles: post.profiles || { display_name: 'Unknown User', avatar_url: null, user_id: post.user_id }
-      };
-    }).sort((a: any, b: any) => b.sortScore - a.sortScore).slice(0, 40);
-
-    // B. EVENTS ALGORITHM (Event Boost Logic)
+    // A. EVENTS ALGORITHM (Event Boost Logic)
     const { data: userAttendance } = await supabase.from('event_attendees').select('event_id').eq('user_id', user_id);
     const attendingEventIds = new Set(userAttendance?.map(a => a.event_id) || []);
 
@@ -257,52 +202,15 @@ serve(async (req) => {
       };
     }).sort((a: any, b: any) => b.match_score - a.match_score);
 
-    // 5. USER ADS (Targeting Regular Users Only)
-    // Only fetch if viewer is NOT premium/full_package
-    let processedAds: any[] = [];
-    
-    if (!hasFullPackage && !isViewerPremium) {
-       const { data: rawAds } = await supabase
-        .from('user_ads')
-        .select('*')
-        .eq('status', 'active') 
-        .limit(10);
-        
-       processedAds = (rawAds || []).map((ad: any) => ({
-        id: `sponsored-${ad.id}`,
-        type: 'ad',
-        post_type: 'ad',
-        content: ad.content || 'Sponsored Content', 
-        image_url: ad.image_url,
-        location: 'Sponsored',
-        likes_count: 0,
-        comments_count: 0,
-        created_at: new Date().toISOString(),
-        profiles: { display_name: ad.title || 'Sponsored', avatar_url: null, user_id: 'sponsor' },
-        is_sponsored: true
-      }));
-    }
-
-    // Inject Ads
-    const finalFeed: any[] = [];
-    let adIndex = 0;
-    feedData.forEach((item, index) => {
-      if (processedAds.length > 0 && index > 0 && index % 6 === 0 && processedAds[adIndex]) {
-        finalFeed.push(processedAds[adIndex]);
-        adIndex = (adIndex + 1) % processedAds.length;
-      }
-      finalFeed.push(item);
-    });
-
     // 6. AI INSIGHTS (Viewer Premium Benefit)
     let aiInsights = null;
     const groqApiKey = Deno.env.get('GROQ_API_KEY');
     
-console.log("🔍 DEBUG VARIABLES:", {
-  hasKey: !!groqApiKey, 
-  location: locationFilter, 
-  isPremium: isViewerPremium 
-});
+    console.log("🔍 DEBUG VARIABLES:", {
+      hasKey: !!groqApiKey, 
+      location: locationFilter, 
+      isPremium: isViewerPremium 
+    });
     
     if (isViewerPremium && groqApiKey && locationFilter) {
       try {
@@ -347,10 +255,8 @@ console.log("🔍 DEBUG VARIABLES:", {
 
     return new Response(JSON.stringify({ 
       success: true, 
-      posts: finalFeed, 
       events: eventsData,
       communities: communitiesData,
-      ads: processedAds,
       ai_insights: aiInsights,
       is_premium: isViewerPremium,
       location_context: locationFilter || null
