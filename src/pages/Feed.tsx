@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // ✅ TABS RESTORED
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
 import { 
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
@@ -103,12 +103,53 @@ const Feed = () => {
     checkPremium();
   }, [user]);
 
+  // --- FETCH FRIENDS FOR MODAL (NUCLEAR FIX) ---
+  useEffect(() => {
+    if (!selectedEvent?.id || !user) return;
+
+    const fetchFriendsGoing = async () => {
+        // 1. Get my friend IDs first
+        const { data: friendships } = await supabase
+            .from('friendships')
+            .select('requester_id, addressee_id')
+            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+            .eq('status', 'accepted');
+        
+        const friendIds = friendships?.map(f => 
+            f.requester_id === user.id ? f.addressee_id : f.requester_id
+        ) || [];
+
+        if (friendIds.length === 0) return;
+
+        // 2. Find which of these friends are attending THIS event
+        const { data: attendees } = await supabase
+            .from('event_attendees')
+            .select('user_id, profiles(avatar_url)')
+            .eq('event_id', selectedEvent.id)
+            .eq('status', 'confirmed')
+            .in('user_id', friendIds)
+            .limit(5);
+
+        if (attendees && attendees.length > 0) {
+            // 3. Extract avatars
+            const avatars = attendees.map((a: any) => a.profiles?.avatar_url).filter(Boolean);
+            
+            // 4. Update the selected event state carefully to show these faces
+            setSelectedEvent(prev => {
+                if (!prev || prev.id !== selectedEvent.id) return prev;
+                return { ...prev, friend_images: avatars };
+            });
+        }
+    };
+
+    fetchFriendsGoing();
+  }, [selectedEvent?.id, user]);
+
   const checkPremium = async () => {
     const { data } = await supabase.from('subscriptions').select('status').eq('user_id', user?.id).eq('status', 'active').maybeSingle();
     setIsPremium(!!data);
   };
 
-  // --- FETCHING ---
   // --- FETCHING (The Clyx Engine) ---
   const fetchSmartFeed = async () => {
     setLoading(true);
@@ -172,22 +213,58 @@ const Feed = () => {
     }
   };
 
+  // --- NUCLEAR RSVP FIX ---
   const handleRSVP = async (eventId: string) => {
-    if (!user) return;
+    if (!user) return toast.error("Please sign in to RSVP");
+    
+    // 1. Determine current status from either Modal or Feed list to ensure accuracy
+    const targetEvent = selectedEvent?.id === eventId ? selectedEvent : events.find(e => e.id === eventId);
+    if (!targetEvent) return;
+
+    const isCurrentlyAttending = targetEvent.is_attending;
+    const newStatus = !isCurrentlyAttending;
+    const modifier = newStatus ? 1 : -1;
+
+    // 2. Helper to update an event object
+    const updateEventState = (e: Event) => ({
+        ...e,
+        is_attending: newStatus,
+        attendee_count: Math.max(0, (e.attendee_count || 0) + modifier)
+    });
+
+    // 3. Optimistic Update (Update BOTH List and Modal immediately)
+    setEvents(prev => prev.map(e => e.id === eventId ? updateEventState(e) : e));
+    if (selectedEvent?.id === eventId) {
+        setSelectedEvent(prev => prev ? updateEventState(prev) : null);
+    }
+
     try {
-      const event = events.find(e => e.id === eventId);
-      if (event?.is_attending) {
-        await supabase.from('event_attendees').delete().match({ event_id: eventId, user_id: user.id });
-        toast.success("RSVP Cancelled");
-        setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: false, attendee_count: (e.attendee_count || 1) - 1 } : e));
-      } else {
-        await supabase.from('event_attendees').insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
+      if (newStatus) {
+        // Join
+        const { error } = await supabase.from('event_attendees').insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
+        if (error) throw error;
         toast.success("You're going! 🎉");
-        setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e));
-        navigate(`/app/messages?type=event&id=${eventId}`); // Clyx Flow: Auto-join Chat
+        navigate(`/app/messages?type=event&id=${eventId}`); // Auto-join Chat
+      } else {
+        // Leave
+        const { error } = await supabase.from('event_attendees').delete().match({ event_id: eventId, user_id: user.id });
+        if (error) throw error;
+        toast.success("RSVP Cancelled");
       }
     } catch (e) {
+      // 4. Revert on Failure
+      console.error(e);
       toast.error("Action failed");
+      const revertEventState = (e: Event) => ({
+        ...e,
+        is_attending: isCurrentlyAttending, // Revert to old
+        attendee_count: Math.max(0, (e.attendee_count || 0) - modifier) // Undo count
+      });
+      
+      setEvents(prev => prev.map(e => e.id === eventId ? revertEventState(e) : e));
+      if (selectedEvent?.id === eventId) {
+        setSelectedEvent(prev => prev ? revertEventState(prev) : null);
+      }
     }
   };
 

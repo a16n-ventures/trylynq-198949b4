@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -22,6 +22,12 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 // --- TYPES ---
+interface UserPreferences {
+  discovery_radius?: number; 
+  ghost_mode?: boolean;
+  [key: string]: any; // Allow other keys for flexibility
+}
+
 interface UserProfile {
   display_name: string | null;
   username?: string | null;
@@ -29,10 +35,7 @@ interface UserProfile {
   avatar_url?: string | null;
   is_premium?: boolean;
   friends_count?: number;
-  preferences?: {
-    discovery_radius?: number; 
-    ghost_mode?: boolean;
-  };
+  preferences?: UserPreferences;
 }
 
 const Profile = () => {
@@ -40,8 +43,11 @@ const Profile = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('tickets');
+  
+  // Local state for smooth slider dragging
+  const [localRadius, setLocalRadius] = useState<number>(20);
 
-  // --- 1. DATA FETCHING (FIXED) ---
+  // --- 1. DATA FETCHING ---
   const { data: profile, isLoading, error } = useQuery({
     queryKey: ['profile-main', user?.id],
     queryFn: async () => {
@@ -58,16 +64,22 @@ const Profile = () => {
       
       return data as UserProfile;
     },
-    enabled: !!user?.id, // ✅ Only run when user exists
+    enabled: !!user?.id,
     retry: 1,
   });
+
+  // Sync local radius state with fetched profile data
+  useEffect(() => {
+    if (profile?.preferences?.discovery_radius) {
+      setLocalRadius(profile.preferences.discovery_radius / 1000); // Convert meters to km
+    }
+  }, [profile]);
 
   const { data: myTickets = [] } = useQuery({
     queryKey: ['my-tickets', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
       
-      // Step 1: Get confirmed attendances
       const { data: attendances, error: attError } = await supabase
         .from('event_attendees')
         .select('event_id')
@@ -76,7 +88,6 @@ const Profile = () => {
       
       if (attError || !attendances?.length) return [];
       
-      // Step 2: Fetch future events
       const { data: events, error: eventsError } = await supabase
         .from('events')
         .select('id, title, start_date, location, image_url')
@@ -90,7 +101,7 @@ const Profile = () => {
     enabled: !!user?.id,
   });
 
-  // --- 2. ACTIONS (FIXED) ---
+  // --- 2. ACTIONS ---
   const handleLogout = async () => {
     await signOut();
     navigate('/auth');
@@ -99,17 +110,21 @@ const Profile = () => {
   const updatePreference = async (key: string, value: any) => {
     if (!user?.id || !profile) return;
     
-    // Create new preferences object merging existing ones
+    // Create new preferences object merging existing ones safely
+    const currentPrefs = (profile.preferences || {}) as UserPreferences;
     const newPreferences = {
-      ...(profile.preferences || {}),
+      ...currentPrefs,
       [key]: value
     };
 
     // Optimistically update cache
-    queryClient.setQueryData(['profile-main', user.id], (old: UserProfile | undefined) => ({
-      ...old!,
-      preferences: newPreferences
-    }));
+    queryClient.setQueryData(['profile-main', user.id], (old: UserProfile | undefined) => {
+      if (!old) return old;
+      return {
+        ...old,
+        preferences: newPreferences
+      };
+    });
     
     const { error } = await supabase
       .from('profiles')
@@ -118,30 +133,22 @@ const Profile = () => {
     
     if (error) {
       toast.error('Failed to save preference');
-      // Revert on error would go here
+      queryClient.invalidateQueries({ queryKey: ['profile-main'] }); // Revert on error
       return;
     }
     
-    // Invalidate profile query to ensure sync
-    queryClient.invalidateQueries({ queryKey: ['profile-main'] });
-    
-    if (key === 'discovery_radius') {
-        // Debounce toast could be better, but this confirms save
-        // toast.success(`Radius updated to ${value / 1000}km`);
-    } else {
-        toast.success("Preference saved");
+    // Success feedback
+    if (key !== 'discovery_radius') {
+        toast.success("Preference updated");
     }
   };
 
-  // --- 3. LOADING & ERROR STATES (FIXED) ---
-  
-  // Redirect if no user
+  // --- 3. LOADING & ERROR STATES ---
   if (!user) {
     navigate('/auth');
     return null;
   }
 
-  // Loading state
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -153,7 +160,6 @@ const Profile = () => {
     );
   }
 
-  // Error state
   if (error || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -182,8 +188,8 @@ const Profile = () => {
   const username = profile.username || 'user';
   const initial = displayName[0]?.toUpperCase() || 'U';
   
-  const currentRadiusKm = (profile.preferences?.discovery_radius || 20000) / 1000;
-  const isGhostMode = profile.preferences?.ghost_mode || false;
+  // Safely access properties
+  const isGhostMode = profile.preferences?.ghost_mode === true;
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -193,7 +199,7 @@ const Profile = () => {
         {/* Cover Image Placeholder */}
         <div className="h-36 bg-gradient-to-r from-primary/10 via-purple-500/10 to-orange-500/10 w-full" />
         
-        {/* Settings Dialog */}
+        {/* Settings Dialog (FIXED) */}
         <div className="absolute top-4 right-4">
           <Dialog>
             <DialogTrigger asChild>
@@ -231,27 +237,38 @@ const Profile = () => {
                   </div>
                 </div>
 
-                {/* Preferences Section */}
+                {/* Preferences Section (FIXED) */}
                 <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Discovery</h3><div className="space-y-4 px-1">
+                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Discovery</h3>
+                  
+                  {/* Radius Slider */}
+                  <div className="space-y-4 px-1">
                     <div className="flex justify-between text-sm">
                       <Label>Max Distance</Label>
-                      <span className="text-muted-foreground font-mono">{currentRadiusKm}km</span>
+                      <span className="text-muted-foreground font-mono">{localRadius}km</span>
                     </div>
                     <Slider 
-                      defaultValue={[currentRadiusKm]} 
+                      value={[localRadius]} 
                       max={100} // 100km max
+                      min={1}
                       step={1}
-                      // Convert KM back to Meters for DB
-                      onValueChange={(val) => updatePreference('discovery_radius', val[0] * 1000)}
+                      // 1. Update visual state immediately
+                      onValueChange={(val) => setLocalRadius(val[0])}
+                      // 2. Commit to DB only when user stops dragging
+                      onValueCommit={(val) => updatePreference('discovery_radius', val[0] * 1000)}
                     />
                   </div>
+
+                  {/* Ghost Mode Toggle */}
                   <div className="flex items-center justify-between">
                     <Label className="flex flex-col gap-1">
                       <span>Ghost Mode</span>
                       <span className="font-normal text-xs text-muted-foreground">Hide location on map</span>
                     </Label>
-                    <Switch onCheckedChange={(v) => updatePreference('ghost_mode', v)} />
+                    <Switch 
+                      checked={isGhostMode} // Controlled component
+                      onCheckedChange={(v) => updatePreference('ghost_mode', v)} 
+                    />
                   </div>
                 </div>
 

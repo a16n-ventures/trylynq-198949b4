@@ -71,7 +71,7 @@ const MapPage = () => {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
-  const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+  const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('satellite');
   
   // Navigation State
   const [isNavigating, setIsNavigating] = useState(false);

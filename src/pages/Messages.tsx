@@ -7,15 +7,18 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch'; // Assuming standard shadcn path or fallback
 import { 
   Search, Send, ArrowLeft, Plus, Settings, Users, 
   MessageSquare, X, Loader2, MoreVertical, Info, 
-  Image as ImageIcon, Grid, Pin, Calendar, MapPin, Ticket
+  Image as ImageIcon, Grid, Pin, Calendar, MapPin, Ticket,
+  Check, Repeat
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
 
 // Components
@@ -50,6 +53,11 @@ export default function Messages() {
   const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Modal States
+  const [showNewDmModal, setShowNewDmModal] = useState(false);
+  const [showNewGroupModal, setShowNewGroupModal] = useState(false);
+  const [showNewEventModal, setShowNewEventModal] = useState(false);
   
   // Hooks
   const { scrollRef, scrollToBottom } = useScrollToBottom([]);
@@ -148,7 +156,7 @@ export default function Messages() {
   });
 
   // B. COMMUNITIES
-  const { data: commList = [] } = useQuery({
+  const { data: commList = [], refetch: refetchCommunities } = useQuery({
     queryKey: ['comm_list_chat', user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -168,8 +176,8 @@ export default function Messages() {
     enabled: !!user && activeTab === 'community'
   });
 
-  // C. VIBE CHECKS (Events) - NEW! 🚀
-  const { data: eventList = [] } = useQuery({
+  // C. VIBE CHECKS (Events)
+  const { data: eventList = [], refetch: refetchEvents } = useQuery({
     queryKey: ['event_list_chat', user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -272,6 +280,22 @@ export default function Messages() {
   }, [messages, scrollToBottom]);
 
 
+  // --- 5. HANDLE "ADD NEW" CLICK ---
+  const handleAddNew = () => {
+    switch (activeTab) {
+      case 'dm':
+        setShowNewDmModal(true);
+        break;
+      case 'community':
+        setShowNewGroupModal(true);
+        break;
+      case 'event':
+        setShowNewEventModal(true);
+        break;
+    }
+  };
+
+
   // --- RENDER ---
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -280,7 +304,12 @@ export default function Messages() {
       <div className={`w-full md:w-80 lg:w-96 border-r flex flex-col bg-muted/10 ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
         <div className="p-4 border-b bg-background/50 backdrop-blur-sm sticky top-0 z-10">
-          <h1 className="text-xl font-bold mb-4">Messages</h1>
+          <div className="flex items-center justify-between mb-4">
+             <h1 className="text-xl font-bold">Messages</h1>
+             <Button size="icon" variant="ghost" className="rounded-full bg-primary/10 text-primary hover:bg-primary/20" onClick={handleAddNew}>
+                <Plus className="w-5 h-5" />
+             </Button>
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
@@ -431,6 +460,33 @@ export default function Messages() {
           </div>
         )}
       </div>
+
+      {/* --- MODALS --- */}
+      
+      {/* 1. NEW DM MODAL */}
+      <NewChatModal open={showNewDmModal} onOpenChange={setShowNewDmModal} onSelect={(user) => {
+         setSelectedChat({
+            id: user.user_id,
+            type: 'dm',
+            name: user.display_name,
+            avatar: user.avatar_url,
+            partner_id: user.user_id
+         });
+         setShowNewDmModal(false);
+      }} />
+
+      {/* 2. NEW COMMUNITY MODAL */}
+      <NewCommunityModal open={showNewGroupModal} onOpenChange={setShowNewGroupModal} onSuccess={() => {
+         refetchCommunities();
+         setShowNewGroupModal(false);
+      }} />
+
+      {/* 3. NEW EVENT MODAL (With is_program toggle) */}
+      <NewEventModal open={showNewEventModal} onOpenChange={setShowNewEventModal} onSuccess={() => {
+         refetchEvents();
+         setShowNewEventModal(false);
+      }} />
+
     </div>
   );
 }
@@ -471,4 +527,179 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
       )}
     </div>
   );
+}
+
+// --- NEW DM MODAL ---
+function NewChatModal({ open, onOpenChange, onSelect }: { open: boolean, onOpenChange: (o: boolean) => void, onSelect: (u: any) => void }) {
+    const [search, setSearch] = useState('');
+    const { data: users = [] } = useQuery({
+        queryKey: ['user_search', search],
+        queryFn: async () => {
+            if (!search.trim()) return [];
+            const { data } = await supabase.from('profiles').select('*').ilike('display_name', `%${search}%`).limit(10);
+            return data || [];
+        },
+        enabled: open && search.length > 1
+    });
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader><DialogTitle>New Message</DialogTitle></DialogHeader>
+                <Input placeholder="Search people..." value={search} onChange={(e) => setSearch(e.target.value)} className="mb-4" />
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {users.map(u => (
+                        <div key={u.user_id} onClick={() => onSelect(u)} className="flex items-center gap-3 p-2 hover:bg-muted rounded-lg cursor-pointer">
+                            <Avatar><AvatarImage src={u.avatar_url} /><AvatarFallback>{u.display_name[0]}</AvatarFallback></Avatar>
+                            <span>{u.display_name}</span>
+                        </div>
+                    ))}
+                    {users.length === 0 && search && <p className="text-center text-muted-foreground text-sm">No users found</p>}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// --- NEW COMMUNITY MODAL ---
+function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpenChange: (o: boolean) => void, onSuccess: () => void }) {
+    const { user } = useAuth();
+    const [name, setName] = useState('');
+    const [desc, setDesc] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const create = async () => {
+        if (!name.trim()) return;
+        setLoading(true);
+        try {
+            const { error } = await supabase.from('communities').insert({ name, description: desc, creator_id: user?.id, member_count: 1 });
+            if (error) throw error;
+            toast.success("Community created!");
+            onSuccess();
+        } catch (e) { toast.error("Failed to create community"); }
+        finally { setLoading(false); }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader><DialogTitle>Create Community</DialogTitle></DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Name</Label>
+                        <Input placeholder="Tech Meetups, Book Club..." value={name} onChange={e => setName(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Description</Label>
+                        <Textarea placeholder="What's this group about?" value={desc} onChange={e => setDesc(e.target.value)} />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button onClick={create} disabled={loading}>{loading ? 'Creating...' : 'Create Group'}</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// --- NEW EVENT MODAL (With Recurring Logic) ---
+function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpenChange: (o: boolean) => void, onSuccess: () => void }) {
+    const { user } = useAuth();
+    const [formData, setFormData] = useState({ title: '', location: '', start_date: '', ticket_price: '' });
+    
+    // Feature: Program Toggle
+    const [isProgram, setIsProgram] = useState(false);
+    const [frequency, setFrequency] = useState<'weekly' | 'biweekly'>('weekly');
+    const [loading, setLoading] = useState(false);
+
+    const create = async () => {
+        if (!formData.title || !formData.start_date) return toast.error("Title and date required");
+        setLoading(true);
+        
+        // Calculate Recurrence Rule
+        let recurrenceRule = null;
+        if (isProgram) {
+            recurrenceRule = frequency === 'weekly' ? 'FREQ=WEEKLY' : 'FREQ=WEEKLY;INTERVAL=2';
+        }
+
+        try {
+            const { error } = await supabase.from('events').insert({
+                creator_id: user?.id,
+                title: formData.title,
+                location: formData.location,
+                start_date: new Date(formData.start_date).toISOString(),
+                ticket_price: formData.ticket_price ? parseFloat(formData.ticket_price) : 0,
+                recurrence_rule: recurrenceRule
+            });
+            if (error) throw error;
+            toast.success("Event created successfully!");
+            onSuccess();
+        } catch (e) { toast.error("Failed to create event"); console.error(e); }
+        finally { setLoading(false); }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader><DialogTitle>Create Vibe Check (Event)</DialogTitle></DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="grid gap-2">
+                        <Label>Event Title</Label>
+                        <Input placeholder="Friday Night Jazz..." value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                    </div>
+                    <div className="grid gap-2">
+                        <Label>Date & Time</Label>
+                        <Input type="datetime-local" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} />
+                    </div>
+                    <div className="grid gap-2">
+                        <Label>Location</Label>
+                        <Input placeholder="Lagos, Nigeria" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
+                    </div>
+                    
+                    {/* IS PROGRAM TOGGLE */}
+                    <div className="flex items-center justify-between border p-3 rounded-lg bg-muted/20">
+                        <div className="space-y-0.5">
+                            <Label className="text-base">Recurring Program?</Label>
+                            <p className="text-xs text-muted-foreground">Make this a repeating series</p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                           <input type="checkbox" checked={isProgram} onChange={(e) => setIsProgram(e.target.checked)} className="h-5 w-5 accent-primary" />
+                        </div>
+                    </div>
+
+                    {/* FREQUENCY SELECTOR (Conditional) */}
+                    {isProgram && (
+                        <div className="grid gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg animate-in fade-in zoom-in-95">
+                            <Label className="text-primary font-semibold flex items-center gap-2">
+                                <Repeat className="w-4 h-4" /> Frequency
+                            </Label>
+                            <div className="flex gap-2 mt-1">
+                                <Button 
+                                   type="button" 
+                                   size="sm" 
+                                   variant={frequency === 'weekly' ? 'default' : 'outline'} 
+                                   className="flex-1"
+                                   onClick={() => setFrequency('weekly')}
+                                >
+                                   Weekly
+                                </Button>
+                                <Button 
+                                   type="button" 
+                                   size="sm" 
+                                   variant={frequency === 'biweekly' ? 'default' : 'outline'} 
+                                   className="flex-1"
+                                   onClick={() => setFrequency('biweekly')}
+                                >
+                                   Bi-Weekly
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <Button onClick={create} disabled={loading}>{loading ? 'Creating...' : 'Launch Vibe Check'}</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
 }
