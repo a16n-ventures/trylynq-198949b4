@@ -65,7 +65,7 @@ const Friends = () => {
   // --- 1. FETCH DATA ---
 
   // A. Fetch My Friends (Confirmed)
-  const { data: friends = [], isLoading: loadingFriends } = useQuery({
+  const { data: friends = [], isLoading: loadingFriends, error: friendsError } = useQuery({
     queryKey: ['my_friends_page', user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -103,6 +103,14 @@ const Friends = () => {
     },
     enabled: !!user
   });
+  
+  // Add this after the query
+  useEffect(() => {
+    if (friendsError) {
+      console.error('Friends query error:', friendsError);
+      toast.error('Failed to load friends');
+    }
+  }, [friendsError]);
 
   // B. Fetch Imported Contacts (Who are on App but NOT friends yet)
   const { data: contacts = [] } = useQuery({
@@ -159,46 +167,55 @@ const Friends = () => {
       if (!user) return [];
       
       try {
-        // Try RPC first (if available and location ready)
-        if (location) {
-            const { data: rpcData, error } = await supabase.rpc('suggest_nearby_friends', {
-                requesting_user_id: user.id,
-                user_lat: location.latitude,
-                user_long: location.longitude,
-                limit_count: 5
-            });
-            if (!error && rpcData && rpcData.length > 0) {
-                 return rpcData.map((s: any) => ({
-                     user_id: s.friend_id || s.user_id,
-                     display_name: s.display_name,
-                     username: 'suggested',
-                     avatar_url: s.avatar_url,
-                     distance_km: s.distance_km,
-                     score: s.score
-                 }));
-            }
-        }
-
-        // Fallback: Random profiles not me and not friends
-        const friendIds = friends.map(f => f.user_id);
+        // Fetch friends INSIDE this query
+        const { data: existingFriends } = await supabase
+          .from('friendships')
+          .select('requester_id, addressee_id')
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+          .eq('status', 'accepted');
         
+        const friendIds = existingFriends?.map((f: any) => 
+          f.requester_id === user.id ? f.addressee_id : f.requester_id
+        ) || [];
+        
+        // Try RPC first
+        if (location) {
+          const { data: rpcData, error } = await supabase.rpc('suggest_nearby_friends', {
+            requesting_user_id: user.id,
+            user_lat: location.latitude,
+            user_long: location.longitude,
+            limit_count: 5
+          });
+          
+          if (!error && rpcData && rpcData.length > 0) {
+            return rpcData.map((s: any) => ({
+              user_id: s.friend_id || s.user_id,
+              display_name: s.display_name,
+              username: s.username || 'suggested',
+              avatar_url: s.avatar_url,
+              distance_km: s.distance_km,
+              score: s.score
+            }));
+          }
+        }
+  
+        // Fallback: Random profiles
         let query = supabase
           .from('profiles')
-          .select('user_id, display_name, username, avatar_url, location')
+          .select('user_id, display_name, username, avatar_url')
           .neq('user_id', user.id)
           .limit(5);
         
-        // ✅ Only add the filter if there are friends
         if (friendIds.length > 0) {
           query = query.not('user_id', 'in', `(${friendIds.join(',')})`);
         }
         
         const { data: randomData } = await query;
-
+  
         return (randomData || []).map((p: any) => ({
-            ...p,
-            distance_km: null, // Unknown
-            mutual_count: Math.floor(Math.random() * 3) // Simulated mutuals for demo
+          ...p,
+          distance_km: null,
+          mutual_count: Math.floor(Math.random() * 3)
         }));
       } catch (e) {
         console.error("Suggestion fetch failed", e);

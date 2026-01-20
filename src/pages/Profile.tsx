@@ -354,7 +354,6 @@ const Profile = () => {
         return {
           ...oldData,
             avatar_url: newAvatarUrl
-          }
         };
       });
       
