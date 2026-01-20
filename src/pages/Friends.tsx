@@ -80,21 +80,26 @@ const Friends = () => {
         .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
         .eq('status', 'accepted');
 
-      if (error) throw error;
+      // ✅ FIX: Filter out null profiles to prevent crashes if a user was deleted
+      return data
+        .map((f: any) => {
+          // Identify the other person (could be null if deleted)
+          const isRequester = f.requester?.user_id === user.id;
+          const profile = isRequester ? f.addressee : f.requester;
+          
+          if (!profile) return null; // Skip broken records
 
-      return data.map((f: any) => {
-        const isRequester = f.requester.user_id === user.id;
-        const profile = isRequester ? f.addressee : f.requester;
-        return {
-          id: profile.id,
-          user_id: profile.user_id,
-          display_name: profile.display_name || 'User',
-          username: profile.username || 'user',
-          avatar_url: profile.avatar_url,
-          friendship_id: f.id,
-          is_contact: false
-        };
-      });
+          return {
+            id: profile.id,
+            user_id: profile.user_id,
+            display_name: profile.display_name || 'User',
+            username: profile.username || 'user',
+            avatar_url: profile.avatar_url,
+            friendship_id: f.id,
+            is_contact: false
+          };
+        })
+        .filter(Boolean); // Remove null entries
     },
     enabled: !!user
   });

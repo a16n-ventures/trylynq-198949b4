@@ -237,6 +237,14 @@ const Feed = () => {
       toast.error("Event not found");
       return;
     }
+    
+    // 1. PAYMENT CHECK
+    if (event?.ticket_price && event.ticket_price > 0 && !event.is_attending) {
+       // Open your payment modal here
+       // return; (Stop the function so it doesn't auto-confirm)
+       toast.info(`Please pay ₦${event.ticket_price} to join!`); 
+       return; 
+    }
   
     const isCurrentlyAttending = targetEvent.is_attending;
     const newStatus = !isCurrentlyAttending;
