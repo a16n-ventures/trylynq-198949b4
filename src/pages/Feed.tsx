@@ -104,46 +104,59 @@ const Feed = () => {
   }, [user]);
 
   // --- FETCH FRIENDS FOR MODAL (NUCLEAR FIX) ---
-  useEffect(() => {
+    useEffect(() => {
     if (!selectedEvent?.id || !user) return;
-
+  
     const fetchFriendsGoing = async () => {
-        // 1. Get my friend IDs first
+      try {
+        // 1. Get my friend IDs
         const { data: friendships } = await supabase
-            .from('friendships')
-            .select('requester_id, addressee_id')
-            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-            .eq('status', 'accepted');
+          .from('friendships')
+          .select('requester_id, addressee_id')
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+          .eq('status', 'accepted');
         
         const friendIds = friendships?.map(f => 
-            f.requester_id === user.id ? f.addressee_id : f.requester_id
+          f.requester_id === user.id ? f.addressee_id : f.requester_id
         ) || [];
-
+  
         if (friendIds.length === 0) return;
-
-        // 2. Find which of these friends are attending THIS event
+  
+        // 2. Get attendees who are my friends
         const { data: attendees } = await supabase
-            .from('event_attendees')
-            .select('user_id, profiles(avatar_url)')
-            .eq('event_id', selectedEvent.id)
-            .eq('status', 'confirmed')
-            .in('user_id', friendIds)
-            .limit(5);
-
-        if (attendees && attendees.length > 0) {
-            // 3. Extract avatars
-            const avatars = attendees.map((a: any) => a.profiles?.avatar_url).filter(Boolean);
-            
-            // 4. Update the selected event state carefully to show these faces
-            setSelectedEvent(prev => {
-                if (!prev || prev.id !== selectedEvent.id) return prev;
-                return { ...prev, friend_images: avatars };
-            });
+          .from('event_attendees')
+          .select('user_id')
+          .eq('event_id', selectedEvent.id)
+          .eq('status', 'confirmed')
+          .in('user_id', friendIds);
+  
+        if (!attendees || attendees.length === 0) return;
+  
+        const attendeeIds = attendees.map(a => a.user_id);
+  
+        // 3. Fetch their profiles/avatars
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, avatar_url')
+          .in('user_id', attendeeIds)
+          .limit(5);
+  
+        if (profiles && profiles.length > 0) {
+          const avatars = profiles.map(p => p.avatar_url).filter(Boolean);
+          
+          // 4. Update selected event state
+          setSelectedEvent(prev => {
+            if (!prev || prev.id !== selectedEvent.id) return prev;
+            return { ...prev, friend_images: avatars };
+          });
         }
+      } catch (error) {
+        console.error('Error fetching friends going:', error);
+      }
     };
-
+  
     fetchFriendsGoing();
-  }, [selectedEvent?.id, user]);
+  }, [selectedEvent?.id, user?.id]); 
 
   const checkPremium = async () => {
     const { data } = await supabase.from('subscriptions').select('status').eq('user_id', user?.id).eq('status', 'active').maybeSingle();
@@ -217,48 +230,71 @@ const Feed = () => {
   const handleRSVP = async (eventId: string) => {
     if (!user) return toast.error("Please sign in to RSVP");
     
-    // 1. Determine current status from either Modal or Feed list to ensure accuracy
-    const targetEvent = selectedEvent?.id === eventId ? selectedEvent : events.find(e => e.id === eventId);
-    if (!targetEvent) return;
-
+    // ✅ FIX: Find event from EITHER source
+    const targetEvent = events.find(e => e.id === eventId) || selectedEvent;
+    if (!targetEvent) {
+      console.error('Event not found:', eventId);
+      toast.error("Event not found");
+      return;
+    }
+  
     const isCurrentlyAttending = targetEvent.is_attending;
     const newStatus = !isCurrentlyAttending;
     const modifier = newStatus ? 1 : -1;
-
-    // 2. Helper to update an event object
-    const updateEventState = (e: Event) => ({
-        ...e,
-        is_attending: newStatus,
-        attendee_count: Math.max(0, (e.attendee_count || 0) + modifier)
+  
+    // Helper to update an event object
+    const updateEventState = (e: Event): Event => ({
+      ...e,
+      is_attending: newStatus,
+      attendee_count: Math.max(0, (e.attendee_count || 0) + modifier)
     });
-
-    // 3. Optimistic Update (Update BOTH List and Modal immediately)
+  
+    // Optimistic Update
     setEvents(prev => prev.map(e => e.id === eventId ? updateEventState(e) : e));
     if (selectedEvent?.id === eventId) {
-        setSelectedEvent(prev => prev ? updateEventState(prev) : null);
+      setSelectedEvent(prev => prev ? updateEventState(prev) : null);
     }
-
+  
     try {
       if (newStatus) {
-        // Join
-        const { error } = await supabase.from('event_attendees').insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
-        if (error) throw error;
+        // ✅ ADD ERROR LOGGING
+        const { error } = await supabase
+          .from('event_attendees')
+          .insert({ 
+            event_id: eventId, 
+            user_id: user.id, 
+            status: 'confirmed' 
+          });
+        
+        if (error) {
+          console.error('RSVP Insert Error:', error);
+          throw error;
+        }
+        
         toast.success("You're going! 🎉");
-        navigate(`/app/messages?type=event&id=${eventId}`); // Auto-join Chat
+        navigate(`/app/messages?type=event&id=${eventId}`);
       } else {
-        // Leave
-        const { error } = await supabase.from('event_attendees').delete().match({ event_id: eventId, user_id: user.id });
-        if (error) throw error;
+        const { error } = await supabase
+          .from('event_attendees')
+          .delete()
+          .match({ event_id: eventId, user_id: user.id });
+        
+        if (error) {
+          console.error('RSVP Delete Error:', error);
+          throw error;
+        }
+        
         toast.success("RSVP Cancelled");
       }
-    } catch (e) {
-      // 4. Revert on Failure
-      console.error(e);
-      toast.error("Action failed");
-      const revertEventState = (e: Event) => ({
+    } catch (e: any) {
+      console.error('RSVP Failed:', e);
+      toast.error(e.message || "Action failed");
+      
+      // Revert on failure
+      const revertEventState = (e: Event): Event => ({
         ...e,
-        is_attending: isCurrentlyAttending, // Revert to old
-        attendee_count: Math.max(0, (e.attendee_count || 0) - modifier) // Undo count
+        is_attending: isCurrentlyAttending,
+        attendee_count: Math.max(0, (e.attendee_count || 0) - modifier)
       });
       
       setEvents(prev => prev.map(e => e.id === eventId ? revertEventState(e) : e));

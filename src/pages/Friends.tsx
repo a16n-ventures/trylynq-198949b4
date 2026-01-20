@@ -104,6 +104,7 @@ const Friends = () => {
     queryKey: ['app_contacts', user?.id],
     queryFn: async () => {
       if (!user) return [];
+      
       // 1. Get contacts marked as app users
       const { data: myContacts } = await supabase
         .from('contacts')
@@ -111,30 +112,39 @@ const Friends = () => {
         .eq('user_id', user.id)
         .eq('is_app_user', true)
         .not('matched_user_id', 'is', null);
-
+  
       if (!myContacts?.length) return [];
-
+  
       const contactUserIds = myContacts.map(c => c.matched_user_id);
       
-      // 2. Filter out existing friends
-      const friendIds = friends.map(f => f.user_id);
+      // ✅ FIX: Fetch friends inside this query instead of depending on external state
+      const { data: existingFriends } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .eq('status', 'accepted');
+      
+      const friendIds = existingFriends?.map((f: any) => 
+        f.requester_id === user.id ? f.addressee_id : f.requester_id
+      ) || [];
+      
       const newContactIds = contactUserIds.filter(id => !friendIds.includes(id) && id !== user.id);
-
+  
       if (newContactIds.length === 0) return [];
-
+  
       // 3. Fetch profiles
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, user_id, display_name, username, avatar_url')
         .in('user_id', newContactIds);
-
+  
       return (profiles || []).map((p: any) => ({
         ...p,
         is_contact: true,
-        display_name: myContacts.find(c => c.matched_user_id === p.user_id)?.name || p.display_name // Prefer contact name
+        display_name: myContacts.find(c => c.matched_user_id === p.user_id)?.name || p.display_name
       }));
     },
-    enabled: !!user && friends.length > 0 // Only run after friends loaded to diff
+    enabled: !!user, // ✅ Only depend on user
   });
 
   // C. Fetch Smart Suggestions (Nearby & Mutuals)
@@ -166,12 +176,19 @@ const Friends = () => {
 
         // Fallback: Random profiles not me and not friends
         const friendIds = friends.map(f => f.user_id);
-        const { data: randomData } = await supabase
-            .from('profiles')
-            .select('user_id, display_name, username, avatar_url, location')
-            .neq('user_id', user.id)
-            .not('user_id', 'in', `(${friendIds.join(',')})`)
-            .limit(5);
+        
+        let query = supabase
+          .from('profiles')
+          .select('user_id, display_name, username, avatar_url, location')
+          .neq('user_id', user.id)
+          .limit(5);
+        
+        // ✅ Only add the filter if there are friends
+        if (friendIds.length > 0) {
+          query = query.not('user_id', 'in', `(${friendIds.join(',')})`);
+        }
+        
+        const { data: randomData } = await query;
 
         return (randomData || []).map((p: any) => ({
             ...p,
