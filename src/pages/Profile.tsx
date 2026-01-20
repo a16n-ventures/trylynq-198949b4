@@ -7,8 +7,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Settings, MapPin, Calendar, Grid, Ticket, 
   LogOut, Sparkles, QrCode, Share2,
-  ChevronRight, Crown, Loader2, Edit2, AlertCircle
+  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, 
 } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
@@ -19,24 +24,127 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 // --- TYPES ---
 interface UserPreferences {
   discovery_radius?: number; 
   ghost_mode?: boolean;
-  [key: string]: any; // Allow other keys for flexibility
+  [key: string]: any; 
 }
 
 interface UserProfile {
   display_name: string | null;
   username?: string | null;
   bio?: string | null;
+  email?: string | null;
   avatar_url?: string | null;
   is_premium?: boolean;
   friends_count?: number;
   preferences?: UserPreferences;
 }
+
+// --- CONSTANTS ---
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_BIO_LENGTH = 200;
+const MAX_NAME_LENGTH = 50;
+const MAX_USERNAME_LENGTH = 30;
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const REFETCH_INTERVAL = 30000; // 30 seconds
+const STALE_TIME = 120000; // 2 minutes
+
+// --- HELPERS ---
+const validateImageFile = (file: File): { valid: boolean; error?: string } => {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return { valid: false, error: 'Please select a valid image (JPEG, PNG, WebP, or GIF)' };
+  }
+  if (file.size > MAX_AVATAR_SIZE) {
+    return { valid: false, error: 'Image must be less than 5MB' };
+  }
+  return { valid: true };
+};
+
+const getAvatarPath = (url: string): string | null => {
+  const match = url.match(/\/avatars\/(.+)$/);
+  return match ? match[1] : null;
+};
+
+const ReferralSection = () => {
+  const { 
+    referralCode, 
+    referralSettings, 
+    stats, 
+    isLoading, 
+    copyReferralCode, 
+    shareInvite 
+  } = useReferrals();
+
+  // Don't render if referrals are disabled
+  if (!referralSettings?.enabled) return null;
+
+  return (
+    <div className="p-5 space-y-4 border-t border-border/50">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+        <Gift className="w-3.5 h-3.5" />
+        Invite Friends & Earn
+      </div>
+      
+      {/* Referral Code Card */}
+      <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-xl p-4 border border-primary/20">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Your Referral Code</p>
+            {isLoading ? (
+              <div className="h-6 w-24 bg-muted animate-pulse rounded" />
+            ) : (
+              <p className="text-xl font-bold text-primary tracking-wider">{referralCode || 'N/A'}</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              size="icon" 
+              variant="outline" 
+              className="h-9 w-9 rounded-full"
+              onClick={copyReferralCode}
+              disabled={!referralCode}
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+            <Button 
+              size="icon" 
+              variant="default" 
+              className="h-9 w-9 rounded-full"
+              onClick={shareInvite}
+              disabled={!referralCode}
+            >
+              <Share2 className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+        
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-primary/10">
+          <div className="text-center">
+            <p className="text-lg font-bold text-foreground">{stats.total_referrals}</p>
+            <p className="text-[10px] text-muted-foreground">Invited</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-bold text-green-600">{stats.completed_referrals}</p>
+            <p className="text-[10px] text-muted-foreground">Joined</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-bold text-primary">₦{stats.total_earnings.toLocaleString()}</p>
+            <p className="text-[10px] text-muted-foreground">Earned</p>
+          </div>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground text-center">
+        Earn ₦{referralSettings?.reward_amount || 500} for each friend who joins using your code!
+      </p>
+    </div>
+  );
+};
 
 const Profile = () => {
   const { user, signOut } = useAuth();
@@ -45,7 +153,30 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState('tickets');
   
   // Local state for smooth slider dragging
-  const [localRadius, setLocalRadius] = useState<number>(20);
+  const [localRadius, setLocalRadius] = useState<number>(25);
+  
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  
+    // Profile Settings Dialog State
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [newLink, setNewLink] = useState({ title: '', url: '' }); 
+  const [settingsForm, setSettingsForm] = useState({
+    display_name: '',
+    username: '',
+    email: '',
+    bio: ''
+  });
+
+  // Query with optimized settings
+  const { data, isLoading, refetch, isRefetching, error } = useQuery<CombinedProfile, Error>({
+    queryKey: ['profile', user?.id],
+    queryFn: () => fetchProfileData(user!.id),
+    enabled: !!user,
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
+    retry: 2,
+    retryDelay: 1000,
+  });
 
   // --- 1. DATA FETCHING ---
   const { data: profile, isLoading, error } = useQuery({
@@ -72,8 +203,230 @@ const Profile = () => {
   useEffect(() => {
     if (profile?.preferences?.discovery_radius) {
       setLocalRadius(profile.preferences.discovery_radius / 1000); // Convert meters to km
+      setSettingsForm({
+        display_name: profile.display_name || '',
+        username: profile.username || '',
+        email: profile.email || user?.email || '',
+        bio: profile.bio || ''
+      });
+      
     }
-  }, [profile]);
+  }, [profile, user?.email]); 
+  
+    // Profile Settings Update Mutation (Unified)
+  const updateProfileSettingsMutation = useMutation({
+    mutationFn: async (updates: { 
+      display_name?: string; 
+      username?: string; 
+      email?: string; 
+      phone?: string;
+      bio?: string;
+    }) => {
+      const dbUpdates: any = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (updates.display_name !== undefined) {
+        const trimmedName = updates.display_name.trim();
+        if (!trimmedName) throw new Error('Full name cannot be empty');
+        if (trimmedName.length < 2) throw new Error('Full name must be at least 2 characters');
+        if (trimmedName.length > MAX_NAME_LENGTH) throw new Error(`Full name must be less than ${MAX_NAME_LENGTH} characters`);
+        dbUpdates.display_name = trimmedName;
+      }
+      
+      if (updates.username !== undefined) {
+        const trimmedUsername = updates.username.trim().toLowerCase();
+        if (!trimmedUsername) throw new Error('Username cannot be empty');
+        if (trimmedUsername.length < 3) throw new Error('Username must be at least 3 characters');
+        if (trimmedUsername.length > MAX_USERNAME_LENGTH) throw new Error(`Username must be less than ${MAX_USERNAME_LENGTH} characters`);
+        if (!/^[a-z0-9_]+$/.test(trimmedUsername)) {
+          throw new Error('Username can only contain lowercase letters, numbers, and underscores');
+        }
+        
+        // Check username uniqueness
+        const { data: existingUser, error: checkError } = await supabase
+          .from('profiles')
+          .select('user_id')
+          .eq('username', trimmedUsername)
+          .neq('user_id', user!.id)
+          .maybeSingle();
+        
+        if (checkError && checkError.code !== 'PGRST116') throw checkError;
+        if (existingUser) throw new Error('Username is already taken');
+        
+        dbUpdates.username = trimmedUsername;
+      }
+
+      // Updated Email Logic
+      if (updates.email !== undefined) {
+        const trimmedEmail = updates.email.trim().toLowerCase();
+        if (!trimmedEmail) throw new Error('Email cannot be empty');
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(trimmedEmail)) throw new Error('Please enter a valid email address');
+        
+        if (trimmedEmail !== user?.email?.toLowerCase()) {
+          const { error: authError } = await supabase.auth.updateUser({ 
+            email: trimmedEmail 
+          });
+          if (authError) throw authError;
+          dbUpdates.email = trimmedEmail;
+        }
+      }
+      
+     // Bio Logic
+      if (updates.bio !== undefined) {
+        dbUpdates.bio = updates.bio.trim();
+      }
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update(dbUpdates)
+        .eq('user_id', user!.id);
+        
+      if (error) throw error;
+      return dbUpdates;
+    },
+    onSuccess: (updates) => {
+      toast.success('Profile updated successfully!');
+      setShowProfileSettings(false);
+      
+      // Optimistic update
+      queryClient.setQueryData(['profile', user!.id], (oldData: any) => {
+        if (!oldData) return oldData;
+        
+        const newPrefs = updates.preferences 
+          ? updates.preferences 
+          : oldData.profile.preferences;
+
+        return {
+          ...oldData,
+          profile: {
+            ...oldData.profile,
+            ...updates,
+            preferences: newPrefs
+          }
+        };
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update profile');
+    }
+  });
+  
+    // Enhanced avatar upload mutation with proper error handling
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const validation = validateImageFile(file);
+      if (!validation.valid) {
+        throw new Error(validation.error);
+      }
+
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+      const fileName = `${user!.id}/${Date.now()}.${fileExt}`;
+      
+      // Delete old avatar if exists
+      if (profile?.avatar_url) {
+        const oldPath = getAvatarPath(profile.avatar_url);
+        if (oldPath && !oldPath.includes('default')) {
+          await supabase.storage.from('avatars').remove([oldPath]);
+        }
+      }
+      
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { 
+          upsert: true,
+          contentType: file.type 
+        });
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+      
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ 
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user!.id);
+      
+      if (updateError) throw updateError;
+      
+      return publicUrl;
+    },
+    onSuccess: (newAvatarUrl) => {
+      toast.success('Avatar updated successfully!');
+      
+      // Immediate cache update for instant UI feedback
+      queryClient.setQueryData(['profile', user!.id], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          profile: {
+            ...oldData.profile,
+            avatar_url: newAvatarUrl
+          }
+        };
+      });
+      
+      setAvatarPreview(null);
+      queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Upload failed');
+      setAvatarPreview(null);
+    }
+  });
+  
+    // Delete account mutation with cascade handling
+  const deleteAccountMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('delete_user');
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await signOut();
+      navigate('/', { replace: true });
+      toast.success('Account deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to delete account');
+    }
+  });
+
+  // Handlers
+  const handleAvatarSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      toast.error(validation.error);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+    uploadAvatarMutation.mutate(file);
+
+    // Cleanup
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [uploadAvatarMutation]);
+
+  const handleProfileSettingsSave = useCallback(() => {
+    updateProfileSettingsMutation.mutate({
+      display_name: settingsForm.display_name,
+      username: settingsForm.username,
+      email: settingsForm.email,
+      phone: settingsForm.phone,
+      bio: settingsForm.bio,
+    });
+  }, [settingsForm, updateProfileSettingsMutation]);
 
   const { data: myTickets = [] } = useQuery({
     queryKey: ['my-tickets', user?.id],
@@ -230,8 +583,14 @@ const Profile = () => {
 
                   <div className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
                      <div className="flex items-center gap-3">
-                      <div className="p-2 bg-muted rounded-lg"><Edit2 className="w-4 h-4" /></div>
-                      <p className="font-medium text-sm">Edit Profile</p>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-white hover:bg-white/20 transition-all rounded-full px-4 font-semibold"
+                        onClick={() => setShowProfileSettings(true)}
+                      >
+                        <Edit2 className="w-4 h-4 mr-2" /> Edit Profile
+                      </Button>
                      </div>
                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </div>
@@ -249,9 +608,9 @@ const Profile = () => {
                     </div>
                     <Slider 
                       value={[localRadius]} 
-                      max={100} // 100km max
-                      min={1}
-                      step={1}
+                      max={75} // 75km max
+                      min={25}
+                      step={10}
                       // 1. Update visual state immediately
                       onValueChange={(val) => setLocalRadius(val[0])}
                       // 2. Commit to DB only when user stops dragging
@@ -286,9 +645,28 @@ const Profile = () => {
         <div className="px-6 -mt-12 mb-6">
           <div className="relative inline-block">
             <Avatar className="w-24 h-24 border-[4px] border-background shadow-xl">
-              <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
-              <AvatarFallback className="text-2xl bg-muted text-muted-foreground">{initial}</AvatarFallback>
+              <AvatarImage 
+                  src={avatarPreview || profile?.avatar_url || ''} 
+                  className="object-cover" 
+                  alt={`${profile?.display_name}'s avatar`}
+                />
+              <AvatarFallback className="text-2xl bg-muted text-muted-foreground">{profile?.display_name?.slice(0, 2).toUpperCase() || '?'}</AvatarFallback>
             </Avatar>
+            <label className="absolute bottom-0 right-0 w-10 h-10 bg-white text-primary rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform z-10 border-4 border-primary">
+                {uploadAvatarMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Camera className="w-4 h-4" />
+                )}
+                <input 
+                  type="file" 
+                  accept={ALLOWED_IMAGE_TYPES.join(',')}
+                  className="hidden" 
+                  onChange={handleAvatarSelect} 
+                  disabled={uploadAvatarMutation.isPending}
+                  aria-label="Upload avatar"
+                />
+              </label>
             {profile.is_premium && (
               <div className="absolute bottom-0 right-0 bg-gradient-to-r from-amber-400 to-orange-500 text-white p-1.5 rounded-full border-[3px] border-background shadow-sm">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -394,6 +772,170 @@ const Profile = () => {
           </div>
         </TabsContent>
       </Tabs>
+      
+      {/* Profile Settings Dialog */}
+      <Dialog open={showProfileSettings} onOpenChange={setShowProfileSettings}>
+        <DialogContent className="sm:max-w-[480px] max-w-[calc(100vw-2rem)] my-auto mx-auto max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <Settings className="w-5 h-5 text-primary" />
+              Profile Settings
+            </DialogTitle>
+            <DialogDescription>
+              Update your profile information. Changes will be reflected across the platform.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Full Name */}
+            <div className="space-y-2">
+              <Label htmlFor="settings-fullname" className="flex items-center gap-2">
+                <User className="w-4 h-4 text-muted-foreground" />
+                Full Name
+              </Label>
+              <Input
+                id="settings-fullname"
+                type="text"
+                placeholder="Barack Musa"
+                value={settingsForm.display_name}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, display_name: e.target.value }))}
+                maxLength={MAX_NAME_LENGTH}
+                className="h-11"
+              />
+              <p className="text-xs text-muted-foreground">
+                {settingsForm.display_name.length}/{MAX_NAME_LENGTH} characters
+              </p>
+            </div>
+
+            {/* Username */}
+            <div className="space-y-2">
+              <Label htmlFor="settings-username" className="flex items-center gap-2">
+                <AtSign className="w-4 h-4 text-muted-foreground" />
+                Username
+              </Label>
+              <Input
+                id="settings-username"
+                type="text"
+                placeholder="username_1234"
+                value={settingsForm.username}
+                onChange={(e) => setSettingsForm(prev => ({ 
+                  ...prev, 
+                  username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') 
+                }))}
+                maxLength={MAX_USERNAME_LENGTH}
+                className="h-11 font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Lowercase letters, numbers, and underscores only
+              </p>
+            </div>
+
+            {/* Bio - MOVED HERE */}
+            <div className="space-y-2">
+              <Label htmlFor="settings-bio" className="flex items-center gap-2">
+                <Heart className="w-4 h-4 text-muted-foreground" />
+                About Me
+              </Label>
+              <Textarea 
+                id="settings-bio"
+                value={settingsForm.bio}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, bio: e.target.value }))}
+                placeholder="Write a short bio about yourself..."
+                className="resize-none min-h-[100px]"
+                maxLength={MAX_BIO_LENGTH}
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{settingsForm.bio.length}/{MAX_BIO_LENGTH} characters</span>
+              </div>
+            </div>
+
+            {/* Email */}
+            <div className="space-y-2">
+              <Label htmlFor="settings-email" className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-muted-foreground" />
+                Email Address
+              </Label>
+              <Input
+                id="settings-email"
+                type="email"
+                placeholder="name@example.com"
+                value={settingsForm.email}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, email: e.target.value }))}
+                className="h-11"
+              />
+              <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Changing your email will require verification
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowProfileSettings(false)}
+              disabled={updateProfileSettingsMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleProfileSettingsSave}
+              disabled={updateProfileSettingsMutation.isPending || !settingsForm.display_name.trim() || !settingsForm.username.trim() || !settingsForm.email.trim()}
+              className="gradient-primary text-white"
+            >
+              {updateProfileSettingsMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Account Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full">
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <AlertDialogTitle className="text-xl">Delete Account?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-base leading-relaxed">
+              This action cannot be undone. This will permanently delete your account, remove all your data, 
+              and you'll lose access to all your events, messages, and connections.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => deleteAccountMutation.mutate()}
+              disabled={deleteAccountMutation.isPending}
+            >
+              {deleteAccountMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete My Account
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
