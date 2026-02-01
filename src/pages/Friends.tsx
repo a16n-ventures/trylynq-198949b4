@@ -68,49 +68,74 @@ const Friends = () => {
   const { data: friends = [], isLoading: loadingFriends, error: friendsError } = useQuery({
     queryKey: ['my_friends_page', user?.id],
     queryFn: async () => {
-      if (!user) return [];
+      if (!user?.id) {
+        console.log('No user ID available for friends query');
+        return [];
+      }
       
-      const { data, error } = await supabase
-        .from('friendships')
-        .select(`
-          id,
-          requester:profiles!requester_id(id, user_id, display_name, username, avatar_url),
-          addressee:profiles!addressee_id(id, user_id, display_name, username, avatar_url)
-        `)
-        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-        .eq('status', 'accepted');
+      try {
+        const { data, error } = await supabase
+          .from('friendships')
+          .select(`
+            id,
+            requester:profiles!requester_id(id, user_id, display_name, username, avatar_url),
+            addressee:profiles!addressee_id(id, user_id, display_name, username, avatar_url)
+          `)
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+          .eq('status', 'accepted');
 
-      if (error) throw error;
+        if (error) {
+          console.error('Friendships query error:', error);
+          throw error;
+        }
 
-      // Filter out null profiles to prevent crashes if a user was deleted
-      return data
-        .map((f: any) => {
-          // Identify the other person (could be null if deleted)
-          const isRequester = f.requester?.user_id === user.id;
-          const profile = isRequester ? f.addressee : f.requester;
-          
-          if (!profile) return null; // Skip broken records
+        if (!data) {
+          console.log('No friendships data returned');
+          return [];
+        }
 
-          return {
-            id: profile.id,
-            user_id: profile.user_id,
-            display_name: profile.display_name || 'User',
-            username: profile.username || 'user',
-            avatar_url: profile.avatar_url,
-            friendship_id: f.id,
-            is_contact: false
-          } as Friend;
-        })
-        .filter((f): f is Friend => f !== null);
+        // Filter out null profiles to prevent crashes if a user was deleted
+        const validFriends = data
+          .map((f: any) => {
+            // Identify the other person (could be null if deleted)
+            const isRequester = f.requester?.user_id === user.id;
+            const profile = isRequester ? f.addressee : f.requester;
+            
+            if (!profile) {
+              console.warn('Skipping friendship with null profile:', f.id);
+              return null;
+            }
+
+            return {
+              id: profile.id,
+              user_id: profile.user_id,
+              display_name: profile.display_name || 'User',
+              username: profile.username || 'user',
+              avatar_url: profile.avatar_url,
+              friendship_id: f.id,
+              is_contact: false
+            } as Friend;
+          })
+          .filter((f): f is Friend => f !== null);
+
+        console.log(`Loaded ${validFriends.length} friends`);
+        return validFriends;
+      } catch (error) {
+        console.error('Failed to fetch friends:', error);
+        throw error;
+      }
     },
-    enabled: !!user
+    enabled: !!user?.id,
+    retry: 2,
+    retryDelay: 1000
   });
   
   // Handle query errors
   useEffect(() => {
     if (friendsError) {
       console.error('Friends query error:', friendsError);
-      toast.error('Failed to load friends');
+      const errorMessage = friendsError instanceof Error ? friendsError.message : 'Failed to load friends';
+      toast.error(errorMessage);
     }
   }, [friendsError]);
 
@@ -118,56 +143,61 @@ const Friends = () => {
   const { data: contacts = [] } = useQuery({
     queryKey: ['app_contacts', user?.id],
     queryFn: async () => {
-      if (!user) return [];
+      if (!user?.id) return [];
       
-      // 1. Get contacts marked as app users
-      const { data: myContacts } = await supabase
-        .from('contacts')
-        .select('matched_user_id, name')
-        .eq('user_id', user.id)
-        .eq('is_app_user', true)
-        .not('matched_user_id', 'is', null);
-  
-      if (!myContacts?.length) return [];
-  
-      const contactUserIds = myContacts.map(c => c.matched_user_id);
-      
-      // 2. Fetch existing friends to exclude them
-      const { data: existingFriends } = await supabase
-        .from('friendships')
-        .select('requester_id, addressee_id')
-        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
-        // Note: We check ALL friendships (pending or accepted) to avoid duplicate requests
-      
-      const friendIds = existingFriends?.map((f: any) => 
-        f.requester_id === user.id ? f.addressee_id : f.requester_id
-      ) || [];
-      
-      const newContactIds = contactUserIds.filter(id => !friendIds.includes(id) && id !== user.id);
-  
-      if (newContactIds.length === 0) return [];
-  
-      // 3. Fetch profiles
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, user_id, display_name, username, avatar_url')
-        .in('user_id', newContactIds);
-  
-      return (profiles || []).map((p: any) => ({
-        ...p,
-        is_contact: true,
-        // Prefer the contact name saved in phone, fallback to profile name
-        display_name: myContacts.find(c => c.matched_user_id === p.user_id)?.name || p.display_name
-      }));
+      try {
+        // 1. Get contacts marked as app users
+        const { data: myContacts } = await supabase
+          .from('contacts')
+          .select('matched_user_id, name')
+          .eq('user_id', user.id)
+          .eq('is_app_user', true)
+          .not('matched_user_id', 'is', null);
+    
+        if (!myContacts?.length) return [];
+    
+        const contactUserIds = myContacts.map(c => c.matched_user_id);
+        
+        // 2. Fetch existing friends to exclude them
+        const { data: existingFriends } = await supabase
+          .from('friendships')
+          .select('requester_id, addressee_id')
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+          // Note: We check ALL friendships (pending or accepted) to avoid duplicate requests
+        
+        const friendIds = existingFriends?.map((f: any) => 
+          f.requester_id === user.id ? f.addressee_id : f.requester_id
+        ) || [];
+        
+        const newContactIds = contactUserIds.filter(id => !friendIds.includes(id) && id !== user.id);
+    
+        if (newContactIds.length === 0) return [];
+    
+        // 3. Fetch profiles
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, user_id, display_name, username, avatar_url')
+          .in('user_id', newContactIds);
+    
+        return (profiles || []).map((p: any) => ({
+          ...p,
+          is_contact: true,
+          // Prefer the contact name saved in phone, fallback to profile name
+          display_name: myContacts.find(c => c.matched_user_id === p.user_id)?.name || p.display_name
+        }));
+      } catch (error) {
+        console.error('Failed to fetch contacts:', error);
+        return [];
+      }
     },
-    enabled: !!user,
+    enabled: !!user?.id,
   });
 
   // C. Fetch Smart Suggestions (Nearby & Mutuals)
   const { data: suggestions = [] } = useQuery({
     queryKey: ['friend_suggestions', user?.id, location?.latitude],
     queryFn: async () => {
-      if (!user) return [];
+      if (!user?.id) return [];
       
       try {
         // Fetch friends INSIDE this query for exclusion
@@ -231,20 +261,31 @@ const Friends = () => {
   const { data: requests = [], isLoading: loadingRequests } = useQuery({
     queryKey: ['friend_requests', user?.id],
     queryFn: async () => {
-      if (!user) return [];
-      const { data } = await supabase
-        .from('friendships')
-        .select(`
-          id, created_at,
-          requester:profiles!requester_id(id, user_id, display_name, username, avatar_url)
-        `)
-        .eq('addressee_id', user.id)
-        .eq('status', 'pending');
+      if (!user?.id) return [];
       
-      // Type assertion with safety check
-      return (data || []).filter(r => r.requester) as unknown as Request[];
+      try {
+        const { data, error } = await supabase
+          .from('friendships')
+          .select(`
+            id, created_at,
+            requester:profiles!requester_id(id, user_id, display_name, username, avatar_url)
+          `)
+          .eq('addressee_id', user.id)
+          .eq('status', 'pending');
+        
+        if (error) {
+          console.error('Friend requests query error:', error);
+          throw error;
+        }
+        
+        // Type assertion with safety check
+        return (data || []).filter(r => r.requester) as unknown as Request[];
+      } catch (error) {
+        console.error('Failed to fetch friend requests:', error);
+        return [];
+      }
     },
-    enabled: !!user
+    enabled: !!user?.id
   });
 
   // --- 2. ACTIONS ---
@@ -395,7 +436,23 @@ const Friends = () => {
             )}
 
             {/* 2. MAIN LIST */}
-            {loadingFriends ? (
+            {friendsError ? (
+              <div className="text-center py-12 text-destructive border-2 border-dashed border-destructive/50 rounded-xl bg-destructive/5">
+                <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Users className="w-8 h-8 text-destructive/50" />
+                </div>
+                <h3 className="font-semibold mb-2">Failed to load friends</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {friendsError instanceof Error ? friendsError.message : 'An error occurred'}
+                </p>
+                <Button 
+                  variant="outline" 
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['my_friends_page'] })}
+                >
+                  Try Again
+                </Button>
+              </div>
+            ) : loadingFriends ? (
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : filteredList.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl bg-muted/10">

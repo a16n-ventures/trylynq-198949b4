@@ -773,7 +773,7 @@ const Profile = () => {
             {/* Placeholder for future photo feature */}
             {[1,2,3,4,5,6].map((i) => (
               <div key={i} className="aspect-square bg-muted/30 relative group cursor-pointer overflow-hidden">
-                <img src={`https://picsum.photos/seed/${i + user.id}/400/400`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="moment" />
+                <img src={`https://picsum.photos/seed/${i + (user?.id || '')}/400/400`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="moment" />
                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
             ))}
