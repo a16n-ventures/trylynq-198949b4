@@ -173,7 +173,7 @@ const Profile = () => {
   });
 
   // --- 1. DATA FETCHING ---
-  const { data: profile, isLoading, error } = useQuery<UserProfile, Error>({
+  const { data: profile, isLoading: isProfileLoading, error } = useQuery<UserProfile, Error>({
     queryKey: ['profile', user?.id], // Use consistent key
     queryFn: async () => {
       if (!user?.id) throw new Error('No user');
@@ -195,19 +195,25 @@ const Profile = () => {
     retry: 2,
   });
 
-  // Sync local radius state with fetched profile data
+  // Handle Authentication Redirect safely
   useEffect(() => {
     if (!user) {
-      navigate('/auth');
-      return;
+      const timer = setTimeout(() => {
+         navigate('/auth');
+      }, 100);
+      return () => clearTimeout(timer);
     }
-    
-    if (profile?.preferences?.discovery_radius) {
-      setLocalRadius(profile.preferences.discovery_radius / 1000); // Convert meters to km
-    }
-    
-    // Always sync form data when profile is loaded
+  }, [user, navigate]);
+
+  // Sync local radius state with fetched profile data
+  useEffect(() => {
+    // Only sync if profile is loaded
     if (profile) {
+      if (profile.preferences?.discovery_radius) {
+        setLocalRadius(profile.preferences.discovery_radius / 1000); // Convert meters to km
+      }
+      
+      // Always sync form data when profile is loaded
       setSettingsForm({
         display_name: profile.display_name || '',
         username: profile.username || '',
@@ -216,7 +222,7 @@ const Profile = () => {
         phone: profile.phone || ''
       });
     }
-  }, [user, profile, navigate]); // Removed user?.email from dependencies to prevent loops 
+  }, [profile, user?.email]); 
   
     // Profile Settings Update Mutation (Unified)
   const updateProfileSettingsMutation = useMutation({
@@ -496,15 +502,18 @@ const Profile = () => {
   };
 
   // --- 3. LOADING & ERROR STATES ---
-  // If user is missing, show nothing (or a loader) while the useEffect redirects
-  if (!user) return null; 
+  
+  // FIX: Combined loading check to prevent blank screen
+  const isPageLoading = isProfileLoading || !user;
 
-  if (isLoading) {
+  if (isPageLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground">Loading profile...</p>
+          <p className="text-sm text-muted-foreground">
+            {!user ? 'Authenticating...' : 'Loading profile...'}
+          </p>
         </div>
       </div>
     );
@@ -536,7 +545,7 @@ const Profile = () => {
 
   const displayName = profile.display_name || 'User';
   const username = profile.username || 'user';
-  const initial = displayName[0]?.toUpperCase() || 'U';
+  // const initial = displayName[0]?.toUpperCase() || 'U'; // unused
   
   // Safely access properties
   const isGhostMode = profile.preferences?.ghost_mode === true;
