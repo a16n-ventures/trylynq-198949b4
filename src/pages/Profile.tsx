@@ -30,23 +30,86 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useReferrals } from '@/hooks/useReferrals';
 
 // --- TYPES ---
-interface UserPreferences {
-  discovery_radius?: number;
-  ghost_mode?: boolean;
-  [key: string]: any;
+interface ProfileLink {
+  id: string;
+  title: string;
+  url: string;
+  icon?: string;
 }
 
-interface UserProfile {
-  display_name: string | null;
-  username?: string | null;
-  bio?: string | null;
-  email?: string | null;
-  avatar_url?: string | null;
-  is_premium?: boolean;
-  friends_count?: number;
-  preferences?: UserPreferences;
-  phone?: string | null;
+interface ProfileData {
+  user_id: string;
+  display_name: string;
+  username: string;
+  email: string;
+  phone?: string | number | null;
+  bio: string;
+  avatar_url: string;
+  created_at: string;
+  profile_views_30d?: number;
+  preferences?: {
+    notifications: boolean;
+    discovery_radius?: number;
+    ghost_mode?: boolean; // Kept this from your new file
+    links?: ProfileLink[];
+  };
 }
+
+interface LocationData {
+  is_sharing_location: boolean;
+}
+
+interface ProfileStats {
+  friends: number;
+  events: number;
+  messages: number;
+  event_views_30d?: number;
+}
+
+interface CombinedProfile {
+  profile: ProfileData | null;
+  location: LocationData | null;
+  stats: ProfileStats;
+}
+
+const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
+  const [
+    { data: profileData, error: profileError },
+    { data: locationData },
+    { count: friendCount },
+    { count: eventCount },
+    { count: messageCount },
+    { data: eventViewsData }
+  ] = await Promise.all([
+    supabase.from('profiles').select('*').eq('user_id', userId).single(),
+    supabase.from('user_locations').select('is_sharing_location').eq('user_id', userId).maybeSingle(),
+    supabase.from('friendships').select('*', { count: 'exact', head: true })
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`),
+    supabase.from('event_attendees').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+    supabase.from('messages').select('*', { count: 'exact', head: true }).eq('sender_id', userId),
+    supabase.from('events').select('event_views_30d').eq('creator_id', userId)
+  ]);
+
+  if (profileError && profileError.code !== 'PGRST116') throw profileError;
+  
+  const totalEventViews = eventViewsData?.reduce((acc, curr) => acc + (curr.event_views_30d || 0), 0) || 0;
+  const preferences = profileData?.preferences as any || {};
+
+  return {
+    profile: profileData ? { 
+      ...profileData, 
+      preferences: preferences || { notifications: true }
+    } as ProfileData : null,
+    location: locationData,
+    stats: {
+      friends: friendCount || 0,
+      events: eventCount || 0,
+      messages: messageCount || 0,
+      event_views_30d: totalEventViews
+    },
+  };
+};
 
 // --- CONSTANTS ---
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5MB
@@ -172,28 +235,22 @@ const Profile = () => {
     phone: '' // Added missing field
   });
 
-  // --- 1. DATA FETCHING ---
-  const { data: profile, isLoading: isProfileLoading, error } = useQuery<UserProfile, Error>({
-    queryKey: ['profile', user?.id], // Use consistent key
-    queryFn: async () => {
-      if (!user?.id) throw new Error('No user');
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (!data) throw new Error('Profile not found');
-
-      return data as UserProfile;
-    },
+  // --- 1. DATA FETCHING (Fixed) ---
+  const { data, isLoading: isProfileLoading, error, refetch } = useQuery<CombinedProfile, Error>({
+    queryKey: ['profile', user?.id],
+    queryFn: () => fetchProfileData(user!.id),
     enabled: !!user?.id,
     staleTime: STALE_TIME,
     refetchInterval: REFETCH_INTERVAL,
     retry: 2,
   });
+
+  // Destructure safely to handle cases where profile is still creating
+  const { profile, location, stats } = data || { 
+    profile: null, 
+    location: null, 
+    stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 } 
+  };
 
   // Handle Authentication Redirect safely
   useEffect(() => {
@@ -306,18 +363,22 @@ const Profile = () => {
       toast.success('Profile updated successfully!');
       setShowProfileSettings(false);
 
-      // Optimistic update
-      queryClient.setQueryData(['profile', user!.id], (oldData: UserProfile | undefined) => {
-        if (!oldData) return oldData;
+      // FIXED: Update the nested 'profile' object inside CombinedProfile
+      queryClient.setQueryData(['profile', user!.id], (oldData: CombinedProfile | undefined) => {
+        if (!oldData || !oldData.profile) return oldData;
         return {
           ...oldData,
-          ...updates,
-          preferences: updates.preferences || oldData.preferences
+          profile: {
+            ...oldData.profile,
+            ...updates,
+            preferences: updates.preferences || oldData.profile.preferences
+          }
         };
       });
 
       queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     },
+
     onError: (error: Error) => {
       toast.error((error && error.message) || 'Failed to update profile');
     }
@@ -370,23 +431,26 @@ const Profile = () => {
     onSuccess: (newAvatarUrl) => {
       toast.success('Avatar updated successfully!');
 
-      // Revoke previous preview URL if any
       if (avatarPreview) {
         try { URL.revokeObjectURL(avatarPreview); } catch (e) { /* noop */ }
       }
 
-      // Immediate cache update for instant UI feedback
-      queryClient.setQueryData(['profile', user!.id], (oldData: any) => {
-        if (!oldData) return oldData;
+      // FIXED: Update nested profile object
+      queryClient.setQueryData(['profile', user!.id], (oldData: CombinedProfile | undefined) => {
+        if (!oldData || !oldData.profile) return oldData;
         return {
           ...oldData,
-          avatar_url: newAvatarUrl
+          profile: {
+            ...oldData.profile,
+            avatar_url: newAvatarUrl
+          }
         };
       });
 
       setAvatarPreview(null);
       queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     },
+
     onError: (error: any) => {
       toast.error((error && error.message) || 'Upload failed');
 
@@ -485,11 +549,14 @@ const Profile = () => {
     };
 
     // Optimistic cache update
-    queryClient.setQueryData(['profile', user.id], (old: UserProfile | undefined) => {
-      if (!old) return old;
+    queryClient.setQueryData(['profile', user.id], (old: CombinedProfile | undefined) => {
+      if (!old || !old.profile) return old;
       return {
         ...old,
-        preferences: newPreferences
+        profile: {
+          ...old.profile,
+          preferences: newPreferences
+        }
       };
     });
 
@@ -685,7 +752,7 @@ const Profile = () => {
               htmlFor="avatar-upload"
               className="absolute bottom-0 right-0 w-10 h-10 bg-white dark:bg-slate-800 text-primary rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform"
             >
-              {uploadAvatarMutation.isLoading ? (
+              {uploadAvatarMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Camera className="w-4 h-4" />
@@ -697,7 +764,7 @@ const Profile = () => {
               accept={ALLOWED_IMAGE_TYPES.join(',')}
               className="hidden"
               onChange={handleAvatarSelect}
-              disabled={uploadAvatarMutation.isLoading}
+              disabled={uploadAvatarMutation.isPending}
               aria-label="Upload avatar"
             />
 
@@ -727,7 +794,7 @@ const Profile = () => {
           <div className="flex gap-8 mt-6 pb-4 border-b border-dashed border-border/60">
             <div className="text-center cursor-pointer hover:opacity-70 transition-opacity"
               onClick={() => navigate('/app/friends')}>
-              <span className="block font-bold text-lg">{profile.friends_count || 0}</span>
+              <span className="block font-bold text-lg">{stats.friends}</span>
               <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Friends</span>
             </div>
             <div className="text-center cursor-pointer hover:opacity-70 transition-opacity">
@@ -928,16 +995,16 @@ const Profile = () => {
             <Button
               variant="outline"
               onClick={() => setShowProfileSettings(false)}
-              disabled={updateProfileSettingsMutation.isLoading}
+              disabled={updateProfileSettingsMutation.isPending}
             >
               Cancel
             </Button>
             <Button
               onClick={handleProfileSettingsSave}
-              disabled={updateProfileSettingsMutation.isLoading || !settingsForm.display_name.trim() || !settingsForm.username.trim() || !settingsForm.email.trim()}
+              disabled={updateProfileSettingsMutation.isPending || !settingsForm.display_name.trim() || !settingsForm.username.trim() || !settingsForm.email.trim()}
               className="gradient-primary text-white"
             >
-              {updateProfileSettingsMutation.isLoading ? (
+              {updateProfileSettingsMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Saving...
@@ -973,9 +1040,9 @@ const Profile = () => {
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700 text-white"
               onClick={() => deleteAccountMutation.mutate()}
-              disabled={deleteAccountMutation.isLoading}
+              disabled={deleteAccountMutation.isPending}
             >
-              {deleteAccountMutation.isLoading ? (
+              {deleteAccountMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Deleting...
