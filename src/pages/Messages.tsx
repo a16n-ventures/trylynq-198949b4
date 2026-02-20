@@ -564,59 +564,116 @@ function NewChatModal({ open, onOpenChange, onSelect }: { open: boolean, onOpenC
 // --- NEW COMMUNITY MODAL ---
 function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpenChange: (o: boolean) => void, onSuccess: () => void }) {
     const { user } = useAuth();
-    const [name, setName] = useState('');
-    const [desc, setDesc] = useState('');
+    const [form, setForm] = useState({ name: '', description: '', cover_url: '' });
     const [loading, setLoading] = useState(false);
 
     const create = async () => {
-        if (!name.trim()) return;
+        if (!form.name.trim()) return toast.error("Community name is required");
         setLoading(true);
         try {
-            const { error } = await supabase.from('communities').insert({ name, description: desc, creator_id: user?.id, member_count: 1 });
+            const { data: community, error } = await supabase.from('communities').insert({
+                name: form.name.trim(),
+                description: form.description.trim() || null,
+                cover_url: form.cover_url.trim() || null,
+                creator_id: user?.id,
+                member_count: 1
+            }).select().single();
             if (error) throw error;
+
+            // Auto-join as admin
+            if (community) {
+                await supabase.from('community_members').insert({
+                    community_id: community.id,
+                    user_id: user?.id,
+                    role: 'admin'
+                });
+            }
             toast.success("Community created!");
+            setForm({ name: '', description: '', cover_url: '' });
             onSuccess();
-        } catch (e) { toast.error("Failed to create community"); }
-        finally { setLoading(false); }
+        } catch (e: any) {
+            toast.error(e?.message || "Failed to create community");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader><DialogTitle>Create Community</DialogTitle></DialogHeader>
-                <div className="space-y-4 py-4">
+            <DialogContent className="sm:max-w-[420px]">
+                <DialogHeader>
+                    <DialogTitle>Create Community</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
                     <div className="space-y-2">
-                        <Label>Name</Label>
-                        <Input placeholder="Tech Meetups, Book Club..." value={name} onChange={e => setName(e.target.value)} />
+                        <Label>Community Name *</Label>
+                        <Input
+                            placeholder="Tech Meetups, Book Club..."
+                            value={form.name}
+                            onChange={e => setForm({ ...form, name: e.target.value })}
+                        />
                     </div>
                     <div className="space-y-2">
                         <Label>Description</Label>
-                        <Textarea placeholder="What's this group about?" value={desc} onChange={e => setDesc(e.target.value)} />
+                        <Textarea
+                            placeholder="What's this group about? Who should join?"
+                            value={form.description}
+                            onChange={e => setForm({ ...form, description: e.target.value })}
+                            className="min-h-[80px]"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Cover Image URL <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                        <Input
+                            placeholder="https://..."
+                            value={form.cover_url}
+                            onChange={e => setForm({ ...form, cover_url: e.target.value })}
+                        />
+                        {form.cover_url && (
+                            <div className="w-full h-24 rounded-lg overflow-hidden border bg-muted">
+                                <img src={form.cover_url} alt="Cover preview" className="w-full h-full object-cover" onError={e => (e.currentTarget.style.display = 'none')} />
+                            </div>
+                        )}
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button onClick={create} disabled={loading}>{loading ? 'Creating...' : 'Create Group'}</Button>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
+                    <Button onClick={create} disabled={loading || !form.name.trim()}>
+                        {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</> : 'Create Group'}
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
     );
 }
 
-// --- NEW EVENT MODAL (With Recurring Logic) ---
+// --- NEW EVENT MODAL (With all card fields) ---
 function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpenChange: (o: boolean) => void, onSuccess: () => void }) {
     const { user } = useAuth();
-    const [formData, setFormData] = useState({ title: '', location: '', start_date: '', ticket_price: '' });
+    const [formData, setFormData] = useState({
+        title: '',
+        description: '',
+        location: '',
+        start_date: '',
+        end_date: '',
+        ticket_price: '',
+        category: '',
+        max_attendees: '',
+        event_type: 'physical' as 'physical' | 'virtual',
+        is_public: true,
+    });
     
-    // Feature: Program Toggle
     const [isProgram, setIsProgram] = useState(false);
     const [frequency, setFrequency] = useState<'weekly' | 'biweekly'>('weekly');
     const [loading, setLoading] = useState(false);
 
+    const categories = ['Music', 'Party', 'Tech', 'Sports', 'Arts', 'Food', 'Networking', 'Study Group', 'Social', 'Other'];
+
     const create = async () => {
-        if (!formData.title || !formData.start_date) return toast.error("Title and date required");
+        if (!formData.title.trim() || !formData.start_date) return toast.error("Title and date are required");
+        if (!formData.location.trim() && formData.event_type === 'physical') return toast.error("Location is required for physical events");
         setLoading(true);
         
-        // Calculate Recurrence Rule
         let recurrenceRule = null;
         if (isProgram) {
             recurrenceRule = frequency === 'weekly' ? 'FREQ=WEEKLY' : 'FREQ=WEEKLY;INTERVAL=2';
@@ -625,79 +682,137 @@ function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpe
         try {
             const { error } = await supabase.from('events').insert({
                 creator_id: user?.id,
-                title: formData.title,
-                location: formData.location,
+                title: formData.title.trim(),
+                description: formData.description.trim() || null,
+                location: formData.event_type === 'virtual' ? 'Online' : formData.location.trim(),
                 start_date: new Date(formData.start_date).toISOString(),
+                end_date: formData.end_date ? new Date(formData.end_date).toISOString() : null,
                 ticket_price: formData.ticket_price ? parseFloat(formData.ticket_price) : 0,
-                recurrence_rule: recurrenceRule
+                category: formData.category || null,
+                max_attendees: formData.max_attendees ? parseInt(formData.max_attendees) : null,
+                event_type: formData.event_type,
+                is_public: formData.is_public,
+                recurrence_rule: recurrenceRule,
             });
             if (error) throw error;
             toast.success("Event created successfully!");
+            setFormData({ title: '', description: '', location: '', start_date: '', end_date: '', ticket_price: '', category: '', max_attendees: '', event_type: 'physical', is_public: true });
             onSuccess();
-        } catch (e) { toast.error("Failed to create event"); console.error(e); }
-        finally { setLoading(false); }
+        } catch (e: any) {
+            toast.error(e?.message || "Failed to create event");
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Create Vibe Check (Event)</DialogTitle></DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-2">
+                    {/* Event Type */}
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setFormData({...formData, event_type: 'physical'})}
+                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.event_type === 'physical' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}
+                        >
+                            <MapPin className="w-4 h-4" /> Physical
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFormData({...formData, event_type: 'virtual', location: 'Online'})}
+                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.event_type === 'virtual' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}
+                        >
+                            <Grid className="w-4 h-4" /> Virtual
+                        </button>
+                    </div>
+
                     <div className="grid gap-2">
-                        <Label>Event Title</Label>
+                        <Label>Event Title *</Label>
                         <Input placeholder="Friday Night Jazz..." value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
                     </div>
+
                     <div className="grid gap-2">
-                        <Label>Date & Time</Label>
-                        <Input type="datetime-local" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} />
+                        <Label>Description</Label>
+                        <Textarea placeholder="Tell people what to expect..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="min-h-[70px]" />
                     </div>
-                    <div className="grid gap-2">
-                        <Label>Location</Label>
-                        <Input placeholder="Lagos, Nigeria" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
-                    </div>
-                    
-                    {/* IS PROGRAM TOGGLE */}
-                    <div className="flex items-center justify-between border p-3 rounded-lg bg-muted/20">
-                        <div className="space-y-0.5">
-                            <Label className="text-base">Recurring Program?</Label>
-                            <p className="text-xs text-muted-foreground">Make this a repeating series</p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-2">
+                            <Label>Start Date & Time *</Label>
+                            <Input type="datetime-local" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} />
                         </div>
-                        <div className="flex items-center space-x-2">
-                           <input type="checkbox" checked={isProgram} onChange={(e) => setIsProgram(e.target.checked)} className="h-5 w-5 accent-primary" />
+                        <div className="grid gap-2">
+                            <Label>End Date & Time</Label>
+                            <Input type="datetime-local" value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} />
                         </div>
                     </div>
 
-                    {/* FREQUENCY SELECTOR (Conditional) */}
+                    {formData.event_type === 'physical' && (
+                        <div className="grid gap-2">
+                            <Label>Location *</Label>
+                            <Input placeholder="Lagos, Nigeria" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-2">
+                            <Label>Category</Label>
+                            <select
+                                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={formData.category}
+                                onChange={e => setFormData({...formData, category: e.target.value})}
+                            >
+                                <option value="">Select...</option>
+                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Ticket Price (₦)</Label>
+                            <Input type="number" placeholder="0 = Free" min="0" value={formData.ticket_price} onChange={e => setFormData({...formData, ticket_price: e.target.value})} />
+                        </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label>Max Attendees <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                        <Input type="number" placeholder="Leave blank for unlimited" min="1" value={formData.max_attendees} onChange={e => setFormData({...formData, max_attendees: e.target.value})} />
+                    </div>
+
+                    <div className="flex items-center justify-between border p-3 rounded-lg bg-muted/20">
+                        <div>
+                            <Label className="text-sm font-medium">Public Event</Label>
+                            <p className="text-xs text-muted-foreground">Anyone can discover and join</p>
+                        </div>
+                        <Switch checked={formData.is_public} onCheckedChange={(v) => setFormData({...formData, is_public: v})} />
+                    </div>
+
+                    <div className="flex items-center justify-between border p-3 rounded-lg bg-muted/20">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">Recurring Program?</Label>
+                            <p className="text-xs text-muted-foreground">Make this a repeating series</p>
+                        </div>
+                        <Switch checked={isProgram} onCheckedChange={setIsProgram} />
+                    </div>
+
                     {isProgram && (
                         <div className="grid gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg animate-in fade-in zoom-in-95">
                             <Label className="text-primary font-semibold flex items-center gap-2">
                                 <Repeat className="w-4 h-4" /> Frequency
                             </Label>
                             <div className="flex gap-2 mt-1">
-                                <Button 
-                                   type="button" 
-                                   size="sm" 
-                                   variant={frequency === 'weekly' ? 'default' : 'outline'} 
-                                   className="flex-1"
-                                   onClick={() => setFrequency('weekly')}
-                                >
-                                   Weekly
-                                </Button>
-                                <Button 
-                                   type="button" 
-                                   size="sm" 
-                                   variant={frequency === 'biweekly' ? 'default' : 'outline'} 
-                                   className="flex-1"
-                                   onClick={() => setFrequency('biweekly')}
-                                >
-                                   Bi-Weekly
-                                </Button>
+                                <Button type="button" size="sm" variant={frequency === 'weekly' ? 'default' : 'outline'} className="flex-1" onClick={() => setFrequency('weekly')}>Weekly</Button>
+                                <Button type="button" size="sm" variant={frequency === 'biweekly' ? 'default' : 'outline'} className="flex-1" onClick={() => setFrequency('biweekly')}>Bi-Weekly</Button>
                             </div>
                         </div>
                     )}
                 </div>
                 <DialogFooter>
-                    <Button onClick={create} disabled={loading}>{loading ? 'Creating...' : 'Launch Vibe Check'}</Button>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
+                    <Button onClick={create} disabled={loading || !formData.title.trim() || !formData.start_date}>
+                        {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</> : 'Launch Vibe Check'}
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

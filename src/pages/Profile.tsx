@@ -773,11 +773,7 @@ const Profile = () => {
               aria-label="Upload avatar"
             />
 
-            {profile.is_premium && (
-              <div className="absolute bottom-0 right-0 translate-y-6 translate-x-[-2.25rem] bg-gradient-to-r from-amber-400 to-orange-500 text-white p-1.5 rounded-full border-[3px] border-background/10">
-                <Sparkles className="w-3.5 h-3.5" />
-              </div>
-            )}
+            {/* Premium badge shown next to name, not overlapping avatar upload button */}
           </div>
 
           <div className="mt-4 flex justify-between items-start">

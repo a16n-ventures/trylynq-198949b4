@@ -208,9 +208,15 @@ const Feed = () => {
           })));
         }
         
-        // Communities
+        // Communities — deduplicate by ID before setting state
         if (response.communities) {
-          setCommunities(response.communities.map((c: any) => ({
+          const seen = new Set<string>();
+          const unique = response.communities.filter((c: any) => {
+            if (seen.has(c.id)) return false;
+            seen.add(c.id);
+            return true;
+          });
+          setCommunities(unique.map((c: any) => ({
             ...c,
             avatar_url: c.cover_url || c.avatar_url || null
           })));

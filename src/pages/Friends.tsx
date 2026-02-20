@@ -76,11 +76,7 @@ const Friends = () => {
       try {
         const { data, error } = await supabase
           .from('friendships')
-          .select(`
-            id,
-            requester:profiles!requester_id(id, user_id, display_name, username, avatar_url),
-            addressee:profiles!addressee_id(id, user_id, display_name, username, avatar_url)
-          `)
+          .select('id, requester_id, addressee_id, status, created_at')
           .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
           .eq('status', 'accepted');
 
@@ -94,15 +90,28 @@ const Friends = () => {
           return [];
         }
 
-        // Filter out null profiles to prevent crashes if a user was deleted
-        const validFriends = data
+        // Fetch profiles for all users in these friendships
+        const userIds = new Set<string>();
+        (data || []).forEach((f: any) => {
+          userIds.add(f.requester_id);
+          userIds.add(f.addressee_id);
+        });
+
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, user_id, display_name, username, avatar_url')
+          .in('user_id', Array.from(userIds));
+
+        const profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+
+        const validFriends = (data || [])
           .map((f: any) => {
-            // Identify the other person (could be null if deleted)
-            const isRequester = f.requester?.user_id === user.id;
-            const profile = isRequester ? f.addressee : f.requester;
+            const isRequester = f.requester_id === user.id;
+            const otherId = isRequester ? f.addressee_id : f.requester_id;
+            const profile = profileMap.get(otherId);
             
             if (!profile) {
-              console.warn('Skipping friendship with null profile:', f.id);
+              console.warn('Skipping friendship with missing profile:', f.id);
               return null;
             }
 
