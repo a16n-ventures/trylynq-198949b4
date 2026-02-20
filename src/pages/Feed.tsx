@@ -239,10 +239,8 @@ const Feed = () => {
     }
     
     // 1. PAYMENT CHECK
-    if (event?.ticket_price && event.ticket_price > 0 && !event.is_attending) {
-       // Open your payment modal here
-       // return; (Stop the function so it doesn't auto-confirm)
-       toast.info(`Please pay ₦${event.ticket_price} to join!`); 
+    if (targetEvent?.ticket_price && targetEvent.ticket_price > 0 && !targetEvent.is_attending) {
+       toast.info(`Please pay ₦${targetEvent.ticket_price} to join!`); 
        return; 
     }
   
@@ -408,7 +406,19 @@ const Feed = () => {
                     {activeTab === 'communities' ? (
                         // COMMUNITIES VIEW
                         <div className="space-y-3">
-                            {communities.map(c => (
+                            {loading ? (
+                                <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+                            ) : communities.length === 0 ? (
+                                <div className="text-center py-16 flex flex-col items-center gap-4">
+                                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+                                        <Users className="w-8 h-8 text-muted-foreground/40" />
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold">No communities yet</p>
+                                        <p className="text-sm text-muted-foreground">Be the first to create one!</p>
+                                    </div>
+                                </div>
+                            ) : communities.map(c => (
                             <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => navigate(`/app/messages?type=community&id=${c.id}`)}>
                                 <Avatar className="h-14 w-14 rounded-xl border">
                                 <AvatarImage src={c.avatar_url || undefined} className="object-cover" />
@@ -431,11 +441,20 @@ const Feed = () => {
                             {loading ? (
                                 <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
                             ) : displayEvents.length === 0 ? (
-                                <div className="text-center py-12 text-muted-foreground flex flex-col items-center">
-                                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                                        <Calendar className="w-8 h-8 opacity-20" />
+                                <div className="text-center py-16 flex flex-col items-center gap-4">
+                                    <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center">
+                                        <Calendar className="w-10 h-10 text-muted-foreground/30" />
                                     </div>
-                                    <p>No events found for this vibe.</p>
+                                    <div>
+                                        <p className="font-semibold text-base">No events for this vibe yet</p>
+                                        <p className="text-sm text-muted-foreground mt-1">Be the first to create one in your area!</p>
+                                    </div>
+                                    <Button 
+                                        className="rounded-full px-6 gap-2 shadow-md"
+                                        onClick={() => navigate('/app/events/create')}
+                                    >
+                                        <Plus className="w-4 h-4" /> Create Event
+                                    </Button>
                                 </div>
                             ) : (
                                 displayEvents.map((event) => {

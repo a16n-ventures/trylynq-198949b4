@@ -37,22 +37,26 @@ interface ProfileLink {
   icon?: string;
 }
 
+interface UserPreferences {
+  notifications: boolean;
+  discovery_radius?: number;
+  ghost_mode?: boolean;
+  links?: ProfileLink[];
+  [key: string]: any;
+}
+
 interface ProfileData {
   user_id: string;
   display_name: string;
   username: string;
   email: string;
-  phone?: string | number | null;
+  phone?: string | null;
   bio: string;
   avatar_url: string;
   created_at: string;
+  is_premium?: boolean;
   profile_views_30d?: number;
-  preferences?: {
-    notifications: boolean;
-    discovery_radius?: number;
-    ghost_mode?: boolean; // Kept this from your new file
-    links?: ProfileLink[];
-  };
+  preferences?: UserPreferences;
 }
 
 interface LocationData {
@@ -98,9 +102,10 @@ const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
 
   return {
     profile: profileData ? { 
-      ...profileData, 
+      ...profileData,
+      phone: profileData.phone != null ? String(profileData.phone) : null,
       preferences: preferences || { notifications: true }
-    } as ProfileData : null,
+    } as unknown as ProfileData : null,
     location: locationData,
     stats: {
       friends: friendCount || 0,

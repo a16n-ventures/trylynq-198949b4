@@ -55,15 +55,16 @@ serve(async (req) => {
     // 2. FETCH CONTENT POOL
     // We fetch a larger pool (70 posts, 50 events) to let the algorithm filter down to the best gems
     const [eventsRes, communitiesRes] = await Promise.all([
-      // Events: Select user_id (creator) to check for boosts
+      // Events: Select creator_id to check for boosts
       supabase.from('events')
         .select(`*, event_attendees(count)`)
         .gt('start_date', new Date().toISOString())
         .order('start_date', { ascending: true })
         .limit(50),
 
+      // Use left join (no !inner) so communities with 0 members still appear
       supabase.from('communities')
-        .select(`*, community_members!inner(user_id, role)`)
+        .select(`*, community_members(user_id, role)`)
         .order('member_count', { ascending: false })
         .limit(30),
     ]);

@@ -71,14 +71,13 @@ serve(async (req) => {
           title: title,
           description: `Imported event. Join the vibe at ${location}!`,
           location: location,
-          latitude: coords.lat || (location.includes('Lagos') ? 6.5244 : 9.0765), // Smart fallback to Lagos/Abuja if geocode fails
+          latitude: coords.lat || (location.includes('Lagos') ? 6.5244 : 9.0765),
           longitude: coords.lng || (location.includes('Lagos') ? 3.3792 : 7.3986),
           start_date: eventDate.toISOString(),
           end_date: new Date(eventDate.getTime() + 4 * 60 * 60 * 1000).toISOString(),
           image_url: image_url,
-          price: price,
-          currency: 'NGN',
-          user_id: 'cac502eb-1185-44b7-a6ae-5dd6a6880617', 
+          ticket_price: price,
+          creator_id: (await supabase.from('profiles').select('user_id').limit(1).single()).data?.user_id,
           is_sponsored: false,
           match_score: 80
         })
@@ -99,7 +98,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
 
-  } catch (error) {
+  } catch (error: any) {
     return new Response(JSON.stringify({ error: error.message }), { 
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
