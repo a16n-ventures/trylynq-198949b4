@@ -53,24 +53,59 @@ serve(async (req) => {
     ) || [];
 
     // 2. FETCH CONTENT POOL
-    // We fetch a larger pool (70 posts, 50 events) to let the algorithm filter down to the best gems
-    const [eventsRes, communitiesRes] = await Promise.all([
-      // Events: Select creator_id to check for boosts
-      supabase.from('events')
+    // Build events query — filter by city if we have location context
+    let eventsQuery = supabase.from('events')
+      .select(`*, event_attendees(count)`)
+      .gt('start_date', new Date().toISOString())
+      .eq('is_public', true)
+      .order('start_date', { ascending: true });
+
+    // City-based filtering: match location column containing the city name
+    if (locationFilter) {
+      eventsQuery = eventsQuery.ilike('location', `%${locationFilter}%`);
+    }
+
+    const [eventsRes, cityEventsRes, communitiesRes] = await Promise.all([
+      // Primary: city-filtered events
+      eventsQuery.limit(50),
+
+      // Fallback: if city filter returns too few, also fetch global events
+      locationFilter ? supabase.from('events')
         .select(`*, event_attendees(count)`)
         .gt('start_date', new Date().toISOString())
+        .eq('is_public', true)
+        .not('location', 'ilike', `%${locationFilter}%`)
         .order('start_date', { ascending: true })
-        .limit(50),
+        .limit(20) : Promise.resolve({ data: [] }),
 
-      // Use left join (no !inner) so communities with 0 members still appear
+      // Communities: deduplicate by name using distinct approach
       supabase.from('communities')
         .select(`*, community_members(user_id, role)`)
-        .order('member_count', { ascending: false })
-        .limit(30),
+        .order('created_at', { ascending: false })
+        .limit(50),
     ]);
 
-    const events = eventsRes.data || [];
-    const communities = communitiesRes.data || [];
+    // Merge city events first, then global fallback (no duplicates)
+    const cityEvents = eventsRes.data || [];
+    const globalFallback = (cityEventsRes as any).data || [];
+    const seenEventIds = new Set(cityEvents.map((e: any) => e.id));
+    const mergedEvents = [...cityEvents];
+    for (const ge of globalFallback) {
+      if (!seenEventIds.has(ge.id)) mergedEvents.push(ge);
+    }
+
+    // Deduplicate communities by name (keep the one with highest member_count)
+    const allCommunities = communitiesRes.data || [];
+    const communityByName = new Map<string, any>();
+    for (const c of allCommunities) {
+      const existing = communityByName.get(c.name);
+      if (!existing || (c.member_count || 0) > (existing.member_count || 0)) {
+        communityByName.set(c.name, c);
+      }
+    }
+
+    const events = mergedEvents;
+    const communities = Array.from(communityByName.values());
 
     // 3. FETCH CREATOR "BOOST" STATUS (The Intelligent Layer)
     // We need to know which creators have paid for boosts

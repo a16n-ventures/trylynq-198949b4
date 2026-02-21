@@ -160,17 +160,35 @@ export default function Messages() {
     queryKey: ['comm_list_chat', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data } = await supabase
+      // Fetch communities I'm a member of
+      const { data: memberData } = await supabase
         .from('community_members')
-        .select('community:communities(*)')
+        .select('community_id')
         .eq('user_id', user.id);
-      
-      return (data || []).map((item: any) => ({
-        id: item.community.id,
+
+      const joinedIds = (memberData || []).map((m: any) => m.community_id);
+      if (joinedIds.length === 0) return [];
+
+      const { data: communities } = await supabase
+        .from('communities')
+        .select('*')
+        .in('id', joinedIds);
+
+      // Deduplicate by name
+      const byName = new Map<string, any>();
+      for (const c of (communities || [])) {
+        const existing = byName.get(c.name);
+        if (!existing || (c.member_count || 0) > (existing.member_count || 0)) {
+          byName.set(c.name, c);
+        }
+      }
+
+      return Array.from(byName.values()).map((c: any) => ({
+        id: c.id,
         type: 'community',
-        name: item.community.name,
-        avatar: item.community.cover_url,
-        subtitle: `${item.community.member_count || 0} members`,
+        name: c.name,
+        avatar: c.cover_url,
+        subtitle: `${c.member_count || 0} members`,
       })) as ChatItem[];
     },
     enabled: !!user && activeTab === 'community'
