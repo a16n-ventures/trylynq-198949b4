@@ -579,26 +579,47 @@ function NewChatModal({ open, onOpenChange, onSelect }: { open: boolean, onOpenC
     );
 }
 
-// --- NEW COMMUNITY MODAL ---
+// --- NEW COMMUNITY MODAL (with file upload) ---
 function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpenChange: (o: boolean) => void, onSuccess: () => void }) {
     const { user } = useAuth();
-    const [form, setForm] = useState({ name: '', description: '', cover_url: '' });
+    const [form, setForm] = useState({ name: '', description: '' });
+    const [coverFile, setCoverFile] = useState<File | null>(null);
+    const [coverPreview, setCoverPreview] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const fileRef = React.useRef<HTMLInputElement>(null);
+
+    const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB");
+        if (!file.type.startsWith('image/')) return toast.error("Images only");
+        setCoverFile(file);
+        setCoverPreview(URL.createObjectURL(file));
+    };
 
     const create = async () => {
         if (!form.name.trim()) return toast.error("Community name is required");
         setLoading(true);
         try {
+            let coverUrl: string | null = null;
+            if (coverFile && user) {
+                const ext = coverFile.name.split('.').pop();
+                const path = `${user.id}/${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('community-covers').upload(path, coverFile);
+                if (upErr) throw upErr;
+                const { data: { publicUrl } } = supabase.storage.from('community-covers').getPublicUrl(path);
+                coverUrl = publicUrl;
+            }
+
             const { data: community, error } = await supabase.from('communities').insert({
                 name: form.name.trim(),
                 description: form.description.trim() || null,
-                cover_url: form.cover_url.trim() || null,
+                cover_url: coverUrl,
                 creator_id: user?.id,
                 member_count: 1
             }).select().single();
             if (error) throw error;
 
-            // Auto-join as admin
             if (community) {
                 await supabase.from('community_members').insert({
                     community_id: community.id,
@@ -607,7 +628,9 @@ function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, o
                 });
             }
             toast.success("Community created!");
-            setForm({ name: '', description: '', cover_url: '' });
+            setForm({ name: '', description: '' });
+            setCoverFile(null);
+            setCoverPreview(null);
             onSuccess();
         } catch (e: any) {
             toast.error(e?.message || "Failed to create community");
@@ -623,35 +646,34 @@ function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, o
                     <DialogTitle>Create Community</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
+                    {/* Cover Photo Upload */}
+                    <div className="space-y-2">
+                        <Label>Cover Photo</Label>
+                        {coverPreview ? (
+                            <div className="relative w-full h-32 rounded-xl overflow-hidden border bg-muted">
+                                <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
+                                <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setCoverFile(null); setCoverPreview(null); }}>
+                                    <X className="w-3 h-3" />
+                                </Button>
+                            </div>
+                        ) : (
+                            <div 
+                                className="w-full h-32 rounded-xl border-2 border-dashed border-muted-foreground/20 flex flex-col items-center justify-center cursor-pointer hover:bg-muted/30 transition-colors"
+                                onClick={() => fileRef.current?.click()}
+                            >
+                                <ImageIcon className="w-8 h-8 text-muted-foreground/40 mb-2" />
+                                <span className="text-xs text-muted-foreground">Tap to add cover photo</span>
+                            </div>
+                        )}
+                        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverSelect} />
+                    </div>
                     <div className="space-y-2">
                         <Label>Community Name *</Label>
-                        <Input
-                            placeholder="Tech Meetups, Book Club..."
-                            value={form.name}
-                            onChange={e => setForm({ ...form, name: e.target.value })}
-                        />
+                        <Input placeholder="Tech Meetups, Book Club..." value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
                     </div>
                     <div className="space-y-2">
                         <Label>Description</Label>
-                        <Textarea
-                            placeholder="What's this group about? Who should join?"
-                            value={form.description}
-                            onChange={e => setForm({ ...form, description: e.target.value })}
-                            className="min-h-[80px]"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Cover Image URL <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                        <Input
-                            placeholder="https://..."
-                            value={form.cover_url}
-                            onChange={e => setForm({ ...form, cover_url: e.target.value })}
-                        />
-                        {form.cover_url && (
-                            <div className="w-full h-24 rounded-lg overflow-hidden border bg-muted">
-                                <img src={form.cover_url} alt="Cover preview" className="w-full h-full object-cover" onError={e => (e.currentTarget.style.display = 'none')} />
-                            </div>
-                        )}
+                        <Textarea placeholder="What's this group about?" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="min-h-[80px]" />
                     </div>
                 </div>
                 <DialogFooter>
@@ -665,7 +687,7 @@ function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, o
     );
 }
 
-// --- NEW EVENT MODAL (With all card fields) ---
+// --- NEW EVENT MODAL (With cover photo upload) ---
 function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpenChange: (o: boolean) => void, onSuccess: () => void }) {
     const { user } = useAuth();
     const [formData, setFormData] = useState({
@@ -681,11 +703,23 @@ function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpe
         is_public: true,
     });
     
+    const [coverFile, setCoverFile] = useState<File | null>(null);
+    const [coverPreview, setCoverPreview] = useState<string | null>(null);
     const [isProgram, setIsProgram] = useState(false);
     const [frequency, setFrequency] = useState<'weekly' | 'biweekly'>('weekly');
     const [loading, setLoading] = useState(false);
+    const fileRef = React.useRef<HTMLInputElement>(null);
 
     const categories = ['Music', 'Party', 'Tech', 'Sports', 'Arts', 'Food', 'Networking', 'Study Group', 'Social', 'Other'];
+
+    const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB");
+        if (!file.type.startsWith('image/')) return toast.error("Images only");
+        setCoverFile(file);
+        setCoverPreview(URL.createObjectURL(file));
+    };
 
     const create = async () => {
         if (!formData.title.trim() || !formData.start_date) return toast.error("Title and date are required");
@@ -698,6 +732,17 @@ function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpe
         }
 
         try {
+            // Upload cover photo
+            let imageUrl: string | null = null;
+            if (coverFile && user) {
+                const ext = coverFile.name.split('.').pop();
+                const path = `${user.id}/${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('event_images').upload(path, coverFile);
+                if (upErr) throw upErr;
+                const { data: { publicUrl } } = supabase.storage.from('event_images').getPublicUrl(path);
+                imageUrl = publicUrl;
+            }
+
             const { error } = await supabase.from('events').insert({
                 creator_id: user?.id,
                 title: formData.title.trim(),
@@ -711,10 +756,13 @@ function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpe
                 event_type: formData.event_type,
                 is_public: formData.is_public,
                 recurrence_rule: recurrenceRule,
+                image_url: imageUrl,
             });
             if (error) throw error;
             toast.success("Event created successfully!");
             setFormData({ title: '', description: '', location: '', start_date: '', end_date: '', ticket_price: '', category: '', max_attendees: '', event_type: 'physical', is_public: true });
+            setCoverFile(null);
+            setCoverPreview(null);
             onSuccess();
         } catch (e: any) {
             toast.error(e?.message || "Failed to create event");
@@ -729,20 +777,36 @@ function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpe
             <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Create Vibe Check (Event)</DialogTitle></DialogHeader>
                 <div className="space-y-4 py-2">
+                    {/* Cover Photo Upload */}
+                    <div className="space-y-2">
+                        {coverPreview ? (
+                            <div className="relative w-full h-40 rounded-xl overflow-hidden border bg-muted">
+                                <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
+                                <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setCoverFile(null); setCoverPreview(null); }}>
+                                    <X className="w-3 h-3" />
+                                </Button>
+                            </div>
+                        ) : (
+                            <div 
+                                className="w-full h-40 rounded-xl border-2 border-dashed border-muted-foreground/20 flex flex-col items-center justify-center cursor-pointer hover:bg-muted/30 transition-colors"
+                                onClick={() => fileRef.current?.click()}
+                            >
+                                <ImageIcon className="w-8 h-8 text-muted-foreground/40 mb-2" />
+                                <span className="text-sm font-medium text-muted-foreground">Add Cover Photo</span>
+                                <span className="text-xs text-muted-foreground/60">Max 5MB • JPG, PNG, WebP</span>
+                            </div>
+                        )}
+                        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverSelect} />
+                    </div>
+
                     {/* Event Type */}
                     <div className="grid grid-cols-2 gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setFormData({...formData, event_type: 'physical'})}
-                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.event_type === 'physical' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}
-                        >
+                        <button type="button" onClick={() => setFormData({...formData, event_type: 'physical'})}
+                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.event_type === 'physical' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}>
                             <MapPin className="w-4 h-4" /> Physical
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => setFormData({...formData, event_type: 'virtual', location: 'Online'})}
-                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.event_type === 'virtual' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}
-                        >
+                        <button type="button" onClick={() => setFormData({...formData, event_type: 'virtual', location: 'Online'})}
+                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.event_type === 'virtual' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}>
                             <Grid className="w-4 h-4" /> Virtual
                         </button>
                     </div>
@@ -778,11 +842,7 @@ function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpe
                     <div className="grid grid-cols-2 gap-3">
                         <div className="grid gap-2">
                             <Label>Category</Label>
-                            <select
-                                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={formData.category}
-                                onChange={e => setFormData({...formData, category: e.target.value})}
-                            >
+                            <select className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
                                 <option value="">Select...</option>
                                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>

@@ -438,7 +438,62 @@ const EventDetail = () => {
     enabled: !!eventId && !!user?.id,
   });
 
-  // RSVP Mutation
+  // RSVP Mutation (with payment for paid events)
+  const handlePaidRSVP = () => {
+    if (!user?.id || !eventId || !event) return;
+
+    // If paid event, trigger Flutterwave first
+    if (event.ticket_price && event.ticket_price > 0) {
+      const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
+      if (!flwKey || !window.FlutterwaveCheckout) {
+        toast.error("Payment system not loaded. Please refresh.");
+        return;
+      }
+
+      window.FlutterwaveCheckout({
+        public_key: flwKey,
+        tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
+        amount: event.ticket_price,
+        currency: "NGN",
+        payment_options: "card, banktransfer, ussd",
+        customer: { email: user.email || "user@ahmia.app", name: user.email || "User" },
+        customizations: {
+          title: "Event Ticket",
+          description: `Ticket: ${event.title}`,
+          logo: "https://try.usecorridor.xyz/ahmia/logo.png",
+        },
+        callback: async (response: any) => {
+          const toastId = toast.loading("Confirming your ticket...");
+          try {
+            await supabase.from('payments').insert({
+              user_id: user.id,
+              amount: event.ticket_price,
+              status: 'success',
+              tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
+              flw_ref: response.flw_ref || response.transaction_id?.toString(),
+            });
+
+            const { error } = await supabase.from('event_attendees').insert({
+              event_id: eventId, user_id: user.id, status: 'confirmed'
+            });
+            if (error) throw error;
+
+            toast.success("Ticket confirmed! 🎉", { id: toastId });
+            queryClient.invalidateQueries({ queryKey: ['event-attendees', eventId] });
+            queryClient.invalidateQueries({ queryKey: ['is-attending', eventId] });
+          } catch (err: any) {
+            toast.error(err.message || "Failed to confirm ticket", { id: toastId });
+          }
+        },
+        onclose: () => {},
+      });
+      return;
+    }
+
+    // Free event - direct RSVP
+    rsvpMutation.mutate();
+  };
+
   const rsvpMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id || !eventId) throw new Error('Missing user or event');
@@ -1208,7 +1263,7 @@ const EventDetail = () => {
             <Button
               className="w-full gradient-primary text-white shadow-lg"
               size="lg"
-              onClick={() => rsvpMutation.mutate()}
+              onClick={() => handlePaidRSVP()}
               disabled={rsvpMutation.isPending || isAttending}
             >
               {rsvpMutation.isPending ? (
@@ -1220,6 +1275,11 @@ const EventDetail = () => {
                 <>
                   <Check className="w-4 h-4 mr-2" />
                   Registered
+                </>
+              ) : event?.ticket_price && event.ticket_price > 0 ? (
+                <>
+                  <DollarSign className="w-4 h-4 mr-2" />
+                  Buy Ticket — ₦{event.ticket_price.toLocaleString()}
                 </>
               ) : (
                 <>

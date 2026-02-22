@@ -232,11 +232,10 @@ const Feed = () => {
     }
   };
 
-  // --- NUCLEAR RSVP FIX ---
+  // --- RSVP WITH PAYMENT ---
   const handleRSVP = async (eventId: string) => {
     if (!user) return toast.error("Please sign in to RSVP");
     
-    // ✅ FIX: Find event from EITHER source
     const targetEvent = events.find(e => e.id === eventId) || selectedEvent;
     if (!targetEvent) {
       console.error('Event not found:', eventId);
@@ -244,24 +243,73 @@ const Feed = () => {
       return;
     }
     
-    // 1. PAYMENT CHECK
+    // PAYMENT GATE: If paid event and not yet attending, trigger Flutterwave
     if (targetEvent?.ticket_price && targetEvent.ticket_price > 0 && !targetEvent.is_attending) {
-       toast.info(`Please pay ₦${targetEvent.ticket_price} to join!`); 
-       return; 
+      const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
+      if (!flwKey || !window.FlutterwaveCheckout) {
+        toast.error("Payment system not loaded. Please refresh.");
+        return;
+      }
+
+      window.FlutterwaveCheckout({
+        public_key: flwKey,
+        tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
+        amount: targetEvent.ticket_price,
+        currency: "NGN",
+        payment_options: "card, banktransfer, ussd",
+        customer: { email: user.email || "user@ahmia.app", name: user.email || "User" },
+        customizations: {
+          title: "Event Ticket",
+          description: `Ticket: ${targetEvent.title}`,
+          logo: "https://try.usecorridor.xyz/ahmia/logo.png",
+        },
+        callback: async (response: any) => {
+          const toastId = toast.loading("Confirming your ticket...");
+          try {
+            // Record payment
+            await supabase.from('payments').insert({
+              user_id: user.id,
+              amount: targetEvent.ticket_price!,
+              status: 'success',
+              tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
+              flw_ref: response.flw_ref || response.transaction_id?.toString(),
+            });
+
+            // Confirm RSVP
+            const { error } = await supabase.from('event_attendees').insert({
+              event_id: eventId, user_id: user.id, status: 'confirmed'
+            });
+            if (error) throw error;
+
+            // Update UI
+            setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e));
+            if (selectedEvent?.id === eventId) {
+              setSelectedEvent(prev => prev ? { ...prev, is_attending: true, attendee_count: (prev.attendee_count || 0) + 1 } : null);
+            }
+
+            toast.success("You're going! 🎉", { id: toastId });
+            navigate(`/app/messages?type=event&id=${eventId}`);
+          } catch (err: any) {
+            console.error('Payment confirmation error:', err);
+            toast.error(err.message || "Failed to confirm ticket", { id: toastId });
+          }
+        },
+        onclose: () => {},
+      });
+      return;
     }
-  
+
+    // FREE EVENT or CANCEL RSVP
     const isCurrentlyAttending = targetEvent.is_attending;
     const newStatus = !isCurrentlyAttending;
     const modifier = newStatus ? 1 : -1;
   
-    // Helper to update an event object
     const updateEventState = (e: Event): Event => ({
       ...e,
       is_attending: newStatus,
       attendee_count: Math.max(0, (e.attendee_count || 0) + modifier)
     });
   
-    // Optimistic Update
     setEvents(prev => prev.map(e => e.id === eventId ? updateEventState(e) : e));
     if (selectedEvent?.id === eventId) {
       setSelectedEvent(prev => prev ? updateEventState(prev) : null);
@@ -269,20 +317,10 @@ const Feed = () => {
   
     try {
       if (newStatus) {
-        // ✅ ADD ERROR LOGGING
         const { error } = await supabase
           .from('event_attendees')
-          .insert({ 
-            event_id: eventId, 
-            user_id: user.id, 
-            status: 'confirmed' 
-          });
-        
-        if (error) {
-          console.error('RSVP Insert Error:', error);
-          throw error;
-        }
-        
+          .insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
+        if (error) throw error;
         toast.success("You're going! 🎉");
         navigate(`/app/messages?type=event&id=${eventId}`);
       } else {
@@ -290,19 +328,13 @@ const Feed = () => {
           .from('event_attendees')
           .delete()
           .match({ event_id: eventId, user_id: user.id });
-        
-        if (error) {
-          console.error('RSVP Delete Error:', error);
-          throw error;
-        }
-        
+        if (error) throw error;
         toast.success("RSVP Cancelled");
       }
     } catch (e: any) {
       console.error('RSVP Failed:', e);
       toast.error(e.message || "Action failed");
       
-      // Revert on failure
       const revertEventState = (e: Event): Event => ({
         ...e,
         is_attending: isCurrentlyAttending,
@@ -536,7 +568,7 @@ const Feed = () => {
                                                 handleRSVP(event.id);
                                                 }}
                                             >
-                                                {event.is_attending ? "Going" : "RSVP"}
+                                                {event.is_attending ? "Going" : event.ticket_price && event.ticket_price > 0 ? `₦${event.ticket_price.toLocaleString()}` : "RSVP"}
                                             </Button>
                                             </div>
                                         </div>
@@ -650,7 +682,7 @@ const Feed = () => {
                 onClick={() => handleRSVP(selectedEvent.id)} 
                 className={`h-12 rounded-xl ${selectedEvent.is_attending ? "bg-green-600 hover:bg-green-700" : "bg-primary hover:bg-primary/90"}`}
               >
-                {selectedEvent.is_attending ? <><Check className="w-4 h-4 mr-2"/> Going</> : <><Ticket className="w-4 h-4 mr-2"/> RSVP</>}
+                {selectedEvent.is_attending ? <><Check className="w-4 h-4 mr-2"/> Going</> : selectedEvent.ticket_price && selectedEvent.ticket_price > 0 ? <><Ticket className="w-4 h-4 mr-2"/> ₦{selectedEvent.ticket_price.toLocaleString()}</> : <><Ticket className="w-4 h-4 mr-2"/> RSVP</>}
               </Button>
             </DialogFooter>
           </DialogContent>
