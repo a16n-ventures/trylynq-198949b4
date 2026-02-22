@@ -151,84 +151,83 @@ serve(async (req) => {
 
     const allScrapedEvents: any[] = [];
 
-    // Scrape events from multiple sources per city using Firecrawl search
-    for (const city of citiesToScrape) {
-      try {
-        console.log(`🏙️ Scraping events for ${city.name}...`);
+    // Scrape all cities in parallel batches of 5
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < citiesToScrape.length; i += BATCH_SIZE) {
+      const batch = citiesToScrape.slice(i, i + BATCH_SIZE);
+      console.log(`🏙️ Scraping batch: ${batch.map(c => c.name).join(', ')}...`);
 
-        // Use Firecrawl search to find events
-        const searchResponse = await fetch('https://api.firecrawl.dev/v1/search', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${firecrawlKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: `upcoming events in ${city.name} Nigeria 2026`,
-            limit: 8,
-            scrapeOptions: {
-              formats: ['markdown'],
+      const batchResults = await Promise.allSettled(
+        batch.map(async (city) => {
+          const searchResponse = await fetch('https://api.firecrawl.dev/v1/search', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json',
             },
-          }),
-        });
+            body: JSON.stringify({
+              query: `upcoming events in ${city.name} Nigeria 2026`,
+              limit: 5,
+              scrapeOptions: { formats: ['markdown'] },
+            }),
+          });
 
-        if (!searchResponse.ok) {
-          console.error(`❌ Firecrawl search failed for ${city.name}: ${searchResponse.status}`);
-          continue;
-        }
-
-        const searchData = await searchResponse.json();
-        const results = searchData.data || [];
-
-        console.log(`📄 Got ${results.length} search results for ${city.name}`);
-
-        for (const result of results) {
-          try {
-            const title = result.title || '';
-            const description = result.description || result.markdown?.substring(0, 300) || '';
-            const sourceUrl = result.url || '';
-
-            // Skip non-event results
-            if (!title || title.length < 5) continue;
-            const skipKeywords = ['login', 'signup', 'privacy', 'terms', 'cookie'];
-            if (skipKeywords.some(k => title.toLowerCase().includes(k))) continue;
-
-            const category = detectCategory(`${title} ${description}`);
-            const coords = getCityCoords(city.name);
-
-            // Try to extract image from the scraped page metadata
-            const scrapedImage = result.metadata?.ogImage || result.metadata?.image || null;
-
-            // Generate a future date for this event (1-28 days out)
-            const eventDate = new Date();
-            eventDate.setDate(eventDate.getDate() + 1 + Math.floor(Math.random() * 28));
-            eventDate.setHours(9 + Math.floor(Math.random() * 12), Math.random() < 0.5 ? 0 : 30, 0, 0);
-
-            const endDate = new Date(eventDate);
-            endDate.setHours(endDate.getHours() + 2 + Math.floor(Math.random() * 4));
-
-            allScrapedEvents.push({
-              title: title.substring(0, 200),
-              description: description.substring(0, 500),
-              location: `${city.name}, ${city.state}`,
-              latitude: coords?.lat || city.lat,
-              longitude: coords?.lng || city.lng,
-              start_date: eventDate.toISOString(),
-              end_date: endDate.toISOString(),
-              ticket_price: Math.random() < 0.3 ? 0 : Math.round(Math.random() * 15000 / 500) * 500,
-              category,
-              creator_id: fallbackCreatorId,
-              is_sponsored: false,
-              is_public: true,
-              event_type: 'physical',
-              image_url: getCoverPhoto(category, scrapedImage),
-            });
-          } catch (e) {
-            console.error(`⚠️ Error parsing result:`, e);
+          if (!searchResponse.ok) {
+            console.error(`❌ Firecrawl search failed for ${city.name}: ${searchResponse.status}`);
+            return [];
           }
+
+          const searchData = await searchResponse.json();
+          const results = searchData.data || [];
+          console.log(`📄 Got ${results.length} results for ${city.name}`);
+
+          const cityEvents: any[] = [];
+          for (const result of results) {
+            try {
+              const title = result.title || '';
+              const description = result.description || result.markdown?.substring(0, 300) || '';
+              if (!title || title.length < 5) continue;
+              const skipKeywords = ['login', 'signup', 'privacy', 'terms', 'cookie'];
+              if (skipKeywords.some(k => title.toLowerCase().includes(k))) continue;
+
+              const category = detectCategory(`${title} ${description}`);
+              const coords = getCityCoords(city.name);
+              const scrapedImage = result.metadata?.ogImage || result.metadata?.image || null;
+
+              const eventDate = new Date();
+              eventDate.setDate(eventDate.getDate() + 1 + Math.floor(Math.random() * 28));
+              eventDate.setHours(9 + Math.floor(Math.random() * 12), Math.random() < 0.5 ? 0 : 30, 0, 0);
+              const endDate = new Date(eventDate);
+              endDate.setHours(endDate.getHours() + 2 + Math.floor(Math.random() * 4));
+
+              cityEvents.push({
+                title: title.substring(0, 200),
+                description: description.substring(0, 500),
+                location: `${city.name}, ${city.state}`,
+                latitude: coords?.lat || city.lat,
+                longitude: coords?.lng || city.lng,
+                start_date: eventDate.toISOString(),
+                end_date: endDate.toISOString(),
+                ticket_price: Math.random() < 0.3 ? 0 : Math.round(Math.random() * 15000 / 500) * 500,
+                category,
+                creator_id: fallbackCreatorId,
+                is_sponsored: false,
+                is_public: true,
+                event_type: 'physical',
+                image_url: getCoverPhoto(category, scrapedImage),
+              });
+            } catch (e) {
+              console.error(`⚠️ Error parsing result:`, e);
+            }
+          }
+          return cityEvents;
+        })
+      );
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          allScrapedEvents.push(...result.value);
         }
-      } catch (cityError) {
-        console.error(`❌ Failed to scrape ${city.name}:`, cityError);
       }
     }
 
