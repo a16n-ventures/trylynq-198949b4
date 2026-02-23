@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
+import { CATEGORIES } from '@/lib/categories';
 import {
   Dialog,
   DialogContent,
@@ -53,15 +54,7 @@ const CreateEvent = () => {
     eventType: 'physical', // 'physical' or 'virtual'
   });
 
-  const categories = [
-    'Study Group',
-    'Social Hangout',
-    'Sports & Fitness',
-    'Food & Dining',
-    'Entertainment',
-    'Networking',
-    'Other'
-  ];
+  const categories = [...CATEGORIES];
 
   // Input validation
   const validateForm = () => {

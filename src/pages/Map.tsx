@@ -198,7 +198,10 @@ const MapPage = () => {
     queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
       if (!location) return [];
-      const { data } = await supabase.from('events').select('*, creator:profiles!creator_id(display_name, avatar_url)').gt('start_date', new Date().toISOString());
+      const { data } = await supabase.from('events')
+        .select('*, event_attendees(user_id, profiles(avatar_url))')
+        .gt('start_date', new Date().toISOString())
+        .eq('is_public', true);
       if (!data) return [];
 
       return (data.map((e: any) => {
@@ -206,7 +209,7 @@ const MapPage = () => {
         const eLng = e.longitude || 3.3792;
         const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
         
-        if (dist > discoveryRadiusKm) return null; // Radius Filter
+        if (dist > discoveryRadiusKm) return null;
 
         const friendImages = e.event_attendees?.map((a: any) => a.profiles?.avatar_url).filter(Boolean).slice(0, 3) || [];
 
@@ -223,7 +226,6 @@ const MapPage = () => {
           attendee_count: e.event_attendees?.length || 0
         };
       }).filter(Boolean))
-      // ✅ SORTING: NEAREST FIRST
       .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
     },
     enabled: !!location && activeView === 'events',

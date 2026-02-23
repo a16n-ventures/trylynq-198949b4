@@ -7,14 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Curated list of high-level categories for better AI matching
-const INTEREST_TAGS = [
-  "Tech & Coding", "Business & Startups", "Music & Concerts", 
-  "Art & Culture", "Food & Drink", "Nightlife", "Networking",
-  "Health & Wellness", "Sports & Fitness", "Travel & Outdoor",
-  "Gaming", "Photography", "Fashion", "Film & Cinema",
-  "Education", "Spirituality", "Volunteering", "Comedy"
-];
+import { CATEGORIES } from "@/lib/categories";
+
+const INTEREST_TAGS = [...CATEGORIES];
 
 interface InterestSelectorProps {
   onComplete: () => void;

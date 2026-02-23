@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Settings, MapPin, Calendar, Grid, Ticket,
   LogOut, Sparkles, QrCode, Share2,
-  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift
+  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -214,6 +214,40 @@ const ReferralSection = () => {
       <p className="text-xs text-muted-foreground text-center">
         Earn ₦{referralSettings?.reward_amount || 500} for each friend who joins using your code!
       </p>
+    </div>
+  );
+};
+
+const AdminPortalButton = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  
+  const { data: isAdmin } = useQuery({
+    queryKey: ['is-admin', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return false;
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .in('role', ['admin', 'super_admin']);
+      return (data && data.length > 0) || false;
+    },
+    enabled: !!user?.id,
+  });
+
+  if (!isAdmin) return null;
+
+  return (
+    <div className="flex items-center justify-between p-3 bg-primary/5 rounded-xl border border-primary/20 mb-3">
+      <div className="flex items-center gap-3">
+        <div className="p-2 bg-primary/10 rounded-lg text-primary"><Shield className="w-5 h-5" /></div>
+        <div>
+          <p className="font-semibold text-sm">Admin Portal</p>
+          <p className="text-xs text-muted-foreground">Manage platform</p>
+        </div>
+      </div>
+      <Button variant="outline" size="sm" onClick={() => navigate('/admin')}>Open</Button>
     </div>
   );
 };
@@ -718,6 +752,9 @@ const Profile = () => {
 
                 {/* Referrals Section (ADDED) */}
                 <ReferralSection />
+
+                {/* Admin Portal (for admin users) */}
+                <AdminPortalButton />
 
                 {/* Actions & Danger Zone */}
                 <div className="pt-2 border-t space-y-3">

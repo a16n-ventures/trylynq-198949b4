@@ -232,74 +232,16 @@ const Feed = () => {
     }
   };
 
-  // --- RSVP WITH PAYMENT ---
+  // --- RSVP (RSVP first, then prompt payment for paid events) ---
   const handleRSVP = async (eventId: string) => {
     if (!user) return toast.error("Please sign in to RSVP");
     
     const targetEvent = events.find(e => e.id === eventId) || selectedEvent;
     if (!targetEvent) {
-      console.error('Event not found:', eventId);
       toast.error("Event not found");
       return;
     }
     
-    // PAYMENT GATE: If paid event and not yet attending, trigger Flutterwave
-    if (targetEvent?.ticket_price && targetEvent.ticket_price > 0 && !targetEvent.is_attending) {
-      const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
-      if (!flwKey || !window.FlutterwaveCheckout) {
-        toast.error("Payment system not loaded. Please refresh.");
-        return;
-      }
-
-      window.FlutterwaveCheckout({
-        public_key: flwKey,
-        tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
-        amount: targetEvent.ticket_price,
-        currency: "NGN",
-        payment_options: "card, banktransfer, ussd",
-        customer: { email: user.email || "user@ahmia.app", name: user.email || "User" },
-        customizations: {
-          title: "Event Ticket",
-          description: `Ticket: ${targetEvent.title}`,
-          logo: "https://try.usecorridor.xyz/ahmia/logo.png",
-        },
-        callback: async (response: any) => {
-          const toastId = toast.loading("Confirming your ticket...");
-          try {
-            // Record payment
-            await supabase.from('payments').insert({
-              user_id: user.id,
-              amount: targetEvent.ticket_price!,
-              status: 'success',
-              tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
-              flw_ref: response.flw_ref || response.transaction_id?.toString(),
-            });
-
-            // Confirm RSVP
-            const { error } = await supabase.from('event_attendees').insert({
-              event_id: eventId, user_id: user.id, status: 'confirmed'
-            });
-            if (error) throw error;
-
-            // Update UI
-            setEvents(prev => prev.map(e => e.id === eventId ? { ...e, is_attending: true, attendee_count: (e.attendee_count || 0) + 1 } : e));
-            if (selectedEvent?.id === eventId) {
-              setSelectedEvent(prev => prev ? { ...prev, is_attending: true, attendee_count: (prev.attendee_count || 0) + 1 } : null);
-            }
-
-            toast.success("You're going! 🎉", { id: toastId });
-            navigate(`/app/messages?type=event&id=${eventId}`);
-          } catch (err: any) {
-            console.error('Payment confirmation error:', err);
-            toast.error(err.message || "Failed to confirm ticket", { id: toastId });
-          }
-        },
-        onclose: () => {},
-      });
-      return;
-    }
-
-    // FREE EVENT or CANCEL RSVP
     const isCurrentlyAttending = targetEvent.is_attending;
     const newStatus = !isCurrentlyAttending;
     const modifier = newStatus ? 1 : -1;
@@ -310,6 +252,7 @@ const Feed = () => {
       attendee_count: Math.max(0, (e.attendee_count || 0) + modifier)
     });
   
+    // Optimistic update
     setEvents(prev => prev.map(e => e.id === eventId ? updateEventState(e) : e));
     if (selectedEvent?.id === eventId) {
       setSelectedEvent(prev => prev ? updateEventState(prev) : null);
@@ -317,11 +260,48 @@ const Feed = () => {
   
     try {
       if (newStatus) {
+        // RSVP first
         const { error } = await supabase
           .from('event_attendees')
           .insert({ event_id: eventId, user_id: user.id, status: 'confirmed' });
         if (error) throw error;
         toast.success("You're going! 🎉");
+        
+        // Then prompt payment for paid events
+        if (targetEvent.ticket_price && targetEvent.ticket_price > 0) {
+          const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
+          if (flwKey && window.FlutterwaveCheckout) {
+            window.FlutterwaveCheckout({
+              public_key: flwKey,
+              tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
+              amount: targetEvent.ticket_price,
+              currency: "NGN",
+              payment_options: "card, banktransfer, ussd",
+              customer: { email: user.email || "user@app.com", name: user.email || "User" },
+              customizations: {
+                title: "Event Ticket",
+                description: `Ticket: ${targetEvent.title}`,
+                logo: "",
+              },
+              callback: async (response: any) => {
+                try {
+                  await supabase.from('payments').insert({
+                    user_id: user.id,
+                    amount: targetEvent.ticket_price!,
+                    status: 'success',
+                    tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
+                    flw_ref: response.flw_ref || response.transaction_id?.toString(),
+                  });
+                  toast.success("Payment confirmed! 🎉");
+                } catch (err: any) {
+                  console.error('Payment record error:', err);
+                }
+              },
+              onclose: () => {},
+            });
+          }
+        }
+
         navigate(`/app/messages?type=event&id=${eventId}`);
       } else {
         const { error } = await supabase
@@ -335,10 +315,10 @@ const Feed = () => {
       console.error('RSVP Failed:', e);
       toast.error(e.message || "Action failed");
       
-      const revertEventState = (e: Event): Event => ({
-        ...e,
+      const revertEventState = (ev: Event): Event => ({
+        ...ev,
         is_attending: isCurrentlyAttending,
-        attendee_count: Math.max(0, (e.attendee_count || 0) - modifier)
+        attendee_count: Math.max(0, (ev.attendee_count || 0) - modifier)
       });
       
       setEvents(prev => prev.map(e => e.id === eventId ? revertEventState(e) : e));
@@ -348,7 +328,7 @@ const Feed = () => {
     }
   };
 
-  // --- FILTER LOGIC (Simulating Clyx Categories) ---
+  // --- FILTER LOGIC ---
   const getFilteredEvents = () => {
     let filtered = events;
     if (searchQuery) {
@@ -356,11 +336,14 @@ const Feed = () => {
     }
 
     switch (activeTab) {
-        case 'for_you': return filtered; // Algorithm default
-        case 'trending': return filtered.filter(e => (e.attendee_count || 0) > 10 || e.match_score && e.match_score > 80);
-        case 'music': return filtered.filter(e => e.category?.toLowerCase() === 'music' || e.description?.toLowerCase().includes('music'));
-        case 'nightlife': return filtered.filter(e => e.category?.toLowerCase() === 'party' || e.title.toLowerCase().includes('party'));
-        case 'art': return filtered.filter(e => e.category?.toLowerCase() === 'arts' || e.title.toLowerCase().includes('art'));
+        case 'for_you': return filtered;
+        case 'trending': return filtered.filter(e => (e.attendee_count || 0) > 10 || (e.match_score && e.match_score > 80));
+        case 'music': return filtered.filter(e => e.category?.toLowerCase().includes('music') || e.description?.toLowerCase().includes('music'));
+        case 'nightlife': return filtered.filter(e => e.category?.toLowerCase().includes('nightlife') || e.category?.toLowerCase().includes('party') || e.title.toLowerCase().includes('party'));
+        case 'tech': return filtered.filter(e => e.category?.toLowerCase().includes('tech') || e.title.toLowerCase().includes('tech'));
+        case 'sports': return filtered.filter(e => e.category?.toLowerCase().includes('sports') || e.category?.toLowerCase().includes('fitness'));
+        case 'food': return filtered.filter(e => e.category?.toLowerCase().includes('food') || e.category?.toLowerCase().includes('drink'));
+        case 'art': return filtered.filter(e => e.category?.toLowerCase().includes('art') || e.category?.toLowerCase().includes('culture'));
         default: return filtered;
     }
   };
@@ -398,7 +381,7 @@ const Feed = () => {
             </div>
         </div>
 
-        {/* 2. CLYX CATEGORY TABS (Scrollable) */}
+        {/* 2. CATEGORY TABS (Scrollable) */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="w-full overflow-x-auto scrollbar-hide px-4 pb-3">
                 <TabsList className="bg-transparent p-0 gap-2 h-auto flex justify-start">
@@ -416,6 +399,15 @@ const Feed = () => {
                     </TabsTrigger>
                     <TabsTrigger value="nightlife" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
                         <Martini className="w-3 h-3 mr-1.5" /> Nightlife
+                    </TabsTrigger>
+                    <TabsTrigger value="tech" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
+                        <Zap className="w-3 h-3 mr-1.5" /> Tech
+                    </TabsTrigger>
+                    <TabsTrigger value="sports" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
+                        <Users className="w-3 h-3 mr-1.5" /> Sports
+                    </TabsTrigger>
+                    <TabsTrigger value="food" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
+                        <Sparkles className="w-3 h-3 mr-1.5" /> Food
                     </TabsTrigger>
                     <TabsTrigger value="art" className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all">
                         <Palette className="w-3 h-3 mr-1.5" /> Art

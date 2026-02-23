@@ -12,12 +12,7 @@ import { usePremiumFeatures, useHasFeature } from '@/hooks/usePremiumFeatures';
 import { initiatePremiumPayment } from '@/utils/premiumPayment';
 import { FeatureCard } from '@/components/premium/FeatureCard';
 
-// --- Type definitions ---
-declare global {
-  interface Window {
-    FlutterwaveCheckout?: (options: any) => void;
-  }
-}
+// FlutterwaveCheckout type is declared globally in vite-env.d.ts
 
 const loadFlutterwaveScript = () => {
   return new Promise<void>((resolve, reject) => {

@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 
 // --- Types ---
-type NotificationType = 'nearby_user' | 'friend_request' | 'event_invite' | 'message' | 'location_share' | 'story_reply';
+type NotificationType = 'nearby_user' | 'friend_request' | 'event_invite' | 'message' | 'location_share' | 'story_reply' | 'rsvp' | 'payment' | 'event_update';
 
 type NotificationItem = {
   id: string;
@@ -262,6 +262,16 @@ export default function Notifications() {
         }, () => {
           queryClient.invalidateQueries({ queryKey: ['notifications'] });
         })
+        .subscribe(),
+
+      supabase.channel('rsvp-notif')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'event_attendees',
+        }, () => {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        })
         .subscribe()
     ];
 
@@ -369,6 +379,12 @@ export default function Notifications() {
         return <MapPin className="w-4 h-4 text-amber-500" />;
       case 'nearby_user':
         return <Navigation className="w-4 h-4 text-emerald-500" />;
+      case 'rsvp':
+        return <Check className="w-4 h-4 text-green-600" />;
+      case 'payment':
+        return <Bell className="w-4 h-4 text-primary" />;
+      case 'event_update':
+        return <Calendar className="w-4 h-4 text-blue-600" />;
       default:
         return <Bell className="w-4 h-4 text-muted-foreground" />;
     }

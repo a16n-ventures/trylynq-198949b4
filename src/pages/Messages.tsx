@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
+import { CATEGORIES } from "@/lib/categories";
 
 // Components
 import { MessageBubble } from '@/components/messages/MessageBubble';
@@ -710,7 +711,7 @@ function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpe
     const [loading, setLoading] = useState(false);
     const fileRef = React.useRef<HTMLInputElement>(null);
 
-    const categories = ['Music', 'Party', 'Tech', 'Sports', 'Arts', 'Food', 'Networking', 'Study Group', 'Social', 'Other'];
+    const categories = [...CATEGORIES];
 
     const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
