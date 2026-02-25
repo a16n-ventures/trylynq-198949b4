@@ -253,7 +253,7 @@ const AdminPortalButton = () => {
 };
 
 // --- Events Profile Tab Component ---
-const EventsProfileTab = ({ userId, navigate }: { userId?: string; navigate: (path: string) => void }) => {
+{/* const EventsProfileTab = ({ userId, navigate }: { userId?: string; navigate: (path: string) => void }) => {
   const { data: hostedEvents = [] } = useQuery({
     queryKey: ['hosted-events', userId],
     queryFn: async () => {
@@ -295,7 +295,7 @@ const EventsProfileTab = ({ userId, navigate }: { userId?: string; navigate: (pa
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-3">
+{/* <div className="grid grid-cols-3 gap-3">
         <Card className="p-3 text-center">
           <p className="text-2xl font-bold">{hostedEvents.length}</p>
           <p className="text-xs text-muted-foreground">Hosted</p>
@@ -311,7 +311,7 @@ const EventsProfileTab = ({ userId, navigate }: { userId?: string; navigate: (pa
       </div>
 
       {/* Hosted Events */}
-      {hostedEvents.length > 0 && (
+{/*  {hostedEvents.length > 0 && (
         <div>
           <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Hosted Events</h3>
           <div className="space-y-2">
@@ -336,7 +336,7 @@ const EventsProfileTab = ({ userId, navigate }: { userId?: string; navigate: (pa
       )}
 
       {/* Attending Events */}
-      {attendingEvents.length > 0 && (
+{/*      {attendingEvents.length > 0 && (
         <div>
           <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Attending</h3>
           <div className="space-y-2">
@@ -370,7 +370,7 @@ const EventsProfileTab = ({ userId, navigate }: { userId?: string; navigate: (pa
       )}
     </div>
   );
-};
+}; */}
 
 const Profile = () => {
   const { user, signOut } = useAuth();
@@ -955,14 +955,16 @@ const Profile = () => {
               <span className="block font-bold text-lg">{stats.friends}</span>
               <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Friends</span>
             </div>
-            <div className="text-center cursor-pointer hover:opacity-70 transition-opacity">
+            <div className="text-center cursor-pointer hover:opacity-70 transition-opacity" 
+              onClick={() =>
+navigate('/app/events')}>
               <span className="block font-bold text-lg">{myTickets.length}</span>
               <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Events</span>
             </div>
             <div className="text-center cursor-pointer hover:opacity-70 transition-opacity">
               <span className="block font-bold text-lg">84</span>
               <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Score</span>
-            </div>
+            </div> 
           </div>
         </div>
       </div>
@@ -976,12 +978,12 @@ const Profile = () => {
           >
             <Ticket className="w-4 h-4 mr-2" /> Tickets
           </TabsTrigger>
-          <TabsTrigger
+          {/* <TabsTrigger
             value="events"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
           >
             <Calendar className="w-4 h-4 mr-2" /> Events
-          </TabsTrigger>
+          </TabsTrigger> */}
           <TabsTrigger
             value="moments"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
@@ -1029,9 +1031,9 @@ const Profile = () => {
         </TabsContent>
 
         {/* B. EVENTS TAB (Hosted, Attending, Stats) */}
-        <TabsContent value="events" className="p-4 space-y-6 min-h-[300px]">
+        {/* <TabsContent value="events" className="p-4 space-y-6 min-h-[300px]">
           <EventsProfileTab userId={user?.id} navigate={navigate} />
-        </TabsContent>
+        </TabsContent> */}
 
         {/* C. MOMENTS (Grid View) */}
         <TabsContent value="moments" className="p-1 min-h-[300px]">
