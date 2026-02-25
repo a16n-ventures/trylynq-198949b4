@@ -252,126 +252,6 @@ const AdminPortalButton = () => {
   );
 };
 
-// --- Events Profile Tab Component ---
-{/* const EventsProfileTab = ({ userId, navigate }: { userId?: string; navigate: (path: string) => void }) => {
-  const { data: hostedEvents = [] } = useQuery({
-    queryKey: ['hosted-events', userId],
-    queryFn: async () => {
-      if (!userId) return [];
-      const { data } = await supabase
-        .from('events')
-        .select('id, title, start_date, location, image_url, ticket_price')
-        .eq('creator_id', userId)
-        .order('start_date', { ascending: false })
-        .limit(20);
-      return data || [];
-    },
-    enabled: !!userId,
-  });
-
-  const { data: attendingEvents = [] } = useQuery({
-    queryKey: ['attending-events', userId],
-    queryFn: async () => {
-      if (!userId) return [];
-      const { data: attendances } = await supabase
-        .from('event_attendees')
-        .select('event_id')
-        .eq('user_id', userId)
-        .eq('status', 'confirmed');
-      if (!attendances?.length) return [];
-      const { data: events } = await supabase
-        .from('events')
-        .select('id, title, start_date, location, image_url')
-        .in('id', attendances.map(a => a.event_id))
-        .order('start_date', { ascending: false });
-      return events || [];
-    },
-    enabled: !!userId,
-  });
-
-  const totalViews = hostedEvents.reduce((sum: number, e: any) => sum + (e.event_views_30d || 0), 0);
-  const totalRevenue = hostedEvents.reduce((sum: number, e: any) => sum + (e.ticket_price || 0), 0);
-
-  return (
-    <div className="space-y-6">
-      {/* Stats Cards */}
-{/* <div className="grid grid-cols-3 gap-3">
-        <Card className="p-3 text-center">
-          <p className="text-2xl font-bold">{hostedEvents.length}</p>
-          <p className="text-xs text-muted-foreground">Hosted</p>
-        </Card>
-        <Card className="p-3 text-center">
-          <p className="text-2xl font-bold">{attendingEvents.length}</p>
-          <p className="text-xs text-muted-foreground">Attending</p>
-        </Card>
-        <Card className="p-3 text-center">
-          <p className="text-2xl font-bold">{totalViews}</p>
-          <p className="text-xs text-muted-foreground">Views</p>
-        </Card>
-      </div>
-
-      {/* Hosted Events */}
-{/*  {hostedEvents.length > 0 && (
-        <div>
-          <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Hosted Events</h3>
-          <div className="space-y-2">
-            {hostedEvents.map((event: any) => (
-              <Card key={event.id} className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/app/events/${event.id}`)}>
-                <div className="flex items-center gap-3 p-3">
-                  <div className="w-14 h-14 rounded-lg bg-muted overflow-hidden shrink-0">
-                    {event.image_url && <img src={event.image_url} className="w-full h-full object-cover" alt="" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-sm truncate">{event.title}</h4>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Calendar className="w-3 h-3" /> {new Date(event.start_date).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="text-[10px] shrink-0">Host</Badge>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Attending Events */}
-{/*      {attendingEvents.length > 0 && (
-        <div>
-          <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Attending</h3>
-          <div className="space-y-2">
-            {attendingEvents.map((event: any) => (
-              <Card key={event.id} className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/app/events/${event.id}`)}>
-                <div className="flex items-center gap-3 p-3">
-                  <div className="w-14 h-14 rounded-lg bg-muted overflow-hidden shrink-0">
-                    {event.image_url && <img src={event.image_url} className="w-full h-full object-cover" alt="" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-sm truncate">{event.title}</h4>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Calendar className="w-3 h-3" /> {new Date(event.start_date).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Badge variant="secondary" className="text-[10px] shrink-0">Going</Badge>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hostedEvents.length === 0 && attendingEvents.length === 0 && (
-        <div className="text-center py-12 bg-muted/20 rounded-2xl border-2 border-dashed border-muted">
-          <Calendar className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
-          <h3 className="font-semibold">No events yet</h3>
-          <p className="text-sm text-muted-foreground mt-1 mb-4">Create or attend events to see them here.</p>
-          <Button onClick={() => navigate('/app/events/create')}>Create Event</Button>
-        </div>
-      )}
-    </div>
-  );
-}; */}
-
 const Profile = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -958,7 +838,7 @@ const Profile = () => {
             <div className="text-center cursor-pointer hover:opacity-70 transition-opacity" 
               onClick={() =>
 navigate('/app/events')}>
-              <span className="block font-bold text-lg">{myTickets.length}</span>
+              <span className="block font-bold text-lg">{events.length}</span>
               <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Events</span>
             </div>
             <div className="text-center cursor-pointer hover:opacity-70 transition-opacity">
@@ -976,14 +856,9 @@ navigate('/app/events')}>
             value="tickets"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
           >
-            <Ticket className="w-4 h-4 mr-2" /> Tickets
+            <Ticket className="w-4 h-4 mr-2" /> My Tickets
           </TabsTrigger>
-          {/* <TabsTrigger
-            value="events"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
-          >
-            <Calendar className="w-4 h-4 mr-2" /> Events
-          </TabsTrigger> */}
+          
           <TabsTrigger
             value="moments"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
@@ -1029,11 +904,6 @@ navigate('/app/events')}>
             </div>
           )}
         </TabsContent>
-
-        {/* B. EVENTS TAB (Hosted, Attending, Stats) */}
-        {/* <TabsContent value="events" className="p-4 space-y-6 min-h-[300px]">
-          <EventsProfileTab userId={user?.id} navigate={navigate} />
-        </TabsContent> */}
 
         {/* C. MOMENTS (Grid View) */}
         <TabsContent value="moments" className="p-1 min-h-[300px]">
