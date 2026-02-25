@@ -283,7 +283,7 @@ const CreateEvent = () => {
               variant="ghost" 
               size="sm" 
               className="text-white hover:bg-white/20 p-2"
-              onClick={() => navigate('/app/events')}
+              onClick={() => navigate('/app/messages?tab=vibe-check')}
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
