@@ -346,13 +346,49 @@ const Friends = () => {
     onError: () => toast.error("Failed to remove request")
   });
 
-  // Combined list for display (Friends + Contacts)
-  const allContactsList = [
+  // Combined list: Friends first, then imported contacts (with label)
+  const allContactsList: Friend[] = [
       ...friends,
-      ...contacts.map(c => ({ ...c, id: c.user_id, friendship_id: 'contact' })) 
+      ...contacts.map(c => ({ 
+        ...c, 
+        id: c.user_id || c.id, 
+        friendship_id: 'contact',
+        is_contact: true,
+        display_name: c.display_name || c.name || 'Contact'
+      })) 
   ];
 
-  const filteredList = allContactsList.filter(f => 
+  // Also fetch raw imported contacts (not matched to app users) to show with label
+  const { data: rawImportedContacts = [] } = useQuery({
+    queryKey: ['raw_imported_contacts', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from('contacts')
+        .select('id, name, phone, username, is_app_user, matched_user_id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      return data || [];
+    },
+    enabled: !!user?.id,
+  });
+
+  // Imported contacts that are NOT yet matched / not app users
+  const unmatchedImports = rawImportedContacts
+    .filter(c => !c.is_app_user && !c.matched_user_id)
+    .map(c => ({
+      id: c.id,
+      user_id: c.id,
+      display_name: c.name,
+      username: c.username || c.phone || '',
+      avatar_url: null,
+      friendship_id: 'imported',
+      is_contact: true,
+    }));
+
+  const fullList = [...allContactsList, ...unmatchedImports];
+
+  const filteredList = fullList.filter(f => 
     f.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
     f.username?.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -500,21 +536,22 @@ const Friends = () => {
                     <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigate(`/app/profile?id=${friend.user_id}`)}>
                       <h4 className="font-semibold text-sm truncate flex items-center gap-2">
                           {friend.display_name}
-                          {friend.is_contact && <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-muted text-muted-foreground">From Contacts</Badge>}
+                          {friend.friendship_id === 'imported' && <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-blue-50 text-blue-600 border-blue-200">Imported from contacts</Badge>}
+                          {friend.friendship_id === 'contact' && friend.is_contact && <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-muted text-muted-foreground">From Contacts</Badge>}
                       </h4>
                       <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
                     </div>
 
                     <div className="flex items-center gap-1">
-                      {friend.is_contact ? (
+                      {friend.friendship_id === 'contact' || friend.friendship_id === 'imported' ? (
                           <Button 
                             size="sm" 
                             variant="secondary" 
                             className="h-8 px-3" 
-                            onClick={() => handleConnect.mutate(friend.user_id)}
-                            disabled={handleConnect.isPending}
+                            onClick={() => friend.friendship_id !== 'imported' && handleConnect.mutate(friend.user_id)}
+                            disabled={handleConnect.isPending || friend.friendship_id === 'imported'}
                           >
-                              <UserPlus className="w-4 h-4 mr-1.5" /> Add
+                              {friend.friendship_id === 'imported' ? 'Not on app' : <><UserPlus className="w-4 h-4 mr-1.5" /> Add</>}
                           </Button>
                       ) : (
                           <>

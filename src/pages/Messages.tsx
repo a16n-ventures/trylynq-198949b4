@@ -5,22 +5,21 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch'; // Assuming standard shadcn path or fallback
 import { 
-  Search, Send, ArrowLeft, Plus, Settings, Users, 
-  MessageSquare, X, Loader2, MoreVertical, Info, 
-  Image as ImageIcon, Grid, Pin, Calendar, MapPin, Ticket,
-  Check, Repeat
+  Search, Send, ArrowLeft, Plus, Users, 
+  MessageSquare, X, Loader2, Info, 
+  Image as ImageIcon, Calendar, MapPin, Ticket,
+  Check
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
-import { CATEGORIES } from "@/lib/categories";
+
 
 // Components
 import { MessageBubble } from '@/components/messages/MessageBubble';
@@ -65,13 +64,20 @@ export default function Messages() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- 1. INITIALIZATION & DEEP LINKING ---
+  // Redirect "Create Vibe Check" to CreateEvent page
+  useEffect(() => {
+    if (showNewEventModal) {
+      setShowNewEventModal(false);
+      navigate('/app/events/create');
+    }
+  }, [showNewEventModal, navigate]);
+
   useEffect(() => {
     const type = searchParams.get('type') as ChatType;
     const id = searchParams.get('id');
     
     if (type && id && user) {
       setActiveTab(type);
-      // We essentially "optimistically" set the chat while data loads
       fetchChatDetails(type, id).then(chat => {
         if (chat) setSelectedChat(chat);
       });
@@ -500,11 +506,7 @@ export default function Messages() {
          setShowNewGroupModal(false);
       }} />
 
-      {/* 3. NEW EVENT MODAL (With is_program toggle) */}
-      <NewEventModal open={showNewEventModal} onOpenChange={setShowNewEventModal} onSuccess={() => {
-         refetchEvents();
-         setShowNewEventModal(false);
-      }} />
+      {/* 3. NEW EVENT - handled via useEffect redirect */}
 
     </div>
   );
@@ -688,212 +690,4 @@ function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, o
     );
 }
 
-// --- NEW EVENT MODAL (With cover photo upload) ---
-function NewEventModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpenChange: (o: boolean) => void, onSuccess: () => void }) {
-    const { user } = useAuth();
-    const [formData, setFormData] = useState({
-        title: '',
-        description: '',
-        location: '',
-        start_date: '',
-        end_date: '',
-        ticket_price: '',
-        category: '',
-        max_attendees: '',
-        event_type: 'physical' as 'physical' | 'virtual',
-        is_public: true,
-    });
-    
-    const [coverFile, setCoverFile] = useState<File | null>(null);
-    const [coverPreview, setCoverPreview] = useState<string | null>(null);
-    const [isProgram, setIsProgram] = useState(false);
-    const [frequency, setFrequency] = useState<'weekly' | 'biweekly'>('weekly');
-    const [loading, setLoading] = useState(false);
-    const fileRef = React.useRef<HTMLInputElement>(null);
-
-    const categories = [...CATEGORIES];
-
-    const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB");
-        if (!file.type.startsWith('image/')) return toast.error("Images only");
-        setCoverFile(file);
-        setCoverPreview(URL.createObjectURL(file));
-    };
-
-    const create = async () => {
-        if (!formData.title.trim() || !formData.start_date) return toast.error("Title and date are required");
-        if (!formData.location.trim() && formData.event_type === 'physical') return toast.error("Location is required for physical events");
-        setLoading(true);
-        
-        let recurrenceRule = null;
-        if (isProgram) {
-            recurrenceRule = frequency === 'weekly' ? 'FREQ=WEEKLY' : 'FREQ=WEEKLY;INTERVAL=2';
-        }
-
-        try {
-            // Upload cover photo
-            let imageUrl: string | null = null;
-            if (coverFile && user) {
-                const ext = coverFile.name.split('.').pop();
-                const path = `${user.id}/${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('event_images').upload(path, coverFile);
-                if (upErr) throw upErr;
-                const { data: { publicUrl } } = supabase.storage.from('event_images').getPublicUrl(path);
-                imageUrl = publicUrl;
-            }
-
-            const { error } = await supabase.from('events').insert({
-                creator_id: user?.id,
-                title: formData.title.trim(),
-                description: formData.description.trim() || null,
-                location: formData.event_type === 'virtual' ? 'Online' : formData.location.trim(),
-                start_date: new Date(formData.start_date).toISOString(),
-                end_date: formData.end_date ? new Date(formData.end_date).toISOString() : null,
-                ticket_price: formData.ticket_price ? parseFloat(formData.ticket_price) : 0,
-                category: formData.category || null,
-                max_attendees: formData.max_attendees ? parseInt(formData.max_attendees) : null,
-                event_type: formData.event_type,
-                is_public: formData.is_public,
-                recurrence_rule: recurrenceRule,
-                image_url: imageUrl,
-            });
-            if (error) throw error;
-            toast.success("Event created successfully!");
-            setFormData({ title: '', description: '', location: '', start_date: '', end_date: '', ticket_price: '', category: '', max_attendees: '', event_type: 'physical', is_public: true });
-            setCoverFile(null);
-            setCoverPreview(null);
-            onSuccess();
-        } catch (e: any) {
-            toast.error(e?.message || "Failed to create event");
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>Create Vibe Check (Event)</DialogTitle></DialogHeader>
-                <div className="space-y-4 py-2">
-                    {/* Cover Photo Upload */}
-                    <div className="space-y-2">
-                        {coverPreview ? (
-                            <div className="relative w-full h-40 rounded-xl overflow-hidden border bg-muted">
-                                <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
-                                <Button type="button" variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setCoverFile(null); setCoverPreview(null); }}>
-                                    <X className="w-3 h-3" />
-                                </Button>
-                            </div>
-                        ) : (
-                            <div 
-                                className="w-full h-40 rounded-xl border-2 border-dashed border-muted-foreground/20 flex flex-col items-center justify-center cursor-pointer hover:bg-muted/30 transition-colors"
-                                onClick={() => fileRef.current?.click()}
-                            >
-                                <ImageIcon className="w-8 h-8 text-muted-foreground/40 mb-2" />
-                                <span className="text-sm font-medium text-muted-foreground">Add Cover Photo</span>
-                                <span className="text-xs text-muted-foreground/60">Max 5MB • JPG, PNG, WebP</span>
-                            </div>
-                        )}
-                        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverSelect} />
-                    </div>
-
-                    {/* Event Type */}
-                    <div className="grid grid-cols-2 gap-2">
-                        <button type="button" onClick={() => setFormData({...formData, event_type: 'physical'})}
-                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.event_type === 'physical' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}>
-                            <MapPin className="w-4 h-4" /> Physical
-                        </button>
-                        <button type="button" onClick={() => setFormData({...formData, event_type: 'virtual', location: 'Online'})}
-                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.event_type === 'virtual' ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}>
-                            <Grid className="w-4 h-4" /> Virtual
-                        </button>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label>Event Title *</Label>
-                        <Input placeholder="Friday Night Jazz..." value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label>Description</Label>
-                        <Textarea placeholder="Tell people what to expect..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="min-h-[70px]" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="grid gap-2">
-                            <Label>Start Date & Time *</Label>
-                            <Input type="datetime-local" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>End Date & Time</Label>
-                            <Input type="datetime-local" value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} />
-                        </div>
-                    </div>
-
-                    {formData.event_type === 'physical' && (
-                        <div className="grid gap-2">
-                            <Label>Location *</Label>
-                            <Input placeholder="Lagos, Nigeria" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="grid gap-2">
-                            <Label>Category</Label>
-                            <select className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                                <option value="">Select...</option>
-                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>Ticket Price (₦)</Label>
-                            <Input type="number" placeholder="0 = Free" min="0" value={formData.ticket_price} onChange={e => setFormData({...formData, ticket_price: e.target.value})} />
-                        </div>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label>Max Attendees <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                        <Input type="number" placeholder="Leave blank for unlimited" min="1" value={formData.max_attendees} onChange={e => setFormData({...formData, max_attendees: e.target.value})} />
-                    </div>
-
-                    <div className="flex items-center justify-between border p-3 rounded-lg bg-muted/20">
-                        <div>
-                            <Label className="text-sm font-medium">Public Event</Label>
-                            <p className="text-xs text-muted-foreground">Anyone can discover and join</p>
-                        </div>
-                        <Switch checked={formData.is_public} onCheckedChange={(v) => setFormData({...formData, is_public: v})} />
-                    </div>
-
-                    <div className="flex items-center justify-between border p-3 rounded-lg bg-muted/20">
-                        <div className="space-y-0.5">
-                            <Label className="text-sm font-medium">Recurring Program?</Label>
-                            <p className="text-xs text-muted-foreground">Make this a repeating series</p>
-                        </div>
-                        <Switch checked={isProgram} onCheckedChange={setIsProgram} />
-                    </div>
-
-                    {isProgram && (
-                        <div className="grid gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg animate-in fade-in zoom-in-95">
-                            <Label className="text-primary font-semibold flex items-center gap-2">
-                                <Repeat className="w-4 h-4" /> Frequency
-                            </Label>
-                            <div className="flex gap-2 mt-1">
-                                <Button type="button" size="sm" variant={frequency === 'weekly' ? 'default' : 'outline'} className="flex-1" onClick={() => setFrequency('weekly')}>Weekly</Button>
-                                <Button type="button" size="sm" variant={frequency === 'biweekly' ? 'default' : 'outline'} className="flex-1" onClick={() => setFrequency('biweekly')}>Bi-Weekly</Button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
-                    <Button onClick={create} disabled={loading || !formData.title.trim() || !formData.start_date}>
-                        {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</> : 'Launch Vibe Check'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-}
+// NewEventModal removed - consolidated into CreateEvent page

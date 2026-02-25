@@ -19,6 +19,8 @@ import { isPast, isFuture, isToday, addHours, differenceInMinutes } from "date-f
 import { useNavigate } from 'react-router-dom';
 import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 import { useGeolocation } from '@/contexts/LocationContext'; 
+import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
+import { Bell } from 'lucide-react';
 
 // --- TYPES ---
 interface Event { 
@@ -80,6 +82,7 @@ const getEventStatus = (startDate: string) => {
 const Feed = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { unreadCount } = useRealtimeNotifications(user?.id);
   
   // Data State
   const [events, setEvents] = useState<Event[]>([]);
@@ -363,11 +366,26 @@ const Feed = () => {
                 </h1>
                 <p className="text-xs text-muted-foreground">Find your vibe for today</p>
             </div>
-            {isPremium && (
+            <div className="flex items-center gap-2">
+              {isPremium && (
                 <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
-                <Sparkles className="w-3 h-3 mr-1" /> Premium
+                  <Sparkles className="w-3 h-3 mr-1" /> Premium
                 </Badge>
-            )}
+              )}
+              <Button 
+                size="icon" 
+                variant="ghost" 
+                className="rounded-full relative"
+                onClick={() => navigate('/app/notifications')}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </Button>
+            </div>
             </div>
 
             <div className="relative mb-2">
