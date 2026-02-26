@@ -12,7 +12,7 @@ import {
   Search, Send, ArrowLeft, Plus, Users, 
   MessageSquare, X, Loader2, Info, 
   Image as ImageIcon, Calendar, MapPin, Ticket,
-  Check
+  Check, Crown
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -167,23 +167,25 @@ export default function Messages() {
     queryKey: ['comm_list_chat', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      // Fetch communities I'm a member of
-      const { data: memberData } = await supabase
-        .from('community_members')
-        .select('community_id')
-        .eq('user_id', user.id);
-
-      const joinedIds = (memberData || []).map((m: any) => m.community_id);
-      if (joinedIds.length === 0) return [];
-
+      // Fetch ALL communities (not just joined)
       const { data: communities } = await supabase
         .from('communities')
         .select('*')
-        .in('id', joinedIds);
+        .order('member_count', { ascending: false });
+
+      if (!communities) return [];
+
+      // Fetch my memberships to know which I've joined
+      const { data: memberData } = await supabase
+        .from('community_members')
+        .select('community_id, role')
+        .eq('user_id', user.id);
+
+      const memberMap = new Map((memberData || []).map((m: any) => [m.community_id, m.role]));
 
       // Deduplicate by name
       const byName = new Map<string, any>();
-      for (const c of (communities || [])) {
+      for (const c of communities) {
         const existing = byName.get(c.name);
         if (!existing || (c.member_count || 0) > (existing.member_count || 0)) {
           byName.set(c.name, c);
@@ -196,6 +198,13 @@ export default function Messages() {
         name: c.name,
         avatar: c.cover_url,
         subtitle: `${c.member_count || 0} members`,
+        meta: { 
+          is_joined: memberMap.has(c.id),
+          my_role: memberMap.get(c.id) || null,
+          is_premium: c.is_premium || false,
+          join_fee: c.join_fee || 0,
+          description: c.description,
+        }
       })) as ChatItem[];
     },
     enabled: !!user && activeTab === 'community'
@@ -366,7 +375,57 @@ export default function Messages() {
           ))}
           
           {activeTab === 'community' && commList.map(chat => (
-            <ChatListItem key={chat.id} chat={chat} isSelected={selectedChat?.id === chat.id} onClick={() => setSelectedChat(chat)} />
+            <CommunityListItem 
+              key={chat.id} 
+              chat={chat} 
+              isSelected={selectedChat?.id === chat.id} 
+              onClick={async () => {
+                const meta = chat.meta as any;
+                if (!meta?.is_joined) {
+                  // Handle Premium community join with payment
+                  if (meta?.is_premium && meta?.join_fee > 0) {
+                    const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
+                    if (flwKey && window.FlutterwaveCheckout) {
+                      window.FlutterwaveCheckout({
+                        public_key: flwKey,
+                        tx_ref: `community-${chat.id}-${user?.id}-${Date.now()}`,
+                        amount: meta.join_fee,
+                        currency: "NGN",
+                        payment_options: "card, banktransfer, ussd",
+                        customer: { email: user?.email || "user@app.com", name: user?.email || "User" },
+                        customizations: {
+                          title: "Premium Community",
+                          description: `Join ${chat.name}`,
+                          logo: "",
+                        },
+                        callback: async () => {
+                          // Join after payment
+                          await supabase.from('community_members').insert({
+                            community_id: chat.id,
+                            user_id: user?.id,
+                            role: 'member'
+                          });
+                          toast.success(`Joined ${chat.name}! 🎉`);
+                          refetchCommunities();
+                          setSelectedChat(chat);
+                        },
+                        onclose: () => {},
+                      });
+                    }
+                    return;
+                  }
+                  // Free community join
+                  await supabase.from('community_members').insert({
+                    community_id: chat.id,
+                    user_id: user?.id,
+                    role: 'member'
+                  });
+                  toast.success(`Joined ${chat.name}!`);
+                  refetchCommunities();
+                }
+                setSelectedChat(chat);
+              }} 
+            />
           ))}
 
           {activeTab === 'event' && eventList.length > 0 ? (
@@ -417,7 +476,9 @@ export default function Messages() {
                  </Button>
               )}
               {selectedChat.type === 'community' && (
-                 <Button size="icon" variant="ghost"><Info className="w-5 h-5" /></Button>
+                 <Button size="icon" variant="ghost" onClick={() => navigate(`/app/messages?type=community&id=${selectedChat.id}&settings=true`)}>
+                   <Info className="w-5 h-5" />
+                 </Button>
               )}
             </div>
 
@@ -550,7 +611,47 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
   );
 }
 
-// --- NEW DM MODAL ---
+// --- Community List Item (with join/premium indicators) ---
+function CommunityListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelected: boolean, onClick: () => void }) {
+  const meta = chat.meta as any;
+  const isJoined = meta?.is_joined;
+  const isPremium = meta?.is_premium;
+  
+  return (
+    <div 
+      onClick={onClick}
+      className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'}`}
+    >
+      <div className="relative">
+        <Avatar className="h-12 w-12 border bg-muted">
+           <AvatarImage src={chat.avatar} className="object-cover" />
+           <AvatarFallback>{chat.name[0]}</AvatarFallback>
+        </Avatar>
+        {isPremium && (
+          <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5">
+            <Crown className="w-2.5 h-2.5 text-white" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+         <div className="flex justify-between items-center mb-0.5">
+            <h4 className={`font-semibold text-sm truncate ${isSelected ? 'text-primary' : ''}`}>{chat.name}</h4>
+         </div>
+         <p className="text-xs text-muted-foreground truncate">{chat.subtitle || 'Tap to chat'}</p>
+      </div>
+      {!isJoined && (
+        <Badge variant="outline" className="text-[10px] shrink-0">
+          {isPremium ? `₦${meta?.join_fee?.toLocaleString()}` : 'Join'}
+        </Badge>
+      )}
+      {isJoined && meta?.my_role === 'admin' && (
+        <Badge variant="secondary" className="text-[10px] shrink-0">Admin</Badge>
+      )}
+    </div>
+  );
+}
+
+
 function NewChatModal({ open, onOpenChange, onSelect }: { open: boolean, onOpenChange: (o: boolean) => void, onSelect: (u: any) => void }) {
     const [search, setSearch] = useState('');
     const { data: users = [] } = useQuery({
@@ -585,7 +686,7 @@ function NewChatModal({ open, onOpenChange, onSelect }: { open: boolean, onOpenC
 // --- NEW COMMUNITY MODAL (with file upload) ---
 function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, onOpenChange: (o: boolean) => void, onSuccess: () => void }) {
     const { user } = useAuth();
-    const [form, setForm] = useState({ name: '', description: '' });
+    const [form, setForm] = useState({ name: '', description: '', is_premium: false, join_fee: '' });
     const [coverFile, setCoverFile] = useState<File | null>(null);
     const [coverPreview, setCoverPreview] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -619,7 +720,9 @@ function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, o
                 description: form.description.trim() || null,
                 cover_url: coverUrl,
                 creator_id: user?.id,
-                member_count: 1
+                member_count: 1,
+                is_premium: form.is_premium,
+                join_fee: form.is_premium && form.join_fee ? parseFloat(form.join_fee) : 0,
             }).select().single();
             if (error) throw error;
 
@@ -631,7 +734,7 @@ function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, o
                 });
             }
             toast.success("Community created!");
-            setForm({ name: '', description: '' });
+            setForm({ name: '', description: '', is_premium: false, join_fee: '' });
             setCoverFile(null);
             setCoverPreview(null);
             onSuccess();
@@ -678,6 +781,23 @@ function NewCommunityModal({ open, onOpenChange, onSuccess }: { open: boolean, o
                         <Label>Description</Label>
                         <Textarea placeholder="What's this group about?" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="min-h-[80px]" />
                     </div>
+                    {/* Premium Community Option */}
+                    <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                        <div className="flex items-center gap-2">
+                            <Crown className="w-4 h-4 text-amber-600" />
+                            <div>
+                                <p className="text-sm font-medium">Premium Community</p>
+                                <p className="text-[10px] text-muted-foreground">Members pay to join</p>
+                            </div>
+                        </div>
+                        <input type="checkbox" checked={form.is_premium} onChange={(e) => setForm({ ...form, is_premium: e.target.checked })} className="h-4 w-4 accent-amber-600" />
+                    </div>
+                    {form.is_premium && (
+                        <div className="space-y-2">
+                            <Label>Join Fee (₦)</Label>
+                            <Input type="number" placeholder="e.g. 5000" value={form.join_fee} onChange={e => setForm({ ...form, join_fee: e.target.value })} min="0" />
+                        </div>
+                    )}
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>

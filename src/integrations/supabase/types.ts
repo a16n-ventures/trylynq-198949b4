@@ -217,6 +217,8 @@ export type Database = {
           creator_id: string | null
           description: string | null
           id: string
+          is_premium: boolean | null
+          join_fee: number | null
           member_count: number | null
           name: string
         }
@@ -226,6 +228,8 @@ export type Database = {
           creator_id?: string | null
           description?: string | null
           id?: string
+          is_premium?: boolean | null
+          join_fee?: number | null
           member_count?: number | null
           name: string
         }
@@ -235,6 +239,8 @@ export type Database = {
           creator_id?: string | null
           description?: string | null
           id?: string
+          is_premium?: boolean | null
+          join_fee?: number | null
           member_count?: number | null
           name?: string
         }
@@ -1843,15 +1849,7 @@ export type Database = {
           type?: Database["public"]["Enums"]["transaction_type"]
           wallet_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "transactions_wallet_id_fkey"
-            columns: ["wallet_id"]
-            isOneToOne: false
-            referencedRelation: "wallets"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       user_ads: {
         Row: {

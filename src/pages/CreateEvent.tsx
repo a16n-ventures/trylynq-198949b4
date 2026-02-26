@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { 
   Calendar, MapPin, DollarSign, ArrowLeft, Image as ImageIcon, 
-  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check
+  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check, Repeat
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,7 +51,8 @@ const CreateEvent = () => {
     category: '',
     isPrivate: false,
     requireApproval: false,
-    eventType: 'physical', // 'physical' or 'virtual'
+    eventType: 'physical',
+    recurrenceRule: '', // New: recurring event support
   });
 
   const categories = [...CATEGORIES];
@@ -205,6 +206,7 @@ const CreateEvent = () => {
           image_url: imageUrl,
           event_type: eventData.eventType,
           meeting_link: generatedMeetingLink,
+          recurrence_rule: eventData.recurrenceRule || null,
         })
         .select()
         .single();
@@ -620,9 +622,32 @@ const CreateEvent = () => {
           {/* Privacy Settings */}
           <Card className="gradient-card shadow-card border-0">
             <CardHeader className="pb-3">
-              <CardTitle>Privacy Settings</CardTitle>
+              <CardTitle>Event Options</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Recurring Event */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Repeat className="w-4 h-4" />
+                  Recurring Event
+                </Label>
+                <Select 
+                  value={eventData.recurrenceRule}
+                  onValueChange={(value) => setEventData({...eventData, recurrenceRule: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="One-time event" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">One-time (No repeat)</SelectItem>
+                    <SelectItem value="FREQ=DAILY">Daily</SelectItem>
+                    <SelectItem value="FREQ=WEEKLY">Weekly</SelectItem>
+                    <SelectItem value="FREQ=BIWEEKLY">Bi-Weekly</SelectItem>
+                    <SelectItem value="FREQ=MONTHLY">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="private">Private Event</Label>

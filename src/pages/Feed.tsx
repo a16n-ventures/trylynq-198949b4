@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useQuery } from '@tanstack/react-query';
 import { 
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
@@ -94,10 +95,26 @@ const Feed = () => {
   const [locationName, setLocationName] = useState("Detecting...");
   
   // UI State
-  const [activeTab, setActiveTab] = useState("for_you"); // Default to Clyx "For You"
+  const [activeTab, setActiveTab] = useState("for_you");
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
+
+  // Fetch discovery radius from profile preferences
+  const { data: userProfile } = useQuery({
+    queryKey: ['user-profile-prefs', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase.from('profiles').select('preferences').eq('user_id', user.id).single();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const discoveryRadiusKm = useMemo(() => {
+    const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
+    return (prefs?.discovery_radius ?? 25000) / 1000; // Default 25km
+  }, [userProfile]);
 
   // --- INITIALIZATION ---
   useEffect(() => {
