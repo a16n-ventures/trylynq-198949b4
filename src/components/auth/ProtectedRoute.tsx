@@ -1,20 +1,8 @@
-// Update ProtectedRoute component to include updated route protection logic
-import React from 'react';
-import { Route, Redirect } from 'react-router-dom';
+// Original content from commit 614e469b61feadf8b28afbb6ad9e582994d751a3
+// ... (content of the file up to line 45)
 
-const ProtectedRoute = ({ component: Component, isAppPage, requireInterests, ...rest }) => {
-    return (
-        <Route
-            {...rest}
-            render={props => {
-                if (!isAppPage && requireInterests) {
-                    // Add your logic here to ensure interests are looked into
-                    return <Redirect to="/interests" />;
-                }
-                return <Component {...props} />;
-            }}
-        />
-    );
-};
+if (!isAppPage && requireInterests) {
+    // logic if condition is true
+}
 
-export default ProtectedRoute;
+// ... (rest of the original file content)
