@@ -632,14 +632,14 @@ const CreateEvent = () => {
                   Recurring Event
                 </Label>
                 <Select 
-                  value={eventData.recurrenceRule}
-                  onValueChange={(value) => setEventData({...eventData, recurrenceRule: value})}
+                  value={eventData.recurrenceRule || 'none'}
+                  onValueChange={(value) => setEventData({...eventData, recurrenceRule: value === 'none' ? '' : value})}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="One-time event" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">One-time (No repeat)</SelectItem>
+                    <SelectItem value="none">One-time (No repeat)</SelectItem>
                     <SelectItem value="FREQ=DAILY">Daily</SelectItem>
                     <SelectItem value="FREQ=WEEKLY">Weekly</SelectItem>
                     <SelectItem value="FREQ=BIWEEKLY">Bi-Weekly</SelectItem>
