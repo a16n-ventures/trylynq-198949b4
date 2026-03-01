@@ -673,53 +673,59 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
           )}
         </TabsContent>
 
-        <TabsContent value="analytics" className="space-y-4 mt-6 animate-in fade-in-50">
+        <TabsContent value="analytics" className="space-y-5 mt-6 animate-in fade-in-50">
+          
+          {/* Hero Stats Row */}
           <div className="grid grid-cols-2 gap-3">
-            <Card className="gradient-card border-0 shadow-sm">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
-                <div className="bg-primary/10 p-2 rounded-full mb-2">
-                  <Calendar className="w-4 h-4 text-primary" />
+            <Card className="border-0 shadow-md bg-gradient-to-br from-primary/10 via-primary/5 to-transparent overflow-hidden relative">
+              <div className="absolute -right-6 -top-6 w-20 h-20 bg-primary/10 rounded-full blur-2xl" />
+              <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
+                <div className="bg-primary/15 p-2.5 rounded-xl mb-2">
+                  <Calendar className="w-5 h-5 text-primary" />
                 </div>
-                <span className="text-2xl font-bold">{stats?.totalHosted || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Total Hosted
+                <span className="text-3xl font-extrabold tracking-tight">{stats?.totalHosted || 0}</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
+                  Events Hosted
                 </span>
               </CardContent>
             </Card>
 
-            <Card className="gradient-card border-0 shadow-sm">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
-                <div className="bg-blue-100 p-2 rounded-full mb-2">
-                  <Users className="w-4 h-4 text-blue-600" />
+            <Card className="border-0 shadow-md bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent overflow-hidden relative">
+              <div className="absolute -right-6 -top-6 w-20 h-20 bg-blue-500/10 rounded-full blur-2xl" />
+              <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
+                <div className="bg-blue-100 dark:bg-blue-900/30 p-2.5 rounded-xl mb-2">
+                  <Users className="w-5 h-5 text-blue-600" />
                 </div>
-                <span className="text-2xl font-bold">{stats?.totalAttendees || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                <span className="text-3xl font-extrabold tracking-tight">{stats?.totalAttendees || 0}</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
                   Total Attendees
                 </span>
               </CardContent>
             </Card>
 
-            <Card className="gradient-card border-0 shadow-sm">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
-                <div className="bg-green-100 p-2 rounded-full mb-2">
-                  <TrendingUp className="w-4 h-4 text-green-600" />
+            <Card className="border-0 shadow-md bg-gradient-to-br from-green-500/10 via-green-500/5 to-transparent overflow-hidden relative">
+              <div className="absolute -right-6 -top-6 w-20 h-20 bg-green-500/10 rounded-full blur-2xl" />
+              <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
+                <div className="bg-green-100 dark:bg-green-900/30 p-2.5 rounded-xl mb-2">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
                 </div>
-                <span className="text-2xl font-bold">{stats?.upcomingEvents || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                <span className="text-3xl font-extrabold tracking-tight">{stats?.upcomingEvents || 0}</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
                   Upcoming
                 </span>
               </CardContent>
             </Card>
 
-            <Card className="gradient-card border-0 shadow-sm">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center h-28">
-                <div className="bg-purple-100 p-2 rounded-full mb-2">
-                  <Ticket className="w-4 h-4 text-purple-600" />
+            <Card className="border-0 shadow-md bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent overflow-hidden relative">
+              <div className="absolute -right-6 -top-6 w-20 h-20 bg-amber-500/10 rounded-full blur-2xl" />
+              <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
+                <div className="bg-amber-100 dark:bg-amber-900/30 p-2.5 rounded-xl mb-2">
+                  <Ticket className="w-5 h-5 text-amber-600" />
                 </div>
-                <span className="text-2xl font-bold">
+                <span className="text-3xl font-extrabold tracking-tight">
                   ₦{(stats?.netRevenue || 0).toLocaleString()}
                 </span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center justify-center gap-1">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
                   Net Earnings
                 </span>
               </CardContent>
@@ -727,50 +733,54 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
           </div>
           
           {/* PAYOUT WALLET CARD */}
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-md overflow-hidden relative">
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-lg overflow-hidden relative">
             <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
             
-                        <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="bg-primary/20 p-2 rounded-lg"><Wallet className="w-5 h-5 text-primary" />
-                  </div>
+            <CardContent className="p-5 relative z-10">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary/20 p-2.5 rounded-xl"><Wallet className="w-5 h-5 text-primary" /></div>
                   <div>
-                    <h3 className="font-semibold text-foreground">Earnings Wallet</h3>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs text-muted-foreground">Available for daily payout</p>
-                      <TooltipProvider>                           <Tooltip>
-                        <TooltipTrigger>
-                        <Badge variant="outline" className="text-[9px] h-4 px-1 text-muted-foreground">-2% Fee</Badge>
-                        </TooltipTrigger>                           <TooltipContent>
-                          <p>A 2% platform fee is deducted from all ticket sales.</p>                          </TooltipContent>
-                      </Tooltip>                                </TooltipProvider>
-                    </div>
+                    <h3 className="font-bold text-foreground">Earnings Wallet</h3>
+                    <p className="text-xs text-muted-foreground">Available for withdrawal</p>
                   </div>
                 </div>
-                <Badge variant="outline" className="bg-background/50 backdrop-blur-sm">Daily Payouts</Badge>
+                <Badge variant="outline" className="bg-background/50 backdrop-blur-sm text-[10px]">Daily Payouts</Badge>
               </div>
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Withdrawable Balance</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-bold text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}</span>
-                    <span className="text-xs text-muted-foreground font-medium">.00</span>
-                  </div>
+              
+              <div className="bg-background/60 backdrop-blur-sm rounded-xl p-4 mb-4 border border-border/50">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Withdrawable Balance</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-black text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}</span>
+                  <span className="text-sm text-muted-foreground font-medium">.00</span>
                 </div>
+              </div>
 
-                <Button onClick={() => setIsPayoutModalOpen(true)} disabled={isPayoutLoading || !stats?.walletBalance || stats?.walletBalance < 1000} className="gradient-primary text-white shadow-md shrink-0">
-                  {isPayoutLoading ? ( <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing </> ) : ( <><ArrowUpRight className="w-4 h-4 ml-1" /> Request Payout </> )}
-                </Button>
-                
-                </div>
+              <Button 
+                onClick={() => setIsPayoutModalOpen(true)} 
+                disabled={isPayoutLoading || !stats?.walletBalance || stats?.walletBalance < 1000} 
+                className="w-full gradient-primary text-white shadow-md h-12 text-base font-semibold"
+              >
+                {isPayoutLoading ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing</>
+                ) : (
+                  <><ArrowUpRight className="w-4 h-4 mr-2" /> Request Payout</>
+                )}
+              </Button>
 
-              {stats?.walletBalance && stats?.walletBalance >= 1000 && (
-                <div className="mt-4 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg">
+              {stats?.walletBalance && stats.walletBalance < 1000 && stats.walletBalance > 0 && (
+                <p className="text-xs text-muted-foreground text-center mt-3 flex items-center justify-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Minimum withdrawal: ₦1,000
+                </p>
+              )}
+              
+              {stats?.walletBalance && stats.walletBalance >= 1000 && (
+                <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg">
                   <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5" />
-                    Payout will be sent to your bank account shortly.
+                    Ready for payout — funds will be sent to your bank.
                   </p>
                 </div>
               )}
@@ -778,7 +788,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
           </Card>
 
           {/* Growth Insights Card */}
-          <Card className="border-muted/50 shadow-sm bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
+          <Card className="border-muted/50 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-blue-600" />
@@ -788,26 +798,26 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             <CardContent className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Past Events</span>
-                <span className="font-semibold">{stats?.pastEvents || 0}</span>
+                <span className="font-bold">{stats?.pastEvents || 0}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Avg Attendees/Event</span>
-                <span className="font-semibold">
+                <span className="font-bold">
                   {stats?.totalHosted && stats.totalHosted > 0
                     ? Math.round((stats.totalAttendees || 0) / stats.totalHosted)
                     : 0}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Success Rate</span>
-                <span className="font-semibold text-green-600">
-                  {stats?.totalHosted && stats.totalHosted > 0
-                    ? Math.round((stats.upcomingEvents / stats.totalHosted) * 100)
-                    : 0}%
-                </span>
+                <span className="text-muted-foreground">Platform Fee</span>
+                <span className="font-bold text-muted-foreground">2%</span>
+              </div>
+              <div className="flex justify-between text-sm pt-2 border-t border-border">
+                <span className="text-muted-foreground">Lifetime Revenue</span>
+                <span className="font-bold text-green-600">₦{(stats?.netRevenue || 0).toLocaleString()}</span>
               </div>
               <p className="text-xs text-muted-foreground pt-3 border-t border-border">
-                💡 Tip: Hosting events consistently helps grow your community 3x faster!
+                💡 Hosting events consistently helps grow your community 3x faster!
               </p>
             </CardContent>
           </Card>
