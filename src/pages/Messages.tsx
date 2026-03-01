@@ -382,24 +382,34 @@ export default function Messages() {
               onClick={async () => {
                 const meta = chat.meta as any;
                 if (!meta?.is_joined) {
-                  // Handle Premium community join with payment
+                  // Handle Premium community join — must pay first
                   if (meta?.is_premium && meta?.join_fee > 0) {
                     const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
-                    if (flwKey && window.FlutterwaveCheckout) {
-                      window.FlutterwaveCheckout({
-                        public_key: flwKey,
-                        tx_ref: `community-${chat.id}-${user?.id}-${Date.now()}`,
-                        amount: meta.join_fee,
-                        currency: "NGN",
-                        payment_options: "card, banktransfer, ussd",
-                        customer: { email: user?.email || "user@app.com", name: user?.email || "User" },
-                        customizations: {
-                          title: "Premium Community",
-                          description: `Join ${chat.name}`,
-                          logo: "",
-                        },
-                        callback: async () => {
-                          // Join after payment
+                    if (!flwKey || !window.FlutterwaveCheckout) {
+                      toast.error('Payment system not available');
+                      return;
+                    }
+                    window.FlutterwaveCheckout({
+                      public_key: flwKey,
+                      tx_ref: `community-${chat.id}-${user?.id}-${Date.now()}`,
+                      amount: meta.join_fee,
+                      currency: "NGN",
+                      payment_options: "card, banktransfer, ussd",
+                      customer: { email: user?.email || "user@app.com", name: user?.email || "User" },
+                      customizations: {
+                        title: "Premium Community",
+                        description: `Join "${chat.name}" — ₦${meta.join_fee.toLocaleString()}`,
+                        logo: "",
+                      },
+                      callback: async (response: any) => {
+                        try {
+                          await supabase.from('payments').insert({
+                            user_id: user?.id,
+                            amount: meta.join_fee,
+                            status: 'success',
+                            tx_ref: `community-${chat.id}-${user?.id}-${Date.now()}`,
+                            flw_ref: response.flw_ref || response.transaction_id?.toString(),
+                          });
                           await supabase.from('community_members').insert({
                             community_id: chat.id,
                             user_id: user?.id,
@@ -408,11 +418,16 @@ export default function Messages() {
                           toast.success(`Joined ${chat.name}! 🎉`);
                           refetchCommunities();
                           setSelectedChat(chat);
-                        },
-                        onclose: () => {},
-                      });
-                    }
-                    return;
+                        } catch (err: any) {
+                          console.error('Community join error:', err);
+                          toast.error('Failed to join community');
+                        }
+                      },
+                      onclose: () => {
+                        toast.info('Payment cancelled');
+                      },
+                    });
+                    return; // Stop — don't auto-join
                   }
                   // Free community join
                   await supabase.from('community_members').insert({
@@ -424,7 +439,7 @@ export default function Messages() {
                   refetchCommunities();
                 }
                 setSelectedChat(chat);
-              }} 
+              }}
             />
           ))}
 
@@ -596,9 +611,11 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
       <div className="flex-1 min-w-0">
          <div className="flex justify-between items-center mb-0.5">
             <h4 className={`font-semibold text-sm truncate ${isSelected ? 'text-primary' : ''}`}>{chat.name}</h4>
-            {chat.meta?.date && (
-               <span className="text-[10px] text-muted-foreground">{new Date(chat.meta.date).getDate()}th</span>
-            )}
+             {chat.meta?.date && (
+                <span className="text-[10px] text-muted-foreground">
+                  {new Date(chat.meta.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                </span>
+             )}
          </div>
          <p className="text-xs text-muted-foreground truncate">{chat.subtitle || 'Tap to chat'}</p>
       </div>

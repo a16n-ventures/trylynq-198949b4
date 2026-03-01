@@ -121,7 +121,7 @@ const Feed = () => {
     if (!user) return;
     fetchSmartFeed();
     checkPremium();
-  }, [user]);
+  }, [user, location?.latitude, location?.longitude]);
 
   // --- FETCH FRIENDS FOR MODAL (NUCLEAR FIX) ---
     useEffect(() => {
@@ -218,13 +218,20 @@ const Feed = () => {
       if (error) throw error;
 
       if (response) {
+        // Fetch user's attending events to check is_attending
+        const { data: myAttendance } = await supabase
+          .from('event_attendees')
+          .select('event_id')
+          .eq('user_id', user?.id || '');
+        const attendingIds = new Set(myAttendance?.map(a => a.event_id) || []);
+
         // Events (The Core)
         if (response.events) {
           setEvents(response.events.map((e: any) => ({
             ...e,
             attendee_count: e.attendee_count || 0,
-            is_attending: false, 
-            friend_images: e.friend_images || [] // Facepile Data
+            is_attending: attendingIds.has(e.id),
+            friend_images: e.friend_images || []
           })));
         }
         
@@ -569,8 +576,8 @@ const Feed = () => {
                                             ))}
                                             <div className="text-xs text-muted-foreground pl-3 font-medium">
                                                 {event.friend_images?.length ? 
-                                                <span className="text-foreground">{event.friend_images.length} friends going</span> : 
-                                                <span>{event.attendee_count} attending</span>
+                                                <span className="text-foreground">{event.friend_images.length} {event.friend_images.length === 1 ? 'friend is' : 'friends are'} going</span> : 
+                                                <span>{event.attendee_count || 0} attending</span>
                                                 }
                                             </div>
                                             </div>
@@ -640,28 +647,33 @@ const Feed = () => {
             </div>
             
             <div className="p-5 space-y-6">
-              {/* 2.b THE FACEPILE (Social Proof) */}
+              {/* Social Proof */}
               <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border">
-                 <div className="flex items-center -space-x-3">
-                    {/* Render Friend Faces if available, else generic placeholders */}
-                    {(selectedEvent.friend_images && selectedEvent.friend_images.length > 0 ? selectedEvent.friend_images : [null, null, null]).slice(0, 3).map((img: string | null, i: number) => (
-                       <Avatar key={i} className="border-2 border-background w-8 h-8">
-                         <AvatarImage src={img || undefined} />
-                         <AvatarFallback className="text-[10px] bg-muted-foreground/20">{img ? '' : '?'}</AvatarFallback>
-                       </Avatar>
-                    ))}
-                    {selectedEvent.attendee_count && selectedEvent.attendee_count > 3 && (
+                 <div className="flex items-center -space-x-2">
+                    {(selectedEvent.friend_images && selectedEvent.friend_images.length > 0) ? (
+                      selectedEvent.friend_images.slice(0, 3).map((img: string, i: number) => (
+                        <Avatar key={i} className="border-2 border-background w-8 h-8">
+                          <AvatarImage src={img} />
+                          <AvatarFallback className="text-[10px] bg-primary/10">👤</AvatarFallback>
+                        </Avatar>
+                      ))
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    )}
+                    {(selectedEvent.attendee_count || 0) > 3 && (
                        <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium">
-                         +{selectedEvent.attendee_count - 3}
+                         +{(selectedEvent.attendee_count || 0) - 3}
                        </div>
                     )}
                  </div>
-                 <div className="text-xs text-muted-foreground">
-                    {selectedEvent.friend_images?.length ? 
-                      <span className="font-semibold text-primary">{selectedEvent.friend_images.length} friends going</span> : 
-                      <span>{selectedEvent.attendee_count || 0} people going</span>
+                 <p className="text-xs text-muted-foreground">
+                    {selectedEvent.friend_images?.length 
+                      ? <span className="font-semibold text-primary">{selectedEvent.friend_images.length} {selectedEvent.friend_images.length === 1 ? 'friend is' : 'friends are'} going</span>
+                      : <span>{selectedEvent.attendee_count || 0} {(selectedEvent.attendee_count || 0) === 1 ? 'person is' : 'people are'} going</span>
                     }
-                 </div>
+                 </p>
               </div>
               
               <Button variant="outline" className="w-full gap-2 border-dashed border-primary/40 text-primary h-12" onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}>
