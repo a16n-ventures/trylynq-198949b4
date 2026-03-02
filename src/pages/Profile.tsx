@@ -576,7 +576,7 @@ const Profile = () => {
   // --- 2. ACTIONS ---
   const handleLogout = async () => {
     await signOut();
-    navigate('/auth');
+    navigate('/ahmia', { replace: true });
   };
 
   const updatePreference = async (key: string, value: any) => {
@@ -699,7 +699,7 @@ const Profile = () => {
                         <p className="text-xs text-muted-foreground">{profile.is_premium ? 'Active' : 'Free Tier'}</p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => navigate('/app/premium')}>Manage</Button>
+                    <Button variant="outline" size="sm" onClick={() => navigate('/premium')}>Manage</Button>
                   </div>
 
                   <div className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
@@ -843,10 +843,16 @@ navigate('/app/events')}>
               <span className="block font-bold text-lg">{stats.events}</span>
               <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Events</span>
             </div>
+            {profile.is_premium && (
+              <div className="text-center cursor-pointer hover:opacity-70 transition-opacity">
+                <span className="block font-bold text-lg">{profile.profile_views_30d || 0}</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Views</span>
+              </div>
+            )}
             <div className="text-center cursor-pointer hover:opacity-70 transition-opacity">
               <span className="block font-bold text-lg">84</span>
               <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Score</span>
-            </div> 
+            </div>
           </div>
         </div>
       </div>
@@ -867,6 +873,14 @@ navigate('/app/events')}>
           >
             <Grid className="w-4 h-4 mr-2" /> Moments
           </TabsTrigger>
+          {profile.is_premium && (
+            <TabsTrigger
+              value="analytics"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+            >
+              <Sparkles className="w-4 h-4 mr-2" /> Insights
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* A. MY TICKETS (Wallet View) */}
@@ -910,7 +924,6 @@ navigate('/app/events')}>
         {/* B. MOMENTS (Grid View) */}
         <TabsContent value="moments" className="p-1 min-h-[300px]">
           <div className="grid grid-cols-3 gap-1">
-            {/* Placeholder for future photo feature */}
             {[1,2,3,4,5,6].map((i) => (
               <div key={i} className="aspect-square bg-muted/30 relative group cursor-pointer overflow-hidden">
                 <img src={`https://picsum.photos/seed/${i + (user?.id || '')}/400/400`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="moment" />
@@ -919,6 +932,58 @@ navigate('/app/events')}>
             ))}
           </div>
         </TabsContent>
+
+        {/* C. PREMIUM INSIGHTS (Analytics for premium users) */}
+        {profile.is_premium && (
+          <TabsContent value="analytics" className="p-4 space-y-4 min-h-[300px]">
+            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+              <div className="p-5 space-y-4">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-primary" /> Profile Analytics
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-background rounded-xl p-4 border text-center">
+                    <p className="text-2xl font-bold text-primary">{profile.profile_views_30d || 0}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Profile Views (30d)</p>
+                  </div>
+                  <div className="bg-background rounded-xl p-4 border text-center">
+                    <p className="text-2xl font-bold text-primary">{stats.event_views_30d || 0}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Event Views (30d)</p>
+                  </div>
+                  <div className="bg-background rounded-xl p-4 border text-center">
+                    <p className="text-2xl font-bold text-foreground">{stats.friends}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Total Friends</p>
+                  </div>
+                  <div className="bg-background rounded-xl p-4 border text-center">
+                    <p className="text-2xl font-bold text-foreground">{stats.events}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Events Attended</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground text-center pt-2">Premium members get detailed analytics on their profile and event performance.</p>
+              </div>
+            </Card>
+
+            {/* Subscription Management */}
+            <Card className="border-border">
+              <div className="p-5 space-y-3">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-muted-foreground" /> Subscription
+                </h3>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Plan</span>
+                  <Badge className="bg-amber-100 text-amber-800 border-0">Premium Active</Badge>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Ad-Free</span>
+                  <span className="font-semibold text-green-600 flex items-center gap-1"><Check className="w-4 h-4" /> Enabled</span>
+                </div>
+                <Button variant="outline" className="w-full mt-2" onClick={() => navigate('/premium')}>
+                  Manage Subscription
+                </Button>
+              </div>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Profile Settings Dialog */}

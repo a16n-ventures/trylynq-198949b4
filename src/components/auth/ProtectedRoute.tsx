@@ -24,7 +24,7 @@ export const ProtectedRoute = ({
     
     // Not logged in - redirect to home
     if (!user) {
-      navigate('/', { replace: true });
+      navigate('/ahmia', { replace: true });
       return;
     }
 

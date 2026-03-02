@@ -465,16 +465,32 @@ const Feed = () => {
             {/* CONTENT AREA */}
             <div className="container-mobile py-2 space-y-6">
                 
-                {/* AI Insight (Visible on all tabs) */}
-                {isPremium && aiInsights && activeTab === 'for_you' && (
-                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 rounded-xl p-4 flex gap-3 shadow-sm mx-4 mt-2">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
-                        <Sparkles className="w-5 h-5" />
+                {/* AI Insight (Premium VIP Section) */}
+                {isPremium && activeTab === 'for_you' && (
+                    <div className="space-y-3 mx-4 mt-2">
+                      {/* Vibe Check */}
+                      {aiInsights && (
+                        <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex gap-3 shadow-sm">
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                            <Sparkles className="w-5 h-5" />
+                            </div>
+                            <div>
+                            <h3 className="font-bold text-sm text-amber-900 dark:text-amber-200">Vibe Check</h3>
+                            <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-1 leading-relaxed">{aiInsights}</p>
+                            </div>
                         </div>
-                        <div>
-                        <h3 className="font-bold text-sm text-amber-900">Vibe Check</h3>
-                        <p className="text-xs text-amber-800/80 mt-1 leading-relaxed">{aiInsights}</p>
+                      )}
+                      
+                      {/* VIP Banner */}
+                      <div className="bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20 rounded-xl p-3 flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-4 h-4 text-primary" />
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-foreground">Premium Active</p>
+                          <p className="text-[10px] text-muted-foreground">Ad-free · Extended radius · Priority discovery</p>
+                        </div>
+                      </div>
                     </div>
                 )}
 
