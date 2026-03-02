@@ -751,7 +751,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
               
               <div className="bg-background/60 backdrop-blur-sm rounded-xl p-4 mb-4 border border-border/50">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Withdrawable Balance</p>
-                <span className="text-4xl font-black text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}</span>
+                <span className="text-4xl font-black text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}<span className="text-xl">.00</span></span>
               </div>
 
               <Button 

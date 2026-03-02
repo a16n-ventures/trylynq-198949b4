@@ -12,7 +12,7 @@ import {
   Search, Send, ArrowLeft, Plus, Users, 
   MessageSquare, X, Loader2, Info, 
   Image as ImageIcon, Calendar, MapPin, Ticket,
-  Check, Crown
+  Check, Crown, Lock
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -521,33 +521,7 @@ export default function Messages() {
             </div>
 
             {/* INPUT AREA */}
-            <div className="p-4 border-t bg-background">
-               <div className="flex items-end gap-2 bg-muted/50 p-2 rounded-3xl border focus-within:border-primary/50 transition-colors">
-                  <Button size="icon" variant="ghost" className="rounded-full h-10 w-10 text-muted-foreground">
-                     <Plus className="w-5 h-5" />
-                  </Button>
-                  <Textarea 
-                    value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
-                    placeholder={`Message ${selectedChat.name}...`}
-                    className="flex-1 min-h-[40px] max-h-32 bg-transparent border-0 focus-visible:ring-0 resize-none py-2.5"
-                    onKeyDown={(e) => {
-                       if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          sendMessage.mutate();
-                       }
-                    }}
-                  />
-                  <Button 
-                    size="icon" 
-                    className="rounded-full h-10 w-10 shrink-0" 
-                    disabled={!messageInput.trim()}
-                    onClick={() => sendMessage.mutate()}
-                  >
-                     <Send className="w-4 h-4" />
-                  </Button>
-               </div>
-            </div>
+            <ChatInputArea selectedChat={selectedChat} messageInput={messageInput} setMessageInput={setMessageInput} sendMessage={sendMessage} />
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
@@ -584,6 +558,98 @@ export default function Messages() {
 
       {/* 3. NEW EVENT - handled via useEffect redirect */}
 
+    </div>
+  );
+}
+
+// --- Chat Input with Payment Gate ---
+function ChatInputArea({ selectedChat, messageInput, setMessageInput, sendMessage }: { 
+  selectedChat: ChatItem; messageInput: string; setMessageInput: (v: string) => void; sendMessage: any 
+}) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  // Check if user has paid for paid events/communities
+  const { data: hasPaid, isLoading: checkingPayment } = useQuery({
+    queryKey: ['chat-payment-check', selectedChat.id, selectedChat.type, user?.id],
+    queryFn: async () => {
+      if (!user) return true;
+      
+      if (selectedChat.type === 'event') {
+        // Check if event is paid
+        const { data: event } = await supabase.from('events').select('ticket_price').eq('id', selectedChat.id).single();
+        if (!event?.ticket_price || event.ticket_price <= 0) return true; // Free event
+        
+        // Check if user paid
+        const { data: payment } = await supabase.from('payments')
+          .select('id').eq('user_id', user.id)
+          .ilike('tx_ref', `%event-${selectedChat.id}%`)
+          .eq('status', 'success').maybeSingle();
+        return !!payment;
+      }
+      
+      if (selectedChat.type === 'community') {
+        // Check if community is premium
+        const { data: comm } = await supabase.from('communities').select('is_premium, join_fee').eq('id', selectedChat.id).single();
+        if (!comm?.is_premium || !comm?.join_fee || comm.join_fee <= 0) return true; // Free community
+        
+        // Check if user paid
+        const { data: payment } = await supabase.from('payments')
+          .select('id').eq('user_id', user.id)
+          .ilike('tx_ref', `%community-${selectedChat.id}%`)
+          .eq('status', 'success').maybeSingle();
+        return !!payment;
+      }
+      
+      return true; // DMs always allowed
+    },
+    enabled: !!user && !!selectedChat,
+  });
+
+  if (!hasPaid && !checkingPayment) {
+    return (
+      <div className="p-4 border-t bg-background">
+        <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 rounded-2xl">
+          <Lock className="w-5 h-5 text-amber-600 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Payment Required</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300">Complete your payment to send messages here.</p>
+          </div>
+          <Button size="sm" className="shrink-0 rounded-full" onClick={() => navigate('/app/feed')}>
+            Pay Now
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 border-t bg-background">
+       <div className="flex items-end gap-2 bg-muted/50 p-2 rounded-3xl border focus-within:border-primary/50 transition-colors">
+          <Button size="icon" variant="ghost" className="rounded-full h-10 w-10 text-muted-foreground">
+             <Plus className="w-5 h-5" />
+          </Button>
+          <Textarea 
+            value={messageInput}
+            onChange={(e) => setMessageInput(e.target.value)}
+            placeholder={`Message ${selectedChat.name}...`}
+            className="flex-1 min-h-[40px] max-h-32 bg-transparent border-0 focus-visible:ring-0 resize-none py-2.5"
+            onKeyDown={(e) => {
+               if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage.mutate();
+               }
+            }}
+          />
+          <Button 
+            size="icon" 
+            className="rounded-full h-10 w-10 shrink-0" 
+            disabled={!messageInput.trim()}
+            onClick={() => sendMessage.mutate()}
+          >
+             <Send className="w-4 h-4" />
+          </Button>
+       </div>
     </div>
   );
 }

@@ -50,6 +50,8 @@ interface Community {
   avatar_url: string | null;
   cover_url?: string | null;
   is_member?: boolean;
+  is_premium?: boolean;
+  join_fee?: number;
 }
 
 // --- HELPER: Calendar Sync ---
@@ -97,6 +99,7 @@ const Feed = () => {
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
 
@@ -245,7 +248,9 @@ const Feed = () => {
           });
           setCommunities(unique.map((c: any) => ({
             ...c,
-            avatar_url: c.cover_url || c.avatar_url || null
+            avatar_url: c.cover_url || c.avatar_url || null,
+            is_premium: c.is_premium || false,
+            join_fee: c.join_fee || 0,
           })));
         }
 
@@ -491,13 +496,18 @@ const Feed = () => {
                                     </div>
                                 </div>
                             ) : communities.map(c => (
-                            <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => navigate(`/app/messages?type=community&id=${c.id}`)}>
+                            <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => setSelectedCommunity(c)}>
                                 <Avatar className="h-14 w-14 rounded-xl border">
                                 <AvatarImage src={c.avatar_url || undefined} className="object-cover" />
                                 <AvatarFallback>{c.name[0]}</AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1 min-w-0">
-                                <h4 className="font-bold truncate">{c.name}</h4>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold truncate">{c.name}</h4>
+                                  {c.is_premium && (
+                                    <Badge className="bg-amber-500 text-white border-0 text-[10px] px-1.5 py-0">Exclusive</Badge>
+                                  )}
+                                </div>
                                 <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
                                 <div className="flex items-center gap-1 mt-1 text-xs font-medium text-primary">
                                     <Users className="w-3 h-3" /> {c.member_count} members
@@ -722,6 +732,69 @@ const Feed = () => {
                 className={`h-12 rounded-xl ${selectedEvent.is_attending ? "bg-green-600 hover:bg-green-700" : "bg-primary hover:bg-primary/90"}`}
               >
                 {selectedEvent.is_attending ? <><Check className="w-4 h-4 mr-2"/> Going</> : selectedEvent.ticket_price && selectedEvent.ticket_price > 0 ? <><Ticket className="w-4 h-4 mr-2"/> ₦{selectedEvent.ticket_price.toLocaleString()}</> : <><Ticket className="w-4 h-4 mr-2"/> RSVP</>}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* COMMUNITY DETAIL MODAL */}
+      {selectedCommunity && (
+        <Dialog open={!!selectedCommunity} onOpenChange={() => setSelectedCommunity(null)}>
+          <DialogContent className="p-0 overflow-hidden sm:max-w-[420px] border-0">
+            <div className="relative h-40 w-full bg-gradient-to-br from-primary/20 to-accent/20">
+              {selectedCommunity.avatar_url && (
+                <img src={selectedCommunity.avatar_url} className="w-full h-full object-cover" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+              <div className="absolute bottom-0 left-0 p-5 text-white w-full">
+                <div className="flex items-center gap-2 mb-1">
+                  <h2 className="text-xl font-bold leading-tight">{selectedCommunity.name}</h2>
+                  {selectedCommunity.is_premium && (
+                    <Badge className="bg-amber-500 text-white border-0 text-[10px]">Exclusive</Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-white/80 text-sm">
+                  <Users className="w-4 h-4" /> {selectedCommunity.member_count || 0} members
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              {selectedCommunity.description && (
+                <p className="text-sm text-muted-foreground leading-relaxed">{selectedCommunity.description}</p>
+              )}
+              
+              <div className="bg-muted/30 p-4 rounded-xl border space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Access</span>
+                  <span className="font-semibold">{selectedCommunity.is_premium ? 'Paid (Exclusive)' : 'Free to Join'}</span>
+                </div>
+                {selectedCommunity.is_premium && selectedCommunity.join_fee && selectedCommunity.join_fee > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Membership Fee</span>
+                    <span className="font-bold text-primary">₦{selectedCommunity.join_fee.toLocaleString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Members</span>
+                  <span className="font-semibold">{selectedCommunity.member_count || 0}</span>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="p-4 border-t bg-background">
+              <Button 
+                className="w-full h-12 rounded-xl"
+                onClick={() => {
+                  setSelectedCommunity(null);
+                  navigate(`/app/messages?type=community&id=${selectedCommunity.id}`);
+                }}
+              >
+                {selectedCommunity.is_premium && selectedCommunity.join_fee && selectedCommunity.join_fee > 0
+                  ? <><Ticket className="w-4 h-4 mr-2" /> Join for ₦{selectedCommunity.join_fee.toLocaleString()}</>
+                  : <><Users className="w-4 h-4 mr-2" /> Join Community</>
+                }
               </Button>
             </DialogFooter>
           </DialogContent>
