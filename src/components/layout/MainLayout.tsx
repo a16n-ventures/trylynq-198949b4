@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Map as MapIcon, MessageCircle, User } from 'lucide-react';
+import { Compass, Map as MapIcon, MessageCircle, User, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { useQuery } from '@tanstack/react-query';
 
 const MainLayout = () => {
   const navigate = useNavigate();
@@ -17,6 +18,16 @@ const MainLayout = () => {
 
   // Global notifications (Toast only, no visual bell in layout)
   useRealtimeNotifications(user?.id);
+
+  // Fetch system flags from admin settings
+  const { data: systemFlags } = useQuery({
+    queryKey: ['system-flags'],
+    queryFn: async () => {
+      const { data } = await supabase.from('app_settings').select('value').eq('key', 'system_flags').maybeSingle();
+      return data?.value as { maintenance_mode?: boolean } | null;
+    },
+    staleTime: 60000,
+  });
 
   // Navigation Configuration - The Clyx 4-Pillar Structure
   const tabs = [
@@ -36,16 +47,13 @@ const MainLayout = () => {
   useEffect(() => {
     if (!user) return;
 
-    // 1. Get Avatar for the "Me" Tab
     supabase.from('profiles').select('avatar_url').eq('user_id', user.id).single()
       .then(({ data }) => setUserAvatar(data?.avatar_url));
 
-    // 2. Get Unread Messages Count
     supabase.from('messages').select('*', { count: 'exact', head: true })
       .eq('receiver_id', user.id).eq('is_read', false)
       .then(({ count }) => setUnreadMessages(count || 0));
 
-    // 3. Realtime Unread Listener
     const channel = supabase.channel('layout_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` }, 
         () => {
@@ -58,11 +66,24 @@ const MainLayout = () => {
     return () => { supabase.removeChannel(channel); };
   }, [user]);
 
+  // Maintenance Mode Banner
+  if (systemFlags?.maintenance_mode) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="text-center max-w-sm space-y-4">
+          <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-8 h-8 text-amber-600" />
+          </div>
+          <h1 className="text-2xl font-bold">We'll be right back</h1>
+          <p className="text-muted-foreground">Ahmia is currently undergoing maintenance. Please check back shortly.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col font-sans selection:bg-primary/20">
       
-      {/* 1. MAIN CONTENT (No Global Header) */}
-      {/* Pages like Feed.tsx and Messages.tsx now control their own headers */}
       <main className="flex-1 pb-24 overflow-x-hidden animate-in fade-in duration-300">
         <Outlet />
       </main>

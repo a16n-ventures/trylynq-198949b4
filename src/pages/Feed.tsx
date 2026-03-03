@@ -182,8 +182,13 @@ const Feed = () => {
   }, [selectedEvent?.id, user?.id]); 
 
   const checkPremium = async () => {
-    const { data } = await supabase.from('subscriptions').select('status').eq('user_id', user?.id).eq('status', 'active').maybeSingle();
-    setIsPremium(!!data);
+    if (!user?.id) return;
+    // Check both subscriptions AND premium_features for consistency
+    const [{ data: subData }, { data: featureData }] = await Promise.all([
+      supabase.from('subscriptions').select('status').eq('user_id', user.id).eq('status', 'active').maybeSingle(),
+      supabase.from('premium_features').select('feature_type').eq('user_id', user.id).eq('is_active', true).gt('expires_at', new Date().toISOString()).limit(1)
+    ]);
+    setIsPremium(!!subData || (featureData && featureData.length > 0));
   };
 
   // --- FETCHING (The Clyx Engine) ---
@@ -467,30 +472,35 @@ const Feed = () => {
                 
                 {/* AI Insight (Premium VIP Section) */}
                 {isPremium && activeTab === 'for_you' && (
-                    <div className="space-y-3 mx-4 mt-2">
-                      {/* Vibe Check */}
-                      {aiInsights && (
-                        <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex gap-3 shadow-sm">
-                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <div className="mx-4 mt-2 space-y-3">
+                      {/* VIP Status Bar */}
+                      <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/15 via-primary/10 to-purple-500/15 border border-amber-300/30 dark:border-amber-700/30 rounded-2xl p-4 shadow-sm">
+                        <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl" />
+                        <div className="flex items-center gap-3 relative z-10">
+                          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md">
                             <Sparkles className="w-5 h-5" />
-                            </div>
-                            <div>
-                            <h3 className="font-bold text-sm text-amber-900 dark:text-amber-200">Vibe Check</h3>
-                            <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-1 leading-relaxed">{aiInsights}</p>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-foreground flex items-center gap-1.5">Premium Member <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] px-1.5">VIP</Badge></p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">Ad-free · {discoveryRadiusKm}km radius · Priority discovery · AI insights</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Vibe Check (AI Insight) */}
+                      {aiInsights && (
+                        <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 shadow-sm">
+                            <div className="flex items-start gap-3">
+                              <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                                <Sparkles className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1">
+                                <h3 className="font-bold text-xs text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-1">AI Vibe Check</h3>
+                                <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">{aiInsights}</p>
+                              </div>
                             </div>
                         </div>
                       )}
-                      
-                      {/* VIP Banner */}
-                      <div className="bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20 rounded-xl p-3 flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                          <Sparkles className="w-4 h-4 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-foreground">Premium Active</p>
-                          <p className="text-[10px] text-muted-foreground">Ad-free · Extended radius · Priority discovery</p>
-                        </div>
-                      </div>
                     </div>
                 )}
 

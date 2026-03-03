@@ -297,7 +297,7 @@ const Profile = () => {
   useEffect(() => {
     if (!user) {
       const timer = setTimeout(() => {
-        navigate('/auth');
+        navigate('/ahmia');
       }, 100);
       return () => clearTimeout(timer);
     }
@@ -936,35 +936,41 @@ navigate('/app/events')}>
         {/* C. PREMIUM INSIGHTS (Analytics for premium users) */}
         {profile.is_premium && (
           <TabsContent value="analytics" className="p-4 space-y-4 min-h-[300px]">
-            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-              <div className="p-5 space-y-4">
+            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-amber-500/5 to-transparent overflow-hidden relative">
+              <div className="absolute -right-8 -top-8 w-28 h-28 bg-primary/10 rounded-full blur-3xl" />
+              <div className="p-5 space-y-4 relative z-10">
                 <h3 className="font-bold text-base flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-primary" /> Profile Analytics
+                  <Crown className="w-5 h-5 text-amber-500" /> Profile Analytics
+                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] ml-auto">Premium</Badge>
                 </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-background rounded-xl p-4 border text-center">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
                     <p className="text-2xl font-bold text-primary">{profile.profile_views_30d || 0}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Profile Views (30d)</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Profile Views</p>
+                    <p className="text-[9px] text-muted-foreground">Last 30 days</p>
                   </div>
-                  <div className="bg-background rounded-xl p-4 border text-center">
+                  <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
                     <p className="text-2xl font-bold text-primary">{stats.event_views_30d || 0}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Event Views (30d)</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Event Views</p>
+                    <p className="text-[9px] text-muted-foreground">Last 30 days</p>
                   </div>
-                  <div className="bg-background rounded-xl p-4 border text-center">
+                  <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
                     <p className="text-2xl font-bold text-foreground">{stats.friends}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Total Friends</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Total Friends</p>
                   </div>
-                  <div className="bg-background rounded-xl p-4 border text-center">
+                  <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
                     <p className="text-2xl font-bold text-foreground">{stats.events}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Events Attended</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Events Attended</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground text-center pt-2">Premium members get detailed analytics on their profile and event performance.</p>
+                <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border/50">
+                  ✨ Premium members get detailed analytics on their profile and event performance.
+                </p>
               </div>
             </Card>
 
             {/* Subscription Management */}
-            <Card className="border-border">
+            <Card className="border-border shadow-sm">
               <div className="p-5 space-y-3">
                 <h3 className="font-bold text-base flex items-center gap-2">
                   <Settings className="w-5 h-5 text-muted-foreground" /> Subscription
@@ -976,6 +982,10 @@ navigate('/app/events')}>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Ad-Free</span>
                   <span className="font-semibold text-green-600 flex items-center gap-1"><Check className="w-4 h-4" /> Enabled</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Discovery Radius</span>
+                  <span className="font-semibold">Extended (150km)</span>
                 </div>
                 <Button variant="outline" className="w-full mt-2" onClick={() => navigate('/premium')}>
                   Manage Subscription
