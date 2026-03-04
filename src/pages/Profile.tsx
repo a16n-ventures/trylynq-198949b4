@@ -863,12 +863,6 @@ navigate('/app/events')}>
             <Ticket className="w-4 h-4 mr-2" /> My Tickets
           </TabsTrigger>
           
-          <TabsTrigger
-            value="moments"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
-          >
-            <Grid className="w-4 h-4 mr-2" /> Moments
-          </TabsTrigger>
           {profile.is_premium && (
             <TabsTrigger
               value="analytics"
