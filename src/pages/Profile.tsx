@@ -849,10 +849,6 @@ navigate('/app/events')}>
                 <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Views</span>
               </div>
             )}
-            <div className="text-center cursor-pointer hover:opacity-70 transition-opacity">
-              <span className="block font-bold text-lg">84</span>
-              <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Score</span>
-            </div>
           </div>
         </div>
       </div>
