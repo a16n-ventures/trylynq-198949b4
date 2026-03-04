@@ -461,84 +461,16 @@ export default function Messages() {
       </div>
 
       {/* RIGHT SIDEBAR (Active Chat) */}
-      <div className={`flex-1 flex flex-col bg-background h-full ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
-        {selectedChat ? (
-          <>
-            {/* CHAT HEADER */}
-            <div className="h-16 border-b flex items-center justify-between px-4 bg-background/80 backdrop-blur-md sticky top-0 z-20">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="md:hidden -ml-2" onClick={() => setSelectedChat(null)}>
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-                <Avatar className="h-10 w-10 border">
-                  <AvatarImage src={selectedChat.avatar} />
-                  <AvatarFallback>{selectedChat.name[0]}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <h2 className="font-bold text-sm">{selectedChat.name}</h2>
-                  {selectedChat.type === 'event' ? (
-                     <p className="text-xs text-primary flex items-center gap-1">
-                        <Calendar className="w-3 h-3" /> Vibe Check Chat
-                     </p>
-                  ) : (
-                     <p className="text-xs text-muted-foreground">
-                        {selectedChat.type === 'community' ? 'Community' : 'Online'}
-                     </p>
-                  )}
-                </div>
-              </div>
-
-              {/* CLYX ACTION BUTTON (Decide -> Do) */}
-              {selectedChat.type === 'event' && (
-                 <Button size="sm" variant="secondary" className="gap-2 rounded-full" onClick={() => navigate('/app/feed')}>
-                    <Ticket className="w-4 h-4" /> View Event
-                 </Button>
-              )}
-              {selectedChat.type === 'community' && (
-                 <Button size="icon" variant="ghost" onClick={() => navigate(`/app/messages?type=community&id=${selectedChat.id}&settings=true`)}>
-                   <Info className="w-5 h-5" />
-                 </Button>
-              )}
-            </div>
-
-            {/* MESSAGES AREA */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-muted/5 to-background" ref={scrollRef}>
-               {messages.map((msg: any, i: number) => (
-                  <MessageBubble 
-                    key={msg.id} 
-                    msg={msg} 
-                    prevMsg={i > 0 ? messages[i-1] : null}
-                    isComm={selectedChat.type !== 'dm'}
-                    canModerate={false}
-                    onDelete={() => {}}
-                    onReply={() => {}}
-                    onEdit={async () => {}}
-                    scrollToId={() => {}}
-                  />
-               ))}
-               {messages.length === 0 && (
-                  <div className="h-full flex flex-col items-center justify-center opacity-40">
-                     <MessageSquare className="w-12 h-12 mb-2" />
-                     <p>Start the vibe...</p>
-                  </div>
-               )}
-            </div>
-
-            {/* INPUT AREA */}
-            <ChatInputArea selectedChat={selectedChat} messageInput={messageInput} setMessageInput={setMessageInput} sendMessage={sendMessage} />
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-            <div className="w-20 h-20 bg-muted/30 rounded-full flex items-center justify-center mb-6">
-              <MessageSquare className="w-10 h-10 opacity-20" />
-            </div>
-            <h3 className="text-xl font-bold mb-2">Select a Conversation</h3>
-            <p className="max-w-xs mx-auto">
-              Join a <strong>Vibe Check</strong> from an event, chat with a community, or DM a friend.
-            </p>
-          </div>
-        )}
-      </div>
+      <ChatView 
+        selectedChat={selectedChat}
+        setSelectedChat={setSelectedChat}
+        messageInput={messageInput}
+        setMessageInput={setMessageInput}
+        sendMessage={sendMessage}
+        messages={messages}
+        scrollRef={scrollRef}
+        user={user}
+      />
 
       {/* --- MODALS --- */}
       
@@ -560,8 +492,162 @@ export default function Messages() {
          setShowNewGroupModal(false);
       }} />
 
-      {/* 3. NEW EVENT - handled via useEffect redirect */}
+    </div>
+  );
+}
 
+// --- ChatView: Extracted to use hooks at top level ---
+function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput, sendMessage, messages, scrollRef, user }: {
+  selectedChat: ChatItem | null; setSelectedChat: (c: ChatItem | null) => void;
+  messageInput: string; setMessageInput: (v: string) => void; sendMessage: any;
+  messages: any[]; scrollRef: any; user: any;
+}) {
+  const navigate = useNavigate();
+  const [showSettings, setShowSettings] = useState(false);
+  const [showModeration, setShowModeration] = useState(false);
+
+  // Message reactions
+  const messageIds = useMemo(() => messages.map((m: any) => m.id), [messages]);
+  const { reactions, addReaction } = useMessageReactions(
+    messageIds,
+    user?.id,
+    selectedChat?.type === 'community'
+  );
+
+  // Community metadata
+  const { data: communityMeta } = useQuery({
+    queryKey: ['community_meta_chat', selectedChat?.id],
+    queryFn: async () => {
+      if (!selectedChat || selectedChat.type !== 'community') return null;
+      const [{ data: comm }, { data: membership }] = await Promise.all([
+        supabase.from('communities').select('*').eq('id', selectedChat.id).single(),
+        supabase.from('community_members').select('role').eq('community_id', selectedChat.id).eq('user_id', user?.id).maybeSingle()
+      ]);
+      return { ...comm, my_role: membership?.role || 'none' };
+    },
+    enabled: !!selectedChat && selectedChat.type === 'community' && !!user,
+  });
+
+  const myCommRole = communityMeta?.my_role || 'none';
+  const canModerate = myCommRole === 'admin' || myCommRole === 'moderator';
+
+  if (!selectedChat) {
+    return (
+      <div className={`flex-1 flex flex-col bg-background h-full hidden md:flex`}>
+        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+          <div className="w-20 h-20 bg-muted/30 rounded-full flex items-center justify-center mb-6">
+            <MessageSquare className="w-10 h-10 opacity-20" />
+          </div>
+          <h3 className="text-xl font-bold mb-2">Select a Conversation</h3>
+          <p className="max-w-xs mx-auto">
+            Join a <strong>Vibe Check</strong> from an event, chat with a community, or DM a friend.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex-1 flex flex-col bg-background h-full ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
+      {/* CHAT HEADER */}
+      <div className="h-16 border-b flex items-center justify-between px-4 bg-background/80 backdrop-blur-md sticky top-0 z-20">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="md:hidden -ml-2" onClick={() => setSelectedChat(null)}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <Avatar className="h-10 w-10 border">
+            <AvatarImage src={selectedChat.avatar} />
+            <AvatarFallback>{selectedChat.name[0]}</AvatarFallback>
+          </Avatar>
+          <div>
+            <h2 className="font-bold text-sm">{selectedChat.name}</h2>
+            {selectedChat.type === 'event' ? (
+               <p className="text-xs text-primary flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Vibe Check Chat
+               </p>
+            ) : (
+               <p className="text-xs text-muted-foreground">
+                  {selectedChat.type === 'community' ? 'Community' : 'Online'}
+               </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {selectedChat.type === 'event' && (
+             <Button size="sm" variant="secondary" className="gap-2 rounded-full" onClick={() => navigate('/app/feed')}>
+                <Ticket className="w-4 h-4" /> View Event
+             </Button>
+          )}
+          {selectedChat.type === 'community' && canModerate && (
+            <Button size="icon" variant="ghost" onClick={() => setShowModeration(true)}>
+              <Shield className="w-5 h-5" />
+            </Button>
+          )}
+          {selectedChat.type === 'community' && canModerate && (
+            <Button size="icon" variant="ghost" onClick={() => setShowSettings(true)}>
+              <Settings className="w-5 h-5" />
+            </Button>
+          )}
+          {selectedChat.type === 'community' && !canModerate && (
+            <Button size="icon" variant="ghost" onClick={() => setShowSettings(true)}>
+              <Info className="w-5 h-5" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* MESSAGES AREA */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-muted/5 to-background" ref={scrollRef}>
+         {messages.map((msg: any, i: number) => {
+           const msgReactions = reactions[msg.id] || [];
+           return (
+             <MessageBubble 
+               key={msg.id} 
+               msg={msg} 
+               prevMsg={i > 0 ? messages[i-1] : null}
+               isComm={selectedChat.type !== 'dm'}
+               canModerate={canModerate}
+               onDelete={() => {}}
+               onReply={() => {}}
+               onEdit={async () => {}}
+               scrollToId={() => {}}
+               onReact={(msgId: string, emoji: string) => addReaction({ messageId: msgId, emoji })}
+               reactions={msgReactions}
+             />
+           );
+         })}
+         {messages.length === 0 && (
+            <div className="h-full flex flex-col items-center justify-center opacity-40">
+               <MessageSquare className="w-12 h-12 mb-2" />
+               <p>Start the vibe...</p>
+            </div>
+         )}
+      </div>
+
+      {/* INPUT AREA */}
+      <ChatInputArea selectedChat={selectedChat} messageInput={messageInput} setMessageInput={setMessageInput} sendMessage={sendMessage} />
+
+      {/* COMMUNITY SETTINGS DIALOG */}
+      {selectedChat.type === 'community' && communityMeta && (
+        <>
+          <CommunitySettingsDialog
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+            communityId={selectedChat.id}
+            currentName={communityMeta.name || selectedChat.name}
+            currentDesc={communityMeta.description || ''}
+            currentCoverUrl={communityMeta.cover_url}
+          />
+          <CommunityModerationDialog
+            isOpen={showModeration}
+            onClose={() => setShowModeration(false)}
+            communityId={selectedChat.id}
+            communityName={selectedChat.name}
+            myRole={myCommRole as any}
+          />
+        </>
+      )}
     </div>
   );
 }
