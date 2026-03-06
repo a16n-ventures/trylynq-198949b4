@@ -256,9 +256,9 @@ export default function Messages() {
           .select(`*, sender:profiles!sender_id(*)`)
           .eq('community_id', selectedChat.id);
       } else {
-        // NEW: Event Chats table
+        // Event Chats - no FK to profiles, so fetch separately
         query = supabase.from('event_chats')
-          .select(`*, sender:profiles!user_id(*)`) // Note: user_id is sender in event_chats schema
+          .select('*')
           .eq('event_id', selectedChat.id);
       }
 
