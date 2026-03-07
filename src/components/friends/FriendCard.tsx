@@ -111,7 +111,7 @@ export function FriendCard({
         <Button 
           variant="ghost" 
           size="icon"
-          onClick={() => navigate(`/app/messages?tab=dm?userId=${friend.user_id}`)}
+          onClick={() => navigate(`/app/messages?tab=dm&userId=${friend.user_id}`)}
         >
           <MessageSquare className="w-5 h-5 text-primary" />
         </Button>

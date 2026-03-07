@@ -13,12 +13,14 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { ContactImportModal } from '@/components/ContactImportModal';
+import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useGeolocation } from '@/contexts/LocationContext';
+import type { Profile } from '@/hooks/useFriends';
 
 // --- TYPES ---
 interface Friend {
@@ -61,6 +63,17 @@ const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('circle');
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [previewProfile, setPreviewProfile] = useState<Profile | null>(null);
+  const [previewFriendshipId, setPreviewFriendshipId] = useState<string | undefined>();
+
+  const openProfilePreview = (friend: Friend) => {
+    setPreviewProfile({
+      user_id: friend.user_id,
+      display_name: friend.display_name,
+      avatar_url: friend.avatar_url,
+    });
+    setPreviewFriendshipId(friend.friendship_id);
+  };
 
   // --- 1. DATA FETCHING ---
 
@@ -253,10 +266,30 @@ const Friends = () => {
         
         const { data: randomData } = await query;
   
+        // Calculate real mutual friends count
+        const suggestedIds = (randomData || []).map((p: any) => p.user_id);
+        const mutualCounts = new Map<string, number>();
+        
+        if (suggestedIds.length > 0 && friendIds.length > 0) {
+          for (const sugId of suggestedIds) {
+            const { data: theirFriends } = await supabase
+              .from('friendships')
+              .select('requester_id, addressee_id')
+              .or(`requester_id.eq.${sugId},addressee_id.eq.${sugId}`)
+              .eq('status', 'accepted');
+            
+            const theirFriendIds = (theirFriends || []).map(f => 
+              f.requester_id === sugId ? f.addressee_id : f.requester_id
+            );
+            const mutuals = theirFriendIds.filter(id => friendIds.includes(id) && id !== user.id);
+            mutualCounts.set(sugId, mutuals.length);
+          }
+        }
+
         return (randomData || []).map((p: any) => ({
           ...p,
           distance_km: null,
-          mutual_count: Math.floor(Math.random() * 3) // Placeholder for UI
+          mutual_count: mutualCounts.get(p.user_id) || 0,
         }));
       } catch (e) {
         console.error("Suggestion fetch failed", e);
@@ -528,12 +561,12 @@ const Friends = () => {
 
                 {filteredList.map(friend => (
                   <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm group hover:shadow-md transition-shadow">
-                    <Avatar className="h-12 w-12 cursor-pointer" onClick={() => navigate(`/app/profile?id=${friend.user_id}`)}>
+                    <Avatar className="h-12 w-12 cursor-pointer" onClick={() => openProfilePreview(friend)}>
                       <AvatarImage src={friend.avatar_url || undefined} />
                       <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
                     </Avatar>
                     
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigate(`/app/profile?id=${friend.user_id}`)}>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openProfilePreview(friend)}>
                       <h4 className="font-semibold text-sm truncate flex items-center gap-2">
                           {friend.display_name}
                           {friend.friendship_id === 'imported' && <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-blue-50 text-blue-600 border-blue-200">Imported from contacts</Badge>}
@@ -571,7 +604,7 @@ const Friends = () => {
                                 </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => navigate(`/app/profile?id=${friend.user_id}`)}>
+                                <DropdownMenuItem onClick={() => openProfilePreview(friend)}>
                                     View Profile
                                 </DropdownMenuItem>
                                 <DropdownMenuItem className="text-red-600">
@@ -648,6 +681,30 @@ const Friends = () => {
       </div>
 
       <ContactImportModal open={isImportOpen} onOpenChange={setIsImportOpen} />
+      
+      <FriendProfilePreview
+        profile={previewProfile}
+        open={!!previewProfile}
+        onClose={() => { setPreviewProfile(null); setPreviewFriendshipId(undefined); }}
+        friendshipId={previewFriendshipId}
+        onRemoveFriend={async (fId) => {
+          const { error } = await supabase.from('friendships').delete().eq('id', fId);
+          if (error) { toast.error('Failed to remove friend'); return; }
+          toast.success('Friend removed');
+          queryClient.invalidateQueries({ queryKey: ['my_friends_page'] });
+        }}
+        onBlockUser={async (userId) => {
+          const { error } = await supabase.from('blocked_users').insert({ blocker_id: user!.id, blocked_id: userId });
+          if (error) { toast.error('Failed to block user'); return; }
+          toast.success('User blocked');
+          queryClient.invalidateQueries({ queryKey: ['my_friends_page'] });
+        }}
+        onReportUser={async (userId) => {
+          const { error } = await supabase.from('reports').insert({ reporter_id: user!.id, target_id: userId, target_type: 'user', reason: 'Reported from friends list' });
+          if (error) { toast.error('Failed to report'); return; }
+          toast.success('Report submitted');
+        }}
+      />
     </div>
   );
 };
