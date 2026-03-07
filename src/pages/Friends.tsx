@@ -266,10 +266,30 @@ const Friends = () => {
         
         const { data: randomData } = await query;
   
+        // Calculate real mutual friends count
+        const suggestedIds = (randomData || []).map((p: any) => p.user_id);
+        const mutualCounts = new Map<string, number>();
+        
+        if (suggestedIds.length > 0 && friendIds.length > 0) {
+          for (const sugId of suggestedIds) {
+            const { data: theirFriends } = await supabase
+              .from('friendships')
+              .select('requester_id, addressee_id')
+              .or(`requester_id.eq.${sugId},addressee_id.eq.${sugId}`)
+              .eq('status', 'accepted');
+            
+            const theirFriendIds = (theirFriends || []).map(f => 
+              f.requester_id === sugId ? f.addressee_id : f.requester_id
+            );
+            const mutuals = theirFriendIds.filter(id => friendIds.includes(id) && id !== user.id);
+            mutualCounts.set(sugId, mutuals.length);
+          }
+        }
+
         return (randomData || []).map((p: any) => ({
           ...p,
           distance_km: null,
-          mutual_count: Math.floor(Math.random() * 3) // Placeholder for UI
+          mutual_count: mutualCounts.get(p.user_id) || 0,
         }));
       } catch (e) {
         console.error("Suggestion fetch failed", e);
