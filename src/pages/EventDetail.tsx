@@ -158,6 +158,13 @@ const EventDetail = () => {
   const [editTicketPrice, setEditTicketPrice] = useState('');
   const [editMaxAttendees, setEditMaxAttendees] = useState('');
 
+  // Record event view when page loads
+  useEffect(() => {
+    if (eventId && user?.id) {
+      (supabase.rpc as any)('record_event_view', { target_event_id: eventId }).then(() => {}).catch(() => {});
+    }
+  }, [eventId, user?.id]);
+
   // Fetch event details (Robust Version)
   const { data: event, isPending: loadingEvent } = useQuery({
     queryKey: ['event', eventId],

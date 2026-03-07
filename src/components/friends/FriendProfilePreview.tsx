@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -45,6 +45,13 @@ export function FriendProfilePreview({
 }: FriendProfilePreviewProps) {
   const navigate = useNavigate();
   const [confirmAction, setConfirmAction] = useState<'remove' | 'block' | null>(null);
+
+  // Record profile view when dialog opens
+  useEffect(() => {
+    if (open && profile?.user_id) {
+      (supabase.rpc as any)('record_profile_view', { target_user_id: profile.user_id }).then(() => {}).catch(() => {});
+    }
+  }, [open, profile?.user_id]);
 
   const { data: fullProfile, isLoading } = useQuery({
     queryKey: ['friendProfile', profile?.user_id],

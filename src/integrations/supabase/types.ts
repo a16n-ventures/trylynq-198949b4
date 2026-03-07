@@ -704,6 +704,45 @@ export type Database = {
           },
         ]
       }
+      event_views: {
+        Row: {
+          event_id: string
+          id: string
+          view_date: string
+          viewed_at: string
+          viewer_id: string
+        }
+        Insert: {
+          event_id: string
+          id?: string
+          view_date?: string
+          viewed_at?: string
+          viewer_id: string
+        }
+        Update: {
+          event_id?: string
+          id?: string
+          view_date?: string
+          viewed_at?: string
+          viewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_views_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "event_stats"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "event_views_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           boost_multiplier: number | null
@@ -1366,6 +1405,45 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      profile_views: {
+        Row: {
+          id: string
+          profile_user_id: string
+          view_date: string
+          viewed_at: string
+          viewer_id: string
+        }
+        Insert: {
+          id?: string
+          profile_user_id: string
+          view_date?: string
+          viewed_at?: string
+          viewer_id: string
+        }
+        Update: {
+          id?: string
+          profile_user_id?: string
+          view_date?: string
+          viewed_at?: string
+          viewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_views_profile_user_id_fkey"
+            columns: ["profile_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "profile_views_profile_user_id_fkey"
+            columns: ["profile_user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -2481,6 +2559,8 @@ export type Database = {
           title: string
         }[]
       }
+      record_event_view: { Args: { target_event_id: string }; Returns: number }
+      record_profile_view: { Args: { target_user_id: string }; Returns: number }
       request_payout: { Args: { withdraw_amount: number }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

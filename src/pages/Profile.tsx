@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -248,6 +248,121 @@ const AdminPortalButton = () => {
         </div>
       </div>
       <Button variant="outline" size="sm" onClick={() => navigate('/admin')}>Open</Button>
+    </div>
+  );
+};
+
+// --- PROFILE VIEWS TAB ---
+const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boolean }) => {
+  const navigate = useNavigate();
+
+  const { data: recentViewers = [], isLoading } = useQuery({
+    queryKey: ['profile-viewers', userId],
+    queryFn: async () => {
+      // Use a raw query approach since profile_views isn't in generated types yet
+      const { data, error } = await supabase
+        .from('profile_views' as any)
+        .select('viewer_id, viewed_at')
+        .eq('profile_user_id', userId)
+        .order('viewed_at', { ascending: false })
+        .limit(50);
+
+      if (error || !data) return [];
+
+      // Fetch viewer profiles
+      const viewerIds = [...new Set((data as any[]).map((v: any) => v.viewer_id))] as string[];
+      if (viewerIds.length === 0) return [];
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', viewerIds);
+
+      const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
+
+      return (data as any[]).map((v: any) => ({
+        ...v,
+        profile: profileMap.get(v.viewer_id) || { display_name: 'Unknown', avatar_url: null }
+      }));
+    },
+    enabled: !!userId,
+  });
+
+  // Deduplicate by viewer_id (show latest view only)
+  const uniqueViewers = useMemo(() => {
+    const seen = new Set<string>();
+    return recentViewers.filter((v: any) => {
+      if (seen.has(v.viewer_id)) return false;
+      seen.add(v.viewer_id);
+      return true;
+    });
+  }, [recentViewers]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl animate-pulse">
+            <div className="w-10 h-10 bg-muted rounded-full" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 bg-muted rounded w-1/3" />
+              <div className="h-3 bg-muted rounded w-1/4" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (uniqueViewers.length === 0) {
+    return (
+      <div className="text-center py-16 bg-muted/20 rounded-3xl border-2 border-dashed border-muted">
+        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+          <Grid className="w-8 h-8 text-muted-foreground/40" />
+        </div>
+        <h3 className="font-semibold text-lg">No views yet</h3>
+        <p className="text-sm text-muted-foreground mt-1">When people view your profile, they'll show up here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground mb-3">
+        {isPremium ? `${uniqueViewers.length} unique viewer${uniqueViewers.length !== 1 ? 's' : ''} in the last 30 days` : 'Upgrade to Premium for detailed viewer analytics'}
+      </p>
+      {uniqueViewers.map((viewer: any, idx: number) => (
+        <div
+          key={viewer.viewer_id + '-' + idx}
+          className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer"
+          onClick={() => navigate(`/app/friends`)}
+        >
+          <Avatar className="w-10 h-10 border border-border/50">
+            <AvatarImage src={viewer.profile.avatar_url || undefined} className="object-cover" />
+            <AvatarFallback className="bg-muted text-muted-foreground text-sm">
+              {viewer.profile.display_name?.[0]?.toUpperCase() || '?'}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm truncate">{isPremium ? viewer.profile.display_name : '••••••'}</p>
+            <p className="text-xs text-muted-foreground">
+              {new Date(viewer.viewed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </p>
+          </div>
+          {!isPremium && (
+            <Badge className="bg-amber-100 text-amber-800 border-0 text-[9px]">PRO</Badge>
+          )}
+        </div>
+      ))}
+      {!isPremium && uniqueViewers.length > 0 && (
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent p-4 mt-4">
+          <p className="text-sm font-semibold mb-1">Want to see who viewed you?</p>
+          <p className="text-xs text-muted-foreground mb-3">Upgrade to Premium to see full viewer details.</p>
+          <Button size="sm" onClick={() => navigate('/premium')} className="gap-1">
+            <Crown className="w-3.5 h-3.5" /> Upgrade
+          </Button>
+        </Card>
+      )}
     </div>
   );
 };
@@ -863,6 +978,13 @@ navigate('/app/events')}>
             <Ticket className="w-4 h-4 mr-2" /> My Tickets
           </TabsTrigger>
           
+          <TabsTrigger
+            value="views"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+          >
+            <Grid className="w-4 h-4 mr-2" /> Views
+          </TabsTrigger>
+
           {profile.is_premium && (
             <TabsTrigger
               value="analytics"
@@ -911,6 +1033,10 @@ navigate('/app/events')}>
           )}
         </TabsContent>
 
+        {/* B. VIEWS TAB */}
+        <TabsContent value="views" className="p-4 space-y-4 min-h-[300px]">
+          <ProfileViewsTab userId={user!.id} isPremium={!!profile.is_premium} />
+        </TabsContent>
 
         {/* C. PREMIUM INSIGHTS (Analytics for premium users) */}
         {profile.is_premium && (
