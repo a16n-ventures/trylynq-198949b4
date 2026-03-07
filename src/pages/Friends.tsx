@@ -561,12 +561,12 @@ const Friends = () => {
 
                 {filteredList.map(friend => (
                   <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm group hover:shadow-md transition-shadow">
-                    <Avatar className="h-12 w-12 cursor-pointer" onClick={() => navigate(`/app/profile?id=${friend.user_id}`)}>
+                    <Avatar className="h-12 w-12 cursor-pointer" onClick={() => openProfilePreview(friend)}>
                       <AvatarImage src={friend.avatar_url || undefined} />
                       <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
                     </Avatar>
                     
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigate(`/app/profile?id=${friend.user_id}`)}>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openProfilePreview(friend)}>
                       <h4 className="font-semibold text-sm truncate flex items-center gap-2">
                           {friend.display_name}
                           {friend.friendship_id === 'imported' && <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-blue-50 text-blue-600 border-blue-200">Imported from contacts</Badge>}
