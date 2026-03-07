@@ -863,6 +863,13 @@ navigate('/app/events')}>
             <Ticket className="w-4 h-4 mr-2" /> My Tickets
           </TabsTrigger>
           
+          <TabsTrigger
+            value="views"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+          >
+            <Grid className="w-4 h-4 mr-2" /> Views
+          </TabsTrigger>
+
           {profile.is_premium && (
             <TabsTrigger
               value="analytics"
@@ -911,6 +918,10 @@ navigate('/app/events')}>
           )}
         </TabsContent>
 
+        {/* B. VIEWS TAB */}
+        <TabsContent value="views" className="p-4 space-y-4 min-h-[300px]">
+          <ProfileViewsTab userId={user!.id} isPremium={!!profile.is_premium} />
+        </TabsContent>
 
         {/* C. PREMIUM INSIGHTS (Analytics for premium users) */}
         {profile.is_premium && (
