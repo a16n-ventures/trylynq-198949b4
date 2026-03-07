@@ -604,7 +604,7 @@ const Friends = () => {
                                 </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => navigate(`/app/profile?id=${friend.user_id}`)}>
+                                <DropdownMenuItem onClick={() => openProfilePreview(friend)}>
                                     View Profile
                                 </DropdownMenuItem>
                                 <DropdownMenuItem className="text-red-600">
