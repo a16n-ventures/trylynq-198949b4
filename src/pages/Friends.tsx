@@ -63,6 +63,17 @@ const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('circle');
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [previewProfile, setPreviewProfile] = useState<Profile | null>(null);
+  const [previewFriendshipId, setPreviewFriendshipId] = useState<string | undefined>();
+
+  const openProfilePreview = (friend: Friend) => {
+    setPreviewProfile({
+      user_id: friend.user_id,
+      display_name: friend.display_name,
+      avatar_url: friend.avatar_url,
+    });
+    setPreviewFriendshipId(friend.friendship_id);
+  };
 
   // --- 1. DATA FETCHING ---
 
