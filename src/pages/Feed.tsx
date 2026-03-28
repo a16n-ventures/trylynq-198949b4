@@ -279,8 +279,7 @@ useEffect(() => {
     } catch (err) {
       console.error("Feed Error:", err);
       toast.error("Could not load discovery feed");
-    } 
-  };
+    };
 
   // --- RSVP (RSVP first, then prompt payment for paid events) ---
   const handleRSVP = async (eventId: string) => {
