@@ -42,12 +42,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signUp = async (email: string, password: string, metadata?: { full_name?: string; username?: string; phone?: string }) => {
     const redirectUrl = `${window.location.origin}/app`;
     
+    // NEW: Get coordinates at moment of signup to assign to Zaria Pioneer List
+    let signupLat = null;
+    let signupLong = null;
+
+    if (navigator.geolocation) {
+      const pos = await new Promise<GeolocationPosition | null>((resolve) => {
+        navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 5000 });
+      });
+      signupLat = pos?.coords.latitude;
+      signupLong = pos?.coords.longitude;
+    }
+    
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl,
-        data: metadata
+        data: {
+          ...metadata,
+          signup_lat: signupLat, // Track for milestone
+          signup_long: signupLong,
+          is_pioneer: true // Flag as early adopter
+        }
       }
     });
     return { error };
