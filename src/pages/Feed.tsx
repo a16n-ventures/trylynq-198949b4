@@ -94,7 +94,7 @@ const Feed = () => {
 
   // FIX: Use React Query for events to prevent flickering and handle updates
   const { data: events = [], isLoading: loading, refetch: refetchEvents } = useQuery({
-    queryKey: ['smart-feed', user?.id, location?.latitude?.toFixed(3), location?.longitude?.toFixed(3)],
+    queryKey: ['smart-feed', user?.id, location?.latitude?.toFixed(2), location?.longitude?.toFixed(2)],
     queryFn: async () => {
       const data = await fetchSmartFeed();
       return data || [];
@@ -130,21 +130,17 @@ const Feed = () => {
   }, [userProfile]);
 
   // --- INITIALIZATION & REALTIME ---
-  useEffect(() => {
-    if (!user) return;
-    checkPremium();
+useEffect(() => {
+  if (!user) return;
+  checkPremium();
 
-    // FIX: Listen for new events in real-time
-    const channel = supabase
-      .channel('feed-updates')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'events' }, 
-        () => refetchEvents()
-      )
-      .subscribe();
+  const channel = supabase
+    .channel('feed-updates')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' }, () => refetchEvents())
+    .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
+  return () => { supabase.removeChannel(channel); };
+}, [user, refetchEvents]); 
 
   // --- FETCH FRIENDS FOR MODAL (NUCLEAR FIX) ---
     useEffect(() => {
@@ -212,8 +208,7 @@ const Feed = () => {
   };
 
   // --- FETCHING (The Clyx Engine) ---
-  const fetchSmartFeed = async () => {
-    setLoading(true);
+  const fetchSmartFeed = async () => 
     try {
       // 1. Get Location from Context (Single Source of Truth)
       let currentLat = location?.latitude;
@@ -254,14 +249,14 @@ const Feed = () => {
         const attendingIds = new Set(myAttendance?.map(a => a.event_id) || []);
 
         // Events (The Core)
-        if (response.events) {
+        { /* if (response.events) {
           setEvents(response.events.map((e: any) => ({
             ...e,
             attendee_count: e.attendee_count || 0,
             is_attending: attendingIds.has(e.id),
             friend_images: e.friend_images || []
           })));
-        }
+        } */ }
         
         // Communities — deduplicate by ID before setting state
         if (response.communities) {
@@ -284,9 +279,7 @@ const Feed = () => {
     } catch (err) {
       console.error("Feed Error:", err);
       toast.error("Could not load discovery feed");
-    } finally {
-      setLoading(false);
-    }
+    } 
   };
 
   // --- RSVP (RSVP first, then prompt payment for paid events) ---
