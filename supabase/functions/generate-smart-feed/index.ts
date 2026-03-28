@@ -82,14 +82,18 @@ serve(async (req) => {
     });
 
     return new Response(JSON.stringify({ 
-      success: true, 
-      events: eventsData,
-      milestone: {
-        current: zariaUserCount || 0,
-        target: UNLOCK_THRESHOLD,
-        is_unlocked: isCityUnlocked,
-        city_name: "ABU Zaria"
-      }
+  success: true, 
+  events: eventsData, 
+  communities: communitiesData,
+  ai_insights: aiInsights,
+  is_premium: isViewerPremium,
+  location_context: locationFilter || null,
+  // NEW: Milestone data for the progress bar
+  milestone: {
+    current: zariaUserCount || 0,
+    target: 500,
+    is_unlocked: (zariaUserCount || 0) >= 500
+     }
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     // 1. FETCH VIEWER CONTEXT (Profile, Friends, Active Features)
