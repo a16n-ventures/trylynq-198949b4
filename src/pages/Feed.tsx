@@ -489,88 +489,85 @@ const Feed = () => {
             </div>
 
             {/* CONTENT AREA */}
-            <div className="container-mobile py-2 space-y-6"> 
-                
-                {/* AI Insight (Premium VIP Section) */}
-                {isPremium && activeTab === 'for_you' && (
-                    <div className="mx-4 mt-2 space-y-3">
-                      {/* VIP Status Bar */}
-                      <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/15 via-primary/10 to-purple-500/15 border border-amber-300/30 dark:border-amber-700/30 rounded-2xl p-4 shadow-sm">
-                        <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl" />
-                        <div className="flex items-center gap-3 relative z-10">
-                          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md">
-                            <Sparkles className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-foreground flex items-center gap-1.5">Premium Member <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] px-1.5">VIP</Badge></p>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">Ad-free · {discoveryRadiusKm}km radius · Priority discovery · AI insights</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Vibe Check (AI Insight) */}
-                      {aiInsights && (
-                        <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 shadow-sm">
-                            <div className="flex items-start gap-3">
-                              <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
-                                <Sparkles className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1">
-                                <h3 className="font-bold text-xs text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-1">AI Vibe Check</h3>
-                                <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">{aiInsights}</p>
-                              </div>
-                            </div>
-                        </div>
-                      )} 
-
-                      {/* NEW: WAITING ROOM / MILESTONE UI */}
-{events.length > 0 && events[0].is_locked && (
-  <div className="mx-4 mb-8 p-6 bg-gradient-to-br from-primary/10 via-background to-secondary/10 rounded-3xl border-2 border-dashed border-primary/30 text-center animate-in fade-in zoom-in duration-500">
-    <div className="h-16 w-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
-      <Lock className="w-8 h-8 text-primary animate-pulse" />
-    </div>
+<div className="container-mobile py-2 space-y-6"> 
     
-    <h2 className="text-2xl font-black mb-2 italic">ZARIA IS LOADING...</h2>
-    <p className="text-sm text-muted-foreground mb-6">
-      Ahmia goes live at ABU Zaria once <span className="text-foreground font-bold">500 Pioneers</span> join. 
-      Social features are currently in "Stealth Mode."
-    </p>
+    {/* A. PREMIUM SECTION (AI Insights Only) */}
+    {isPremium && activeTab === 'for_you' && (
+        <div className="mx-4 mt-2 space-y-3">
+          <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/15 via-primary/10 to-purple-500/15 border border-amber-300/30 dark:border-amber-700/30 rounded-2xl p-4 shadow-sm">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl" />
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-foreground flex items-center gap-1.5">Premium Member <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] px-1.5">VIP</Badge></p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Ad-free · {discoveryRadiusKm}km radius · Priority discovery · AI insights</p>
+              </div>
+            </div>
+          </div>
 
-    {/* Progress Bar */}
-    <div className="space-y-2 mb-6">
-      <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
-        <span>{locationName} Pioneers</span>
-        <span className="text-primary">342 / 500</span> {/* Hardcoded for demo, will come from milestone object */}
+          {aiInsights && (
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-xs text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-1">AI Vibe Check</h3>
+                    <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">{aiInsights}</p>
+                  </div>
+                </div>
+            </div>
+          )} 
+        </div>
+    )}
+
+    {/* B. WAITING ROOM / MILESTONE UI (Visible to ALL users in Zaria) */}
+    {activeTab === 'for_you' && events.length > 0 && (events[0] as any).is_locked && (
+      <div className="mx-4 mb-8 p-6 bg-gradient-to-br from-primary/10 via-background to-secondary/10 rounded-3xl border-2 border-dashed border-primary/30 text-center animate-in fade-in zoom-in duration-500">
+        <div className="h-16 w-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Lock className="w-8 h-8 text-primary animate-pulse" />
+        </div>
+        
+        <h2 className="text-2xl font-black mb-2 italic uppercase">{locationName} IS LOADING...</h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Ahmia goes live once <span className="text-foreground font-bold">500 Pioneers</span> join. 
+          Social features are currently in "Stealth Mode."
+        </p>
+
+        <div className="space-y-2 mb-6">
+          <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
+            <span>{locationName} Pioneers</span>
+            <span className="text-primary">342 / 500</span> 
+          </div>
+          <div className="h-4 w-full bg-muted rounded-full overflow-hidden border">
+            <div 
+              className="h-full bg-primary transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(var(--primary),0.5)]" 
+              style={{ width: '68%' }} 
+            />
+          </div>
+        </div>
+
+        <Button 
+          className="w-full h-12 rounded-2xl shadow-lg hover:scale-105 transition-transform font-bold"
+          onClick={() => {
+            if (navigator.share) {
+              navigator.share({
+                title: `Unlock Ahmia in ${locationName}!`,
+                text: `I'm pioneer #342 in ${locationName}. Help us hit 500 to unlock the city!`,
+                url: window.location.origin
+              });
+            }
+          }}
+        >
+          <Users className="w-5 h-5 mr-2" /> Invite Friends to Speed Up
+        </Button>
       </div>
-      <div className="h-4 w-full bg-muted rounded-full overflow-hidden border">
-        <div 
-          className="h-full bg-primary transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(var(--primary),0.5)]" 
-          style={{ width: '68%' }} 
-        />
-      </div>
-    </div>
+    )}
 
-    <Button 
-      className="w-full h-12 rounded-2xl shadow-lg hover:scale-105 transition-transform font-bold"
-      onClick={() => {
-        if (navigator.share) {
-          navigator.share({
-            title: 'Join the ABU Zaria Pioneer List on Ahmia!',
-            text: 'I just joined the waiting room for Ahmia at ABU. Help us hit 500 users to unlock the city!',
-            url: window.location.origin
-          });
-        }
-      }}
-    >
-      <Users className="w-5 h-5 mr-2" /> Invite Friends to Speed Up
-    </Button>
-  </div>
-)}
-
-{/* If Locked, show "Teaser" events with blurred overlay */}
-<div className={events[0]?.is_locked ? "opacity-40 pointer-events-none grayscale" : ""}> 
-                    </div>
-                )}
+    {/* C. EVENTS FEED (With blur if locked) */}
+    <TabsContent value={activeTab} className={`mt-0 space-y-5 px-4 min-h-[50vh] ${activeTab === 'for_you' && (events[0] as any)?.is_locked ? "opacity-50 pointer-events-none grayscale blur-[1px]" : ""}`}>
 
                 {/* EVENTS FEED */}
                 <TabsContent value={activeTab} className="mt-0 space-y-5 px-4 min-h-[50vh]">
