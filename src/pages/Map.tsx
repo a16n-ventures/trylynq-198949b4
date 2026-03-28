@@ -333,22 +333,26 @@ const MapPage = () => {
       {/* LAYER 2: CLYX UI OVERLAY */}
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
-        {/* A. COMMAND ISLAND */}
-{!isNavigating && (
-  <div className="pt-safe-top px-4 mt-4 pointer-events-auto">
-    
-    {/* NEW: ZARIA STEALTH MODE INDICATOR */}
-    {events.length > 0 && (events[0] as any).is_locked && (
-      <div className="mb-3 bg-primary/20 backdrop-blur-md border border-primary/30 rounded-2xl p-3 flex items-center justify-between animate-pulse">
-        <div className="flex items-center gap-2">
-          <Radar className="w-4 h-4 text-primary" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-primary">
-            Zaria Stealth Mode: {events.length > 0 ? '342' : '0'}/500 Joined
-          </span>
-        </div>
-        <Badge variant="outline" className="text-[9px] border-primary/50 text-primary">LOCKED</Badge>
-      </div>
+                {/* A. COMMAND ISLAND */}
+        {!isNavigating && (
+          <div className="pt-safe-top px-4 mt-4 pointer-events-auto">
+            <div className="flex flex-col gap-3">
+              
+              {/* NEW: ZARIA STEALTH MODE INDICATOR (Fully Fixed) */}
+              {events.length > 0 && (events[0] as any).is_locked && (
+                <div className="mb-1 bg-primary/20 backdrop-blur-md border border-primary/30 rounded-2xl p-3 flex items-center justify-between animate-pulse">
+                  <div className="flex items-center gap-2">
+                    <Radar className="w-4 h-4 text-primary" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-primary">
+                      Zaria Stealth Mode: 342/500 Joined
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] border-primary/50 text-primary">LOCKED</Badge>
+                </div>
+              )}
 
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 h-12 bg-background/80 backdrop-blur-xl border border-white/20 rounded-2xl shadow-lg flex items-center px-4">
                   <Search className="w-5 h-5 text-muted-foreground mr-3" />
                   <Input 
                     placeholder={activeView === 'friends' ? "Find friends..." : "Find vibes..."}
