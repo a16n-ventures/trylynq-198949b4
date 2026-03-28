@@ -175,7 +175,7 @@ const Feed = () => {
 
       return mappedEvents;
     },
-    enabled: !!user,
+    enabled: !!user && !!location,
     staleTime: 1000 * 60 * 5, // Keep data fresh for 5 mins to stop flickering
   });
   
@@ -204,16 +204,22 @@ const Feed = () => {
 
   // --- INITIALIZATION & REALTIME ---
   useEffect(() => {
-    if (!user) return;
-    checkPremium();
+  if (!user) return;
+  checkPremium();
 
-    const channel = supabase
-      .channel('feed-updates')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' }, () => refetchEvents())
-      .subscribe();
+  const channel = supabase
+    .channel('feed-updates')
+    .on('postgres_changes', 
+      { event: 'INSERT', schema: 'public', table: 'events' }, 
+      () => {
+        // This clears the cache and forces a fresh background fetch
+        queryClient.invalidateQueries({ queryKey: ['smart-feed'] });
+      }
+    )
+    .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [user, refetchEvents]); 
+  return () => { supabase.removeChannel(channel); };
+}, [user, queryClient]); 
 
   // --- FETCH FRIENDS FOR MODAL ---
   useEffect(() => {
