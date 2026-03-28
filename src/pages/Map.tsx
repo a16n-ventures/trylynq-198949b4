@@ -159,39 +159,51 @@ const MapPage = () => {
   }, [friends, friendLocations, location, user?.id]);
 
   const friendsMapped: FriendOnMap[] = useMemo(() => {
-    if (!location) return [];
-    
-    return (nearbyFriendsRaw
-      .map((loc: any) => {
-        const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
-        if (dist > discoveryRadiusKm) return null; // Radius Filter
+  if (!location) return [];
+  
+  // 1. Detect if ABU Zaria is currently in "Stealth Mode"
+  const isCityLocked = events.length > 0 && (events[0] as any).is_locked;
 
-        const online = friendsPresence[loc.user_id] === 'online';
-        let statusText = 'Offline';
-        if (online) statusText = 'Active now';
-        else if (!loc.is_sharing) statusText = 'Location paused';
-        else statusText = 'Active recently';
+  return (nearbyFriendsRaw
+    .map((loc: any) => {
+      // 2. Original Distance Calculation
+      const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
+      if (dist > discoveryRadiusKm) return null; // Keep your Radius Filter
 
-        return {
-          id: loc.user_id,
-          user_id: loc.user_id,
-          name: loc.profiles?.display_name || 'Friend',
-          avatar: loc.profiles?.avatar_url,
-          locationLabel: 'On the map',
-          coordinates: { lat: loc.latitude, lng: loc.longitude },
-          status: online ? 'online' : 'offline',
-          lastSeen: statusText,
-          distanceKm: Number(dist.toFixed(1)),
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          is_premium: premiumStatus[loc.user_id] || false,
-          profiles: loc.profiles
-        };
-      })
-      .filter(Boolean) as FriendOnMap[])
-      // ✅ SORTING: NEAREST FIRST
-      .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-  }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus]);
+      // 3. Original Presence/Status Logic
+      const online = friendsPresence[loc.user_id] === 'online';
+      let statusText = 'Offline';
+      if (online) statusText = 'Active now';
+      else if (!loc.is_sharing) statusText = 'Location paused';
+      else statusText = 'Active recently';
+
+      // 4. NEW: Stealth Mode "Fuzzing" 
+      // If locked, we offset coordinates by ~200m to create a "Pulse" area instead of a precise pin.
+      const displayLat = isCityLocked ? loc.latitude + (Math.random() - 0.5) * 0.003 : loc.latitude;
+      const displayLng = isCityLocked ? loc.longitude + (Math.random() - 0.5) * 0.003 : loc.longitude;
+
+      return {
+        id: loc.user_id,
+        user_id: loc.user_id,
+        // If locked, anonymize to "Pioneer" to build mystery
+        name: isCityLocked ? "Zaria Pioneer" : (loc.profiles?.display_name || 'Friend'),
+        avatar: isCityLocked ? null : loc.profiles?.avatar_url,
+        locationLabel: isCityLocked ? 'Stealth Mode' : 'On the map',
+        coordinates: { lat: displayLat, lng: displayLng },
+        status: online ? 'online' : 'offline',
+        lastSeen: statusText,
+        distanceKm: Number(dist.toFixed(1)),
+        latitude: displayLat,
+        longitude: displayLng,
+        is_premium: premiumStatus[loc.user_id] || false,
+        profiles: loc.profiles,
+        is_pulse: isCityLocked // Flag for the map marker to use a pulse animation
+      };
+    })
+    .filter(Boolean) as FriendOnMap[])
+    // 5. Original Sorting: NEAREST FIRST
+    .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+}, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus, events]); 
 
   // --- 4. Events (With Clyx "Decide" Data) ---
  const { data: events = [], isLoading: eventsLoading } = useQuery({
@@ -322,11 +334,22 @@ const MapPage = () => {
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
         {/* A. COMMAND ISLAND */}
-        {!isNavigating && (
-          <div className="pt-safe-top px-4 mt-4 pointer-events-auto">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1 h-12 bg-background/80 backdrop-blur-xl border border-white/20 rounded-2xl shadow-lg flex items-center px-4">
+{!isNavigating && (
+  <div className="pt-safe-top px-4 mt-4 pointer-events-auto">
+    
+    {/* NEW: ZARIA STEALTH MODE INDICATOR */}
+    {events.length > 0 && (events[0] as any).is_locked && (
+      <div className="mb-3 bg-primary/20 backdrop-blur-md border border-primary/30 rounded-2xl p-3 flex items-center justify-between animate-pulse">
+        <div className="flex items-center gap-2">
+          <Radar className="w-4 h-4 text-primary" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-primary">
+            Zaria Stealth Mode: {events.length > 0 ? '342' : '0'}/500 Joined
+          </span>
+        </div>
+        <Badge variant="outline" className="text-[9px] border-primary/50 text-primary">LOCKED</Badge>
+      </div>
+    )}
+
                   <Search className="w-5 h-5 text-muted-foreground mr-3" />
                   <Input 
                     placeholder={activeView === 'friends' ? "Find friends..." : "Find vibes..."}
