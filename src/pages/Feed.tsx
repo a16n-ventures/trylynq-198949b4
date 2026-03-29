@@ -87,9 +87,6 @@ const Feed = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { unreadCount } = useRealtimeNotifications(user?.id);
-  const currentCount = feedData?.milestone?.current || 0;
-  const targetCount = feedData?.milestone?.current || 0;
-  const cityName = feedData?.milestone?.zone_name || locationName;
 
   // FIX: Declare location BEFORE it is used in the queryKey below
   const { location, isLoading: locationLoading, error: locationError } = useGeolocation();
@@ -125,61 +122,31 @@ const Feed = () => {
         }
       }
 
-      // 2. Call the Intelligent Backend
-      const { data: feedData, isLoading: loading } = useQuery({
-        queryKey: FEED_QUERY_KEY,
-        queryFn: async () => {
-          const { data: response } = await supabase.functions.invoke('generate-smart-feed', { ... });
-          return response; // Return the WHOLE response, not just response.events
+    // 2. Call the Intelligent Backend
+    const { data: feedData, isLoading: loading, error } = useQuery({
+    queryKey: FEED_QUERY_KEY,
+    queryFn: async () => {
+      // Call the backend once
+      const { data, error } = await supabase.functions.invoke('generate-smart-feed', {
+        body: { 
+          user_id: user?.id, 
+          user_lat: location?.latitude, 
+          user_long: location?.longitude, 
+          city: locationName 
         }
       });
-
+  
       if (error) throw error;
-
-      let mappedEvents: Event[] = [];
-
-      if (response) {
-        // Fetch user's attending events to check is_attending
-        const { data: myAttendance } = await supabase
-          .from('event_attendees')
-          .select('event_id')
-          .eq('user_id', user?.id || '');
-        const attendingIds = new Set(myAttendance?.map((a: any) => a.event_id) || []);
-
-        // FIX: Return events so React Query can store them
-        if (response.events) {
-          mappedEvents = response.events.map((e: any) => ({
-            ...e,
-            attendee_count: e.attendee_count || 0,
-            is_attending: attendingIds.has(e.id),
-            friend_images: e.friend_images || []
-          }));
-        }
-        
-        // Communities — deduplicate by ID before setting state
-        if (response.communities) {
-          const seen = new Set<string>();
-          const unique = response.communities.filter((c: any) => {
-            if (seen.has(c.id)) return false;
-            seen.add(c.id);
-            return true;
-          });
-          setCommunities(unique.map((c: any) => ({
-            ...c,
-            avatar_url: c.cover_url || c.avatar_url || null,
-            is_premium: c.is_premium || false,
-            join_fee: c.join_fee || 0,
-          })));
-        }
-
-        setAiInsights(response.ai_insights || null);
-      }
-
-      return mappedEvents;
+      return data; // This returns the { events, communities, milestone } object
     },
     enabled: !!user && !!location,
-    staleTime: 1000 * 60 * 5, // Keep data fresh for 5 mins to stop flickering
-  }); 
+  });
+  
+  const events = feedData?.events || [];
+  const milestone = feedData?.milestone;
+  const currentCount = milestone?.current || 0;
+  const targetCount = milestone?.target || 500; // Use target, not current
+  const cityName = milestone?.zone_name || locationName;
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
@@ -491,7 +458,7 @@ const Feed = () => {
             </div>
 
             {/* CONTENT AREA */}
-<div className="container-mobile py-2 space-y-6"> 
+     <div className="container-mobile py-2 space-y-6"> 
     
     {/* A. PREMIUM SECTION */}
     {isPremium && activeTab === 'for_you' && (
@@ -526,13 +493,12 @@ const Feed = () => {
     )}
 
     {/* B. WAITING ROOM / MILESTONE UI (Zaria Support) */}
-    {activeTab === 'for_you' && milestone?.is_unlocked === false && (
+    {activeTab === 'for_you' && feedData?.milestone?.zone_name !== 'Global' && feedData?.milestone?.is_unlocked === false && (
       <div className="mx-4 mb-8 p-6 bg-gradient-to-br from-primary/10 via-background to-secondary/10 rounded-3xl border-2 border-dashed border-primary/30 text-center animate-in fade-in zoom-in duration-500">
         <div className="h-16 w-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
           <Lock className="w-8 h-8 text-primary animate-pulse" />
         </div>
-        
-        <h2 className="text-2xl font-black mb-2 italic uppercase">ZARIA IS LOADING...</h2>
+        <h2 className="text-2xl font-black mb-2 italic uppercase">{cityName} IS LOADING...</h2>
         <p className="text-sm text-muted-foreground mb-6">
           Ahmia goes live once <span className="text-foreground font-bold">500 Pioneers</span> join. 
           Social features are currently in "Stealth Mode."
@@ -542,16 +508,15 @@ const Feed = () => {
           <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
             <span>{locationName} Pioneers</span>
             {/* Replace 342 / 500 with: */}
-            <span>{locationName} Pioneers</span>
             <span className="text-primary">
-              {events[0]?.milestone?.current || 0} / {events[0]?.milestone?.target || 500}
+              {feedData?.milestone?.current || 0} / {feedData?.milestone?.target || 500}
             </span> 
 
           </div>
           <div className="h-4 w-full bg-muted rounded-full overflow-hidden border">
             <div 
               className="h-full bg-primary transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(var(--primary),0.5)]" 
-              style={{ width: `${Math.min(((events[0]?.milestone?.current || 0) / (events[0]?.milestone?.target || 500)) * 100, 100)}%` }}
+              style={{ width: `${Math.min(((feedData?.milestone?.current || 0) / (feedData?.milestone?.target || 500)) * 100, 100)}%` }}
             />
           </div>
         </div>
@@ -570,6 +535,27 @@ const Feed = () => {
           }}
         >
           <Users className="w-5 h-5 mr-2" /> Invite Friends to Speed Up
+        </Button>
+      </div>
+    )}
+    
+    {/* 2. Case B: NOT IN A SUPPORTED CITY (activeZone was NULL) */}
+    {activeTab === 'for_you' && feedData?.milestone?.zone_name === 'Global' && (
+      <div className="mx-4 mb-8 p-6 bg-muted/30 rounded-3xl border-2 border-dotted border-muted-foreground/20 text-center">
+        <div className="h-12 w-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+          <MapPin className="w-6 h-6 text-muted-foreground" />
+        </div>
+        <h2 className="text-lg font-bold text-foreground">Not available in {locationName}</h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          Coming soon to your location. We are currently focusing on campus hubs!
+        </p>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="rounded-full text-[10px]"
+          onClick={() => navigate('/app/feed?tab=communities')}
+        >
+          <Globe className="w-3 h-3 mr-2" /> Explore Global Communities
         </Button>
       </div>
     )}
