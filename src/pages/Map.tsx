@@ -600,37 +600,47 @@ const MapPage = () => {
           {!isNavigating && !selectedFriend && !selectedEvent && (
             <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
               
-              {/* If Low Density, show the "Global Discovery" twist first */}
               {showGlobalDiscovery ? (
-              <>
-                <div className="flex-shrink-0 w-44 snap-start">
-                  <Card className="h-40 rounded-3xl border-2 border-dashed border-primary/30 bg-primary/10 flex flex-col items-center justify-center p-4 text-center">
-                    <Globe className="w-8 h-8 text-primary mb-2 animate-spin-slow" />
-                    <h4 className="font-bold text-white text-sm">Quiet nearby?</h4>
-                    <p className="text-[10px] text-muted-foreground text-white mb-3">Join Global Communities until your area heats up.</p>
-                    <Button size="sm" variant="outline" className="h-8 rounded-full text-[10px]" onClick={() => navigate('/app/feed?tab=communities')}>
-                      Explore Communities
+                /* --- OPTION 1: LOW DENSITY (Hides Friends List Entirely) --- */
+                <div className="flex gap-3 w-full">
+                  {/* Left: Global Discovery Card */}
+                  <div className="flex-shrink-0 w-64 snap-start">
+                    <Card className="h-40 rounded-3xl border-2 border-dashed border-primary/30 bg-primary/10 flex flex-col items-center justify-center p-4 text-center">
+                      <Globe className="w-8 h-8 text-primary mb-2 animate-spin-slow" />
+                      <h4 className="font-bold text-sm">Quiet nearby?</h4>
+                      <p className="text-[10px] text-muted-foreground mb-3 leading-tight">
+                        Join Global Communities while we find more pioneers in your area.
+                      </p>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-8 rounded-full text-[10px] px-4 bg-background" 
+                        onClick={() => navigate('/app/feed?tab=communities')}
+                      >
+                        Explore Communities
+                      </Button>
+                    </Card>
+                  </div>
+          
+                  {/* Right: Grow Circle Card */}
+                  <div className="flex-shrink-0 w-44 snap-end">
+                    <Button 
+                      variant="outline" 
+                      className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-primary/5 bg-background/50 border-muted-foreground/20"
+                      onClick={() => setShowContactImport(true)}
+                    >
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+                        <UserPlus className="w-5 h-5" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs font-bold">Grow Circle</p>
+                        <p className="text-[10px] text-muted-foreground">Invite contacts</p>
+                      </div>
                     </Button>
-                  </Card>
+                  </div>
                 </div>
-                
-                <div className="flex-shrink-0 w-44 snap-end">
-                  <Button 
-                    variant="outline" 
-                    className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-accent/50"
-                    onClick={() => setShowContactImport(true)}
-                  >
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-inner">
-                      <UserPlus className="w-5 h-5" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs font-bold">Grow Circle</p>
-                      <p className="text-[10px] text-muted-foreground">Invite contacts</p>
-                    </div>
-                  </Button>
-                </div>
-                </>
-                ) : (
+              ) : (
+                /* --- OPTION 2: HIGH DENSITY (Shows Friends List) --- */
                 <>
                   {(activeView === 'friends' ? friendsMapped : events).map((item: any) => (
                     <div
@@ -639,23 +649,21 @@ const MapPage = () => {
                       onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
                     >
                       <div className="relative">
-                        <Avatar className="w-14 h-14 shadow-md">
+                        <Avatar className="w-14 h-14 shadow-md border-2 border-background">
                           <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
                           <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
                         </Avatar>
-                        {activeView === 'friends' && item.status === 'online' && (
-                          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
-                        )}
                       </div>
                       <div className="w-full px-1">
                         <h4 className="font-bold text-sm truncate">{item.name || item.title}</h4>
                         <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
-                          <MapPin className="w-3 h-3" /> {item.distanceKm}km
+                          <MapPin className="w-2.5 h-2.5" /> {item.distanceKm}km
                         </p>
                       </div>
                     </div>
-                  ))} 
-                  {/* Invite Friends Card appended to the end of the scroll */}
+                  ))}
+                  
+                  {/* End of list Invite button */}
                   {activeView === 'friends' && (
                     <div className="flex-shrink-0 w-44 snap-end">
                       <Button variant="outline" className="w-full h-40 rounded-3xl border-dashed border-2" onClick={() => setShowContactImport(true)}>
@@ -665,6 +673,7 @@ const MapPage = () => {
                     </div>
                   )}
                 </>
+              )}
             </div>
           )}
         </div>
