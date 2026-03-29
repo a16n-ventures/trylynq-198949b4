@@ -101,32 +101,10 @@ const Feed = () => {
   // queryFn is defined inline so it's always in scope and can close over `location`.
   const FEED_QUERY_KEY = ['smart-feed', user?.id, location?.latitude?.toFixed(2), location?.longitude?.toFixed(2)];
 
-  const { data: events = [], isLoading: loading, refetch: refetchEvents } = useQuery<Event[]>({
+    // 1. Unified Query for the entire backend response
+  const { data: feedData, isLoading: loading } = useQuery({
     queryKey: FEED_QUERY_KEY,
     queryFn: async () => {
-      // 1. Get Location from Context (Single Source of Truth)
-      let currentLat = location?.latitude;
-      let currentLong = location?.longitude;
-      let city = 'Detecting...';
-
-      // If Context is ready, reverse geocode for the header name
-      if (currentLat && currentLong) {
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLong}`);
-          const data = await res.json();
-          city = data.address.city || data.address.town || data.address.state || "Nearby";
-          setLocationName(city);
-        } catch (e) {
-          console.warn("Reverse geocoding failed", e);
-          setLocationName("Global Mode");
-        }
-      }
-
-    // 2. Call the Intelligent Backend
-    const { data: feedData, isLoading: loading, error } = useQuery({
-    queryKey: FEED_QUERY_KEY,
-    queryFn: async () => {
-      // Call the backend once
       const { data, error } = await supabase.functions.invoke('generate-smart-feed', {
         body: { 
           user_id: user?.id, 
@@ -135,17 +113,18 @@ const Feed = () => {
           city: locationName 
         }
       });
-  
       if (error) throw error;
       return data; // This returns the { events, communities, milestone } object
     },
     enabled: !!user && !!location,
+    staleTime: 1000 * 60 * 5,
   });
-  
+
+  // 2. Extract variables safely BELOW the hook
   const events = feedData?.events || [];
   const milestone = feedData?.milestone;
   const currentCount = milestone?.current || 0;
-  const targetCount = milestone?.target || 500; // Use target, not current
+  const targetCount = milestone?.target || 500;
   const cityName = milestone?.zone_name || locationName;
   
   // UI State
@@ -563,7 +542,7 @@ const Feed = () => {
     {/* C. MAIN FEED CONTENT */}
     <TabsContent 
       value={activeTab} 
-      className={`mt-0 space-y-5 px-4 min-h-[50vh] transition-all ${activeTab === 'for_you' && (events[0] as any)?.is_locked ? "opacity-40 grayscale blur-[1px]" : ""}`}
+      className={`mt-0 space-y-5 px-4 min-h-[50vh] transition-all ${activeTab === 'for_you' && milestone?.is_unlocked === false ? "opacity-40 grayscale blur-[1px]" : ""}
     >
       {activeTab === 'communities' ? (
                         // COMMUNITIES VIEW
