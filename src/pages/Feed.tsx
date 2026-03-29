@@ -105,23 +105,6 @@ const Feed = () => {
   const { data: feedData, isLoading: loading } = useQuery({
     queryKey: FEED_QUERY_KEY,
     queryFn: async () => {
-      let currentLat = location?.latitude;
-      let currentLong = location?.longitude;
-      let city = 'Detecting...';
-
-      // If Context is ready, reverse geocode for the header name
-      if (currentLat && currentLong) {
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLong}`);
-          const data = await res.json();
-          city = data.address.city || data.address.town || data.address.state || "Nearby";
-          setLocationName(city);
-        } catch (e) {
-          console.warn("Reverse geocoding failed", e);
-          setLocationName("Global Mode");
-        }
-      }
-      
       const { data, error } = await supabase.functions.invoke('generate-smart-feed', {
         body: { 
           user_id: user?.id, 
@@ -372,7 +355,7 @@ const Feed = () => {
   };
 
   const displayEvents = getFilteredEvents();
-  const isLocked = milestone?.is_unlocked === false; 
+  const isLocked = milestone?.zone_name !== 'Global' && milestone?.is_unlocked !== true;
 
   return (
     <div className="min-h-screen bg-background pb-24">
