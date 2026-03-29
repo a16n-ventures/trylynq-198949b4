@@ -542,7 +542,7 @@ const Feed = () => {
     {/* C. MAIN FEED CONTENT */}
     <TabsContent 
       value={activeTab} 
-      className={`mt-0 space-y-5 px-4 min-h-[50vh] transition-all ${activeTab === 'for_you' && milestone?.is_unlocked === false ? "opacity-40 grayscale blur-[1px]" : ""}
+      className={`mt-0 space-y-5 px-4 min-h-[50vh] transition-all ${activeTab === 'for_you' && milestone?.is_unlocked === false ? "opacity-40 grayscale blur-[1px]" : ""}`}
     >
       {activeTab === 'communities' ? (
                         // COMMUNITIES VIEW
