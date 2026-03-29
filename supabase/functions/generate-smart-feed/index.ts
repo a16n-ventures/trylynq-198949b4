@@ -60,9 +60,24 @@ serve(async (req) => {
     }
     
     // 2. USE DETECTED CITY FOR ZONE MATCHING
-    let activeZone = Object.values(LAUNCH_ZONES).find(z => 
-      detectedCity.toLowerCase().includes(z.name.toLowerCase())
-    );
+    let activeZone = null;
+    let minDistance = Infinity;
+    
+    // Check distance FIRST (most accurate)
+    for (const zone of Object.values(LAUNCH_ZONES)) {
+      const dist = calculateDistance(user_lat, user_long, zone.coords.lat, zone.coords.long);
+      if (dist < 25 && dist < minDistance) { // 25km radius
+        minDistance = dist;
+        activeZone = zone;
+      }
+    }
+    
+    // Fallback to string matching if distance fails
+    if (!activeZone) {
+      activeZone = Object.values(LAUNCH_ZONES).find(z => 
+        detectedCity.toLowerCase().includes(z.name.toLowerCase())
+      );
+    }
     
     // 3. NOW DEFINE THE SEARCH TERM
     const cityToSearch = activeZone?.name || city || 'Global mode'; 
@@ -77,7 +92,7 @@ serve(async (req) => {
     const targetThreshold = activeZone?.threshold || 500;
     // If activeZone is null, it means the city is "Global" (Unlocked)
     // If activeZone is found, we lock if the count is below threshold
-    const isCityLocked = activeZone ? (pioneerCount || 0) < targetThreshold : false;
+    const isCityLocked = (activeZone && (pioneerCount || 0) < targetThreshold);
 
     // 3. FETCH CONTENT
     const [profileRes, eventsRes, communitiesRes] = await Promise.all([
