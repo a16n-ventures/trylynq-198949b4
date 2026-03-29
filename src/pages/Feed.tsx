@@ -87,6 +87,9 @@ const Feed = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { unreadCount } = useRealtimeNotifications(user?.id);
+  const currentCount = feedData?.milestone?.current || 0;
+  const targetCount = feedData?.milestone?.current || 0;
+  const cityName = feedData?.milestone?.zone_name || locationName;
 
   // FIX: Declare location BEFORE it is used in the queryKey below
   const { location, isLoading: locationLoading, error: locationError } = useGeolocation();
@@ -123,12 +126,11 @@ const Feed = () => {
       }
 
       // 2. Call the Intelligent Backend
-      const { data: response, error } = await supabase.functions.invoke('generate-smart-feed', {
-        body: { 
-          user_id: user?.id, 
-          user_lat: currentLat, 
-          user_long: currentLong, 
-          city: city 
+      const { data: feedData, isLoading: loading } = useQuery({
+        queryKey: FEED_QUERY_KEY,
+        queryFn: async () => {
+          const { data: response } = await supabase.functions.invoke('generate-smart-feed', { ... });
+          return response; // Return the WHOLE response, not just response.events
         }
       });
 
@@ -524,7 +526,7 @@ const Feed = () => {
     )}
 
     {/* B. WAITING ROOM / MILESTONE UI (Zaria Support) */}
-    {activeTab === 'for_you' && events.length > 0 && (events[0] as any).is_locked && (
+    {activeTab === 'for_you' && milestone?.is_unlocked === false && (
       <div className="mx-4 mb-8 p-6 bg-gradient-to-br from-primary/10 via-background to-secondary/10 rounded-3xl border-2 border-dashed border-primary/30 text-center animate-in fade-in zoom-in duration-500">
         <div className="h-16 w-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
           <Lock className="w-8 h-8 text-primary animate-pulse" />
@@ -559,8 +561,9 @@ const Feed = () => {
           onClick={() => {
             if (navigator.share) {
               navigator.share({
-                title: `Unlock Ahmia in Zaria!`,
-                text: `I'm pioneer #342 in Zaria. Help us hit 500 to unlock the city!`,
+                title: `Unlock Ahmia in ${cityName}!`,
+                // Dynamically inject the current count and target
+                text: `I'm pioneer #${currentCount} in ${cityName}. Help us hit ${targetCount} to unlock the city!`,
                 url: window.location.origin
               });
             }
