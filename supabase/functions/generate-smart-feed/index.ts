@@ -56,6 +56,7 @@ serve(async (req) => {
       }
     }
 
+    const cityToSearch = activeZone?.name || city || 'Global';
     // 2. PIONEER COUNT (Specific to the detected zone)
     const { count: pioneerCount } = await supabase
       .from('profiles')
@@ -64,8 +65,10 @@ serve(async (req) => {
       // If we found a zone, we only count pioneers in that city/neighborhood
       .or(`address.ilike.%${cityToSearch}%,bio.ilike.%${cityToSearch}%`); // Search address OR bio for better matching
 
-    const threshold = activeZone?.threshold || 500; 
-    const isCityLocked = activeZone ? (pioneerCount || 0) < (activeZone.threshold || 0) : false;
+    const targetThreshold = activeZone?.threshold || 500;
+    // If activeZone is null, it means the city is "Global" (Unlocked)
+    // If activeZone is found, we lock if the count is below threshold
+    const isCityLocked = activeZone ? (pioneerCount || 0) < targetThreshold : false;
 
     // 3. FETCH CONTENT
     const [profileRes, eventsRes, communitiesRes] = await Promise.all([
