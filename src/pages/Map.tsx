@@ -567,8 +567,8 @@ const MapPage = () => {
               
               {/* If Low Density, show the "Global Discovery" twist first */}
               {showGlobalDiscovery && (
-                <div className="flex-shrink-0 w-64 snap-start">
-                  <Card className="h-40 rounded-3xl border-2 border-dashed border-primary/30 bg-primary/5 flex flex-col items-center justify-center p-4 text-center">
+                <div className="flex-shrink-0 w-50 snap-start">
+                  <Card className="h-40 rounded-3xl border-2 border-dashed border-primary/30 bg-primary/10 flex flex-col items-center justify-center p-4 text-center">
                     <Globe className="w-8 h-8 text-primary mb-2 animate-spin-slow" />
                     <h4 className="font-bold text-sm">Quiet nearby?</h4>
                     <p className="text-[10px] text-muted-foreground mb-3">Join Global Groups until your area heats up.</p>
@@ -581,7 +581,7 @@ const MapPage = () => {
           
               {/* DEFAULT VIEW */}
               {activeView === 'friends' && (
-                <div className="flex-shrink-0 w-36 snap-start">
+                <div className="flex-shrink-0 w-50 snap-start">
                   <Button 
                     variant="outline" 
                     className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-accent/50"
