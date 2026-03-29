@@ -830,12 +830,12 @@ const Profile = () => {
             {/* Avatar upload button */}
             <label
               htmlFor="avatar-upload"
-              className="absolute bottom-0 right-0 w-10 h-10 bg-white dark:bg-slate-800 text-primary rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform z-12"
+              className="absolute bottom-0 right-0 w-10 h-10 bg-white dark:bg-slate-800 text-primary rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform"
             >
               {uploadAvatarMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Camera className="w-4 h-4" />
+                <Camera className="w-4 h-4 z-12" />
               )}
             </label>
             <input
@@ -871,24 +871,43 @@ const Profile = () => {
             </Button>
           </div>
 
-          {/* Social Stats */}
-          <div className="flex gap-8 mt-6 pb-4 border-b border-dashed border-border/60">
-            <div className="text-center cursor-pointer hover:opacity-70 transition-opacity"
-              onClick={() => navigate('/app/friends')}>
-              <span className="block font-bold text-lg">{stats.friends}</span>
-              <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Friends</span>
-            </div>
-            <div className="text-center cursor-pointer hover:opacity-70 transition-opacity" 
-              onClick={() =>
-navigate('/app/events')}>
-              <span className="block font-bold text-lg">{stats.events}</span>
-              <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Events</span>
-            </div>
+          {/* STATS CONTROL PANEL */}
+          <div className="mt-6 inline-flex items-center bg-muted/30 backdrop-blur-sm rounded-2xl p-1 border border-border/40 shadow-sm">
+            {/* Friends Stat */}
+            <button 
+              onClick={() => navigate('/app/friends')}
+              className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+            >
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.friends}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Friends</span>
+            </button>
+          
+            {/* Vertical Divider */}
+            <div className="w-[1px] h-8 bg-border/60" />
+          
+            {/* Events Stat */}
+            <button 
+              onClick={() => navigate('/app/events')}
+              className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+            >
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.events}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Events</span>
+            </button>
+          
             {profile.is_premium && (
-              <div className="text-center cursor-pointer hover:opacity-70 transition-opacity">
-                <span className="block font-bold text-lg">{profile.profile_views_30d || 0}</span>
-                <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Views</span>
-              </div>
+              <>
+                {/* Vertical Divider */}
+                <div className="w-[1px] h-8 bg-border/60" />
+          
+                {/* Views Stat */}
+                <button 
+                  onClick={() => setActiveTab('views')}
+                  className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+                >
+                  <span className="block font-bold text-lg group-hover:text-primary transition-colors">{profile.profile_views_30d || 0}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Views</span>
+                </button>
+              </>
             )}
           </div>
         </div>
