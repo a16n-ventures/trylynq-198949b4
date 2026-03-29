@@ -114,6 +114,12 @@ const Feed = () => {
         }
       });
       if (error) throw error;
+      
+      // UPDATE: Sync the UI name with what the backend found
+      if (data.milestone?.zone_name && data.milestone.zone_name !== "Global mode") {
+          setLocationName(data.milestone.zone_name);
+        }
+    
       return data; // This returns the { events, communities, milestone } object
     },
     enabled: !!user && !!location,
