@@ -402,6 +402,74 @@ const Feed = () => {
                 />
             </div>
         </div>
+        
+            {/* B. WAITING ROOM / MILESTONE UI (Zaria Support) */}
+    {activeTab === 'for_you' && feedData?.milestone?.zone_name !== 'Global' && feedData?.milestone?.is_unlocked === false && (
+      <div className="mx-4 mb-8 p-6 bg-gradient-to-br from-primary/10 via-background to-secondary/10 rounded-3xl border-2 border-dashed border-primary/30 text-center animate-in fade-in zoom-in duration-500">
+        <div className="h-16 w-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Lock className="w-8 h-8 text-primary animate-pulse" />
+        </div>
+        <h2 className="text-2xl font-black mb-2 italic uppercase">{cityName} IS LOADING...</h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Ahmia goes live once <span className="text-foreground font-bold">500 Pioneers</span> join. 
+          Social features are currently in "Stealth Mode."
+        </p>
+
+        <div className="space-y-2 mb-6">
+          <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
+            <span>{locationName} Pioneers</span>
+            {/* Replace 342 / 500 with: */}
+            <span className="text-primary">
+              {feedData?.milestone?.current || 0} / {feedData?.milestone?.target || 500}
+            </span> 
+
+          </div>
+          <div className="h-4 w-full bg-muted rounded-full overflow-hidden border">
+            <div 
+              className="h-full bg-primary transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(var(--primary),0.5)]" 
+              style={{ width: `${Math.min(((feedData?.milestone?.current || 0) / (feedData?.milestone?.target || 500)) * 100, 100)}%` }}
+            />
+          </div>
+        </div>
+
+        <Button 
+          className="w-full h-12 rounded-2xl shadow-lg hover:scale-105 transition-transform font-bold"
+          onClick={() => {
+            if (navigator.share) {
+              navigator.share({
+                title: `Unlock Ahmia in ${cityName}!`,
+                // Dynamically inject the current count and target
+                text: `I'm pioneer #${currentCount} in ${cityName}. Help us hit ${targetCount} to unlock the city!`,
+                url: window.location.origin
+              });
+            }
+          }}
+        >
+          <Users className="w-5 h-5 mr-2" /> Invite Friends to Speed Up
+        </Button>
+      </div>
+    )}
+    
+    {/* 2. Case B: NOT IN A SUPPORTED CITY (activeZone was NULL) */}
+    {activeTab === 'for_you' && feedData?.milestone?.zone_name === 'Global' && (
+      <div className="mx-4 mb-8 p-6 bg-muted/30 rounded-3xl border-2 border-dotted border-muted-foreground/20 text-center">
+        <div className="h-12 w-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+          <MapPin className="w-6 h-6 text-muted-foreground" />
+        </div>
+        <h2 className="text-lg font-bold text-foreground">Not available in {locationName}</h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          Coming soon to your location. We are currently focusing on campus hubs!
+        </p>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="rounded-full text-[10px]"
+          onClick={() => navigate('/app/feed?tab=communities')}
+        >
+          <Globe className="w-3 h-3 mr-2" /> Explore Global Communities
+        </Button>
+      </div>
+    )}
 
         {/* 2. CATEGORY TABS (Scrollable) */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -470,74 +538,6 @@ const Feed = () => {
             </div>
           )} 
         </div>
-    )}
-
-    {/* B. WAITING ROOM / MILESTONE UI (Zaria Support) */}
-    {activeTab === 'for_you' && feedData?.milestone?.zone_name !== 'Global' && feedData?.milestone?.is_unlocked === false && (
-      <div className="mx-4 mb-8 p-6 bg-gradient-to-br from-primary/10 via-background to-secondary/10 rounded-3xl border-2 border-dashed border-primary/30 text-center animate-in fade-in zoom-in duration-500">
-        <div className="h-16 w-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Lock className="w-8 h-8 text-primary animate-pulse" />
-        </div>
-        <h2 className="text-2xl font-black mb-2 italic uppercase">{cityName} IS LOADING...</h2>
-        <p className="text-sm text-muted-foreground mb-6">
-          Ahmia goes live once <span className="text-foreground font-bold">500 Pioneers</span> join. 
-          Social features are currently in "Stealth Mode."
-        </p>
-
-        <div className="space-y-2 mb-6">
-          <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
-            <span>{locationName} Pioneers</span>
-            {/* Replace 342 / 500 with: */}
-            <span className="text-primary">
-              {feedData?.milestone?.current || 0} / {feedData?.milestone?.target || 500}
-            </span> 
-
-          </div>
-          <div className="h-4 w-full bg-muted rounded-full overflow-hidden border">
-            <div 
-              className="h-full bg-primary transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(var(--primary),0.5)]" 
-              style={{ width: `${Math.min(((feedData?.milestone?.current || 0) / (feedData?.milestone?.target || 500)) * 100, 100)}%` }}
-            />
-          </div>
-        </div>
-
-        <Button 
-          className="w-full h-12 rounded-2xl shadow-lg hover:scale-105 transition-transform font-bold"
-          onClick={() => {
-            if (navigator.share) {
-              navigator.share({
-                title: `Unlock Ahmia in ${cityName}!`,
-                // Dynamically inject the current count and target
-                text: `I'm pioneer #${currentCount} in ${cityName}. Help us hit ${targetCount} to unlock the city!`,
-                url: window.location.origin
-              });
-            }
-          }}
-        >
-          <Users className="w-5 h-5 mr-2" /> Invite Friends to Speed Up
-        </Button>
-      </div>
-    )}
-    
-    {/* 2. Case B: NOT IN A SUPPORTED CITY (activeZone was NULL) */}
-    {activeTab === 'for_you' && feedData?.milestone?.zone_name === 'Global' && (
-      <div className="mx-4 mb-8 p-6 bg-muted/30 rounded-3xl border-2 border-dotted border-muted-foreground/20 text-center">
-        <div className="h-12 w-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-          <MapPin className="w-6 h-6 text-muted-foreground" />
-        </div>
-        <h2 className="text-lg font-bold text-foreground">Not available in {locationName}</h2>
-        <p className="text-xs text-muted-foreground mb-4">
-          Coming soon to your location. We are currently focusing on campus hubs!
-        </p>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="rounded-full text-[10px]"
-          onClick={() => navigate('/app/feed?tab=communities')}
-        >
-          <Globe className="w-3 h-3 mr-2" /> Explore Global Communities
-        </Button>
-      </div>
     )}
 
     {/* C. MAIN FEED CONTENT */}
