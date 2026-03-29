@@ -602,6 +602,7 @@ const MapPage = () => {
               
               {/* If Low Density, show the "Global Discovery" twist first */}
               {showGlobalDiscovery ? (
+              <>
                 <div className="flex-shrink-0 w-44 snap-start">
                   <Card className="h-40 rounded-3xl border-2 border-dashed border-primary/30 bg-primary/10 flex flex-col items-center justify-center p-4 text-center">
                     <Globe className="w-8 h-8 text-primary mb-2 animate-spin-slow" />
@@ -612,48 +613,58 @@ const MapPage = () => {
                     </Button>
                   </Card>
                 </div>
-              ) : (
-              <>
-              {(activeView === 'friends' ? friendsMapped : events).map((item: any) => (
-                <div
-                  key={item.id}
-                  className="flex-shrink-0 w-36 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-start flex flex-col items-center justify-center gap-2 text-center"
-                  onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
-                >
-                  <div className="relative">
-                    <Avatar className="w-14 h-14 shadow-md">
-                      <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
-                      <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
-                    </Avatar>
-                    {activeView === 'friends' && item.status === 'online' && (
-                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
-                    )}
-                  </div>
-                  <div className="w-full px-1">
-                    <h4 className="font-bold text-sm truncate">{item.name || item.title}</h4>
-                    <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
-                      <MapPin className="w-3 h-3" /> {item.distanceKm}km
-                    </p>
-                  </div>
-                </div>
-              ))} 
-              
-              {/* DEFAULT VIEW */}
-              {activeView === 'friends' && (
+                
                 <div className="flex-shrink-0 w-44 snap-end">
                   <Button 
                     variant="outline" 
                     className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-accent/50"
                     onClick={() => setShowContactImport(true)}
                   >
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-inner">
                       <UserPlus className="w-5 h-5" />
                     </div>
-                    <span className="text-xs font-medium">Invite Friends</span>
+                    <div className="text-center">
+                      <p className="text-xs font-bold">Grow Circle</p>
+                      <p className="text-[10px] text-muted-foreground">Invite contacts</p>
+                    </div>
                   </Button>
                 </div>
-              )}
-             </>
+                </>
+                ) : (
+                <>
+                  {(activeView === 'friends' ? friendsMapped : events).map((item: any) => (
+                    <div
+                      key={item.id}
+                      className="flex-shrink-0 w-36 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-center flex flex-col items-center justify-center gap-2 text-center"
+                      onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
+                    >
+                      <div className="relative">
+                        <Avatar className="w-14 h-14 shadow-md">
+                          <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
+                          <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
+                        </Avatar>
+                        {activeView === 'friends' && item.status === 'online' && (
+                          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
+                        )}
+                      </div>
+                      <div className="w-full px-1">
+                        <h4 className="font-bold text-sm truncate">{item.name || item.title}</h4>
+                        <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
+                          <MapPin className="w-3 h-3" /> {item.distanceKm}km
+                        </p>
+                      </div>
+                    </div>
+                  ))} 
+                  {/* Invite Friends Card appended to the end of the scroll */}
+                  {activeView === 'friends' && (
+                    <div className="flex-shrink-0 w-44 snap-end">
+                      <Button variant="outline" className="w-full h-40 rounded-3xl border-dashed border-2" onClick={() => setShowContactImport(true)}>
+                        <UserPlus className="w-5 h-5" />
+                        <span className="text-xs font-medium">Invite Friends</span>
+                      </Button>
+                    </div>
+                  )}
+                </>
             </div>
           )}
         </div>
