@@ -57,7 +57,17 @@ serve(async (req) => {
       }
     }
 
-    const cityToSearch = activeZone?.name || city || 'Global';
+    const cityToSearch = activeZone?.name || city || 'Global'; 
+    
+    // Add this in Step 1 of index.ts
+    if (!activeZone && city) {
+      // Manual override if GPS is fuzzy but the user is clearly in a Launch Zone
+      const matchedZone = Object.values(LAUNCH_ZONES).find(z => 
+        city.toLowerCase().includes(z.name.toLowerCase())
+      );
+      if (matchedZone) activeZone = matchedZone;
+    }
+
     // 2. PIONEER COUNT (Specific to the detected zone)
     const { count: pioneerCount } = await supabase
       .from('profiles')
