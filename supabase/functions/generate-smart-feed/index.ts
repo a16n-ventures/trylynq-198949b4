@@ -19,7 +19,7 @@ const LAUNCH_ZONES = {
     threshold: 1000,
     schools: ["UniAbuja Main", "UniAbuja Gwagwalada", "Baze University", "Nile University"]
   },
-  {/*
+  /*
   KANO: {
     name: "Kano",
     coords: { lat: 11.9912, long: 8.5167 },
@@ -32,7 +32,7 @@ const LAUNCH_ZONES = {
     threshold: 600,
     schools: ["UNIBEN Ugbowo", "UNIBEN Ekenwan", "Benson Idahosa University"]
   }
-  */}
+  */
 };
 
 serve(async (req) => {
@@ -62,10 +62,10 @@ serve(async (req) => {
       .select('*', { count: 'exact', head: true })
       .eq('is_pioneer', true)
       // If we found a zone, we only count pioneers in that city/neighborhood
-      .ilike('address', `%${activeZone?.name || city || ''}%`);
+      .or(`address.ilike.%${cityToSearch}%,bio.ilike.%${cityToSearch}%`); // Search address OR bio for better matching
 
     const threshold = activeZone?.threshold || 500; 
-    const isCityLocked = activeZone ? (pioneerCount || 0) < activeZone.threshold : false;
+    const isCityLocked = activeZone ? (pioneerCount || 0) < (activeZone.threshold || 0) : false;
 
     // 3. FETCH CONTENT
     const [profileRes, eventsRes, communitiesRes] = await Promise.all([
