@@ -11,7 +11,7 @@ import {
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
   Clock, Check, Megaphone, SlidersHorizontal, Repeat,
-  ArrowRight, Music, Martini, Palette, Zap
+  ArrowRight, Music, Martini, Palette, Zap, Lock
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -539,12 +539,17 @@ const Feed = () => {
         <div className="space-y-2 mb-6">
           <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
             <span>{locationName} Pioneers</span>
-            <span className="text-primary">342 / 500</span> 
+            {/* Replace 342 / 500 with: */}
+            <span>{locationName} Pioneers</span>
+            <span className="text-primary">
+              {events[0]?.milestone?.current || 0} / {events[0]?.milestone?.target || 500}
+            </span> 
+
           </div>
           <div className="h-4 w-full bg-muted rounded-full overflow-hidden border">
             <div 
               className="h-full bg-primary transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(var(--primary),0.5)]" 
-              style={{ width: '68%' }} 
+              style={{ width: `${Math.min(((events[0]?.milestone?.current || 0) / (events[0]?.milestone?.target || 500)) * 100, 100)}%` }}
             />
           </div>
         </div>
@@ -569,7 +574,7 @@ const Feed = () => {
     {/* C. MAIN FEED CONTENT */}
     <TabsContent 
       value={activeTab} 
-      className={`mt-0 space-y-5 px-4 min-h-[50vh] transition-all ${activeTab === 'for_you' && (events[0] as any)?.is_locked ? "opacity-40 pointer-events-none grayscale blur-[1px]" : ""}`}
+      className={`mt-0 space-y-5 px-4 min-h-[50vh] transition-all ${activeTab === 'for_you' && (events[0] as any)?.is_locked ? "opacity-40 grayscale blur-[1px]" : ""}`}
     >
       {activeTab === 'communities' ? (
                         // COMMUNITIES VIEW
