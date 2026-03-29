@@ -57,24 +57,23 @@ serve(async (req) => {
       }
     }
 
-    const cityToSearch = activeZone?.name || city || 'Global'; 
-    
-    // Add this in Step 1 of index.ts
+    // 2. MANUAL OVERRIDE (Must happen BEFORE cityToSearch)
     if (!activeZone && city) {
-      // Manual override if GPS is fuzzy but the user is clearly in a Launch Zone
       const matchedZone = Object.values(LAUNCH_ZONES).find(z => 
         city.toLowerCase().includes(z.name.toLowerCase())
       );
       if (matchedZone) activeZone = matchedZone;
     }
-
-    // 2. PIONEER COUNT (Specific to the detected zone)
+    
+    // 3. NOW DEFINE THE SEARCH TERM
+    const cityToSearch = activeZone?.name || city || 'Global'; 
+    
+    // 4. PERFORM PIONEER COUNT
     const { count: pioneerCount } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
       .eq('is_pioneer', true)
-      // If we found a zone, we only count pioneers in that city/neighborhood
-      .or(`address.ilike.%${cityToSearch}%,bio.ilike.%${cityToSearch}%`); // Search address OR bio for better matching
+      .or(`address.ilike.%${cityToSearch}%,bio.ilike.%${cityToSearch}%`);
 
     const targetThreshold = activeZone?.threshold || 500;
     // If activeZone is null, it means the city is "Global" (Unlocked)
