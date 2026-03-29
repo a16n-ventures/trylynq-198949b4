@@ -361,7 +361,7 @@ const Feed = () => {
   };
 
   const displayEvents = getFilteredEvents();
-  const isLocked = milestone?.zone_name !== 'Global mode' && milestone?.is_unlocked === false;
+  const isLocked = milestone?.is_unlocked === false;
 
   return (
     <div className="min-h-screen bg-background pb-24">
