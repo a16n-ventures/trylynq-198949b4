@@ -19,6 +19,7 @@ const LAUNCH_ZONES = {
     threshold: 1000,
     schools: ["UniAbuja Main", "UniAbuja Gwagwalada", "Baze University", "Nile University"]
   },
+  {/*
   KANO: {
     name: "Kano",
     coords: { lat: 11.9912, long: 8.5167 },
@@ -31,6 +32,7 @@ const LAUNCH_ZONES = {
     threshold: 600,
     schools: ["UNIBEN Ugbowo", "UNIBEN Ekenwan", "Benson Idahosa University"]
   }
+  */}
 };
 
 serve(async (req) => {
@@ -41,7 +43,7 @@ serve(async (req) => {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
     // 1. DYNAMIC ZONE DETECTION
-    let activeZone = ZARIA;
+    let activeZone = null;
     let minDistance = Infinity;
     
     if (user_lat && user_long) {
@@ -62,6 +64,7 @@ serve(async (req) => {
       // If we found a zone, we only count pioneers in that city/neighborhood
       .ilike('address', `%${activeZone?.name || city || ''}%`);
 
+    const threshold = activeZone?.threshold || 500; 
     const isCityLocked = activeZone ? (pioneerCount || 0) < activeZone.threshold : false;
 
     // 3. FETCH CONTENT
