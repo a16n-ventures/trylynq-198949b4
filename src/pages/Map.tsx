@@ -570,8 +570,8 @@ const MapPage = () => {
                 <div className="flex-shrink-0 w-50 snap-start">
                   <Card className="h-40 rounded-3xl border-2 border-dashed border-primary/30 bg-primary/10 flex flex-col items-center justify-center p-4 text-center">
                     <Globe className="w-8 h-8 text-primary mb-2 animate-spin-slow" />
-                    <h4 className="font-bold text-sm">Quiet nearby?</h4>
-                    <p className="text-[10px] text-muted-foreground mb-3">Join Global Groups until your area heats up.</p>
+                    <h4 className="font-bold text-white text-sm">Quiet nearby?</h4>
+                    <p className="text-[10px] text-muted-foreground text-white mb-3">Join Global Groups until your area heats up.</p>
                     <Button size="sm" variant="outline" className="h-8 rounded-full text-[10px]" onClick={() => navigate('/app/feed?tab=communities')}>
                       Explore Communities
                     </Button>
@@ -581,7 +581,7 @@ const MapPage = () => {
           
               {/* DEFAULT VIEW */}
               {activeView === 'friends' && (
-                <div className="flex-shrink-0 w-50 snap-start">
+                <div className="flex-shrink-0 w-50 snap-end">
                   <Button 
                     variant="outline" 
                     className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-accent/50"
