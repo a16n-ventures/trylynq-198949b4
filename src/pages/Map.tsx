@@ -581,7 +581,7 @@ const MapPage = () => {
           
               {/* DEFAULT VIEW */}
               {activeView === 'friends' && (
-                <div className="flex-shrink-0 w-50 snap-end">
+                <div className="flex-shrink-0 w-auto snap-end">
                   <Button 
                     variant="outline" 
                     className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-accent/50"
