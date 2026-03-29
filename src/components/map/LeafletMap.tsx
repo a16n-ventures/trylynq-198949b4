@@ -167,28 +167,37 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
       friendsLocations.forEach(friend => {
         const lat = typeof friend.latitude === 'string' ? parseFloat(friend.latitude) : friend.latitude;
         const lng = typeof friend.longitude === 'string' ? parseFloat(friend.longitude) : friend.longitude;
-
+      
         if (lat && lng) {
           const avatar = friend.profiles?.avatar_url || "https://github.com/shadcn.png";
-          
+          const statusBubble = (friend as any).status_bubble; // Access the new status
+      
           const icon = L.divIcon({
             className: 'bg-transparent border-0',
             html: `
-              <div style="
-                width: 40px; height: 40px; 
-                border-radius: 50%; 
-                border: 2px solid white; 
-                background-image: url('${avatar}'); 
-                background-size: cover; 
-                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-                background-color: #e2e8f0;
-              "></div>
+              <div class="relative flex flex-col items-center">
+                ${statusBubble ? `
+                  <div class="absolute -top-10 bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded-2xl shadow-xl animate-bounce whitespace-nowrap border-2 border-background z-50">
+                    ${statusBubble}
+                    <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rotate-45 border-r-2 border-b-2 border-background"></div>
+                  </div>
+                ` : ''}
+                
+                <div style="
+                  width: 44px; height: 44px; 
+                  border-radius: 50%; 
+                  border: 3px solid white; 
+                  background-image: url('${avatar}'); 
+                  background-size: cover; 
+                  box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+                  background-color: #e2e8f0;
+                "></div>
+              </div>
             `,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20],
-            popupAnchor: [0, -20]
+            iconSize: [120, 120], // Increased size to prevent clipping the bubble
+            iconAnchor: [60, 60], // Centered
           });
-
+      
           const m = L.marker([lat, lng], { icon }).addTo(map);
           if (friend.profiles?.display_name) {
             m.bindPopup(`<div style="font-weight:600; text-align:center">${friend.profiles.display_name}</div>`);
