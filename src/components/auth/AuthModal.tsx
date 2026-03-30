@@ -121,7 +121,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
       return null;
     }
     
-    return "Please enter a valid phone number (e.g., 08012345678 or +2348012345678)";
+    return "Please enter a valid phone number (e.g., 08012345678)";
   };
 
   const validatePassword = (): string | null => {
