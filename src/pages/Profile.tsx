@@ -279,7 +279,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
       ))}
       {!isPremium && uniqueViewers.length > 0 && (
         <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent p-4 mt-4">
-          <p className="text-sm font-semibold mb-1">Want to see who viewed you?</p>
+          <p className="text-sm font-semibold mb-1">Want to see who viewed your profile?</p>
           <p className="text-xs text-muted-foreground mb-3">Upgrade to Premium to see full viewer details.</p>
           <Button size="sm" onClick={() => navigate('/premium')} className="gap-1">
             <Crown className="w-3.5 h-3.5" /> Upgrade

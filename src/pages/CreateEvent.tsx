@@ -492,22 +492,21 @@ const CreateEvent = () => {
 
           {/* Location / Meeting Details */}
           <Card className="gradient-card shadow-card border-0">
-            {/* <CardHeader className="pb-3">
+            <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2">
-                
+                 {eventData.eventType === 'physical' ? (
+                  <>
+                    <MapPin className="w-5 h-5" />
+                    Where
+                  </>
+                ) : (
+                  <>
+                    <Video className="w-5 h-5" />
+                    Meeting Details
+                  </>
+                )}
               </CardTitle>
-            </CardHeader> */} 
-            {eventData.eventType === 'physical' ? (
-              <>
-                <MapPin className="w-5 h-5" />
-                Where
-              </>
-            ) : (
-              <>
-                <Video className="w-5 h-5" />
-                Meeting Details
-              </>
-            )}
+            </CardHeader> 
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="location">
@@ -680,7 +679,7 @@ const CreateEvent = () => {
           </Card>
           
           {/* ADMIN ONLY SECTION */}
-          {(user?.name === 'a16n') && (
+          {(user?.email === 'amdagas4@gmail.com') && (
             <Card className="border-2 border-primary/50 bg-primary/5 shadow-lg">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
