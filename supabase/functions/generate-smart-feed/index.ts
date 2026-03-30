@@ -36,17 +36,23 @@ serve(async (req) => {
 
     // 1. DETECT LOCATION
     let detectedCity = "Global mode";
+    try {
+    const { user_lat, user_long } = await req.json();
+    const supabase = createClient(/*...*/);
+
+    // 1. REVERSE GEOCODE (Always try this first for the "Name")
+    let detectedCityName = ""; 
     if (user_lat && user_long) {
       try {
         const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${user_lat}&lon=${user_long}`,
           { headers: { 'User-Agent': 'Ahmia/1.0' } }
         );
         const geoData = await geoRes.json();
-        detectedCity = geoData.address.city || geoData.address.town || geoData.address.village || "Global mode";
+        detectedCityName = geoData.address.city || geoData.address.town || geoData.address.village || "";
       } catch (e) { console.error("Geocoding failed", e); }
     }
 
-    // 2. MATCH ZONE
+    // 2. MATCH AGAINST DEFINED LAUNCH ZONES
     let activeZone = null;
     for (const zone of Object.values(LAUNCH_ZONES)) {
       if (user_lat && user_long) {
@@ -54,46 +60,33 @@ serve(async (req) => {
         if (dist < 25) { activeZone = zone; break; }
       }
     }
-  
-    if (!activeZone && detectedCity !== "Global mode") {
-      activeZone = Object.values(LAUNCH_ZONES).find(z => 
-        detectedCity.toLowerCase().includes(z.name.toLowerCase())
-      );
-    }
 
-    // 3. FETCH DATA (Crucial: This was missing!)
-    // Get total users in this city/zone to show progress
+    // 3. FETCH USER COUNT FOR THIS SPECIFIC AREA
+    // Filter the count by the detected city name to show real local progress
     const { count: pioneerCount } = await supabase
       .from('profiles')
-      .select('*', { count: 'exact', head: true }); 
-      // Note: You might want to filter by city in your DB: .ilike('city', `%${activeZone?.name || detectedCity}%`)
+      .select('*', { count: 'exact', head: true })
+      .ilike('city', `%${activeZone?.name || detectedCityName}%`);
 
-    // Fetch actual feed content
-    const { data: eventsData } = await supabase.from('events').select('*').limit(10);
-    const { data: communitiesData } = await supabase.from('communities').select('*').limit(5);
-
-    // 4. LOCK LOGIC
+    // 4. LOGIC FLAGS
+    // - is_launch_zone: Is this one of our pre-defined areas?
+    // - is_unlocked: Has it hit the threshold?
+    const isLaunchZone = !!activeZone;
     const targetThreshold = activeZone?.threshold || 500;
-    const isCityLocked = activeZone 
-      ? (pioneerCount || 0) < targetThreshold 
-      : true; // Default to TRUE for "Coming Soon"
+    const isUnlocked = pioneerCount >= targetThreshold;
 
-    const milestone = {
-      current: pioneerCount || 0,
-      target: targetThreshold,
-      is_unlocked: !isCityLocked,
-      zone_name: activeZone ? activeZone.name : (detectedCity !== "Global mode" ? detectedCity : "Your City")
-    };
-  
-    return new Response(JSON.stringify({ 
-      success: true, 
-      events: eventsData || [], 
-      communities: communitiesData || [],
-      milestone,
-      location_context: detectedCity, 
+    return new Response(JSON.stringify({
+      success: true,
+      events: isUnlocked ? (await supabase.from('events').select('*').limit(10)).data : [],
+      milestone: {
+        current: pioneerCount || 0,
+        target: targetThreshold,
+        is_unlocked: isUnlocked,
+        is_launch_zone: isLaunchZone, // Crucial for UI branching
+        zone_name: activeZone?.name || detectedCityName || "Unknown Location"
+      }
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
-  }
-});
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+    }
+  });
