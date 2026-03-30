@@ -122,7 +122,7 @@ const Feed = () => {
     
       return data; // This returns the { events, communities, milestone } object
     },
-    enabled: !!user && !!location,
+    enabled: !!user,
     staleTime: 1000 * 60 * 5,
   });
 
@@ -479,7 +479,7 @@ const Feed = () => {
     )}
 
     {/* B. WAITING ROOM / MILESTONE UI (Zaria Support) */}
-    {activeTab === 'for_you' && feedData?.milestone?.zone_name !== 'Global mode' && feedData?.milestone?.is_unlocked === false && (
+    {activeTab === 'for_you' && milestone && milestone.zone_name !== 'Global mode' && milestone.is_unlocked === false && (
       <div className="mx-4 mb-8 p-6 bg-gradient-to-br from-primary/10 via-background to-secondary/10 rounded-3xl border-2 border-dashed border-primary/30 text-center animate-in fade-in zoom-in duration-500">
         <div className="h-16 w-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
           <Lock className="w-8 h-8 text-primary animate-pulse" />
