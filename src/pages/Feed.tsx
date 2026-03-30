@@ -103,8 +103,7 @@ const Feed = () => {
   
   const milestone = feedData?.milestone;
   const isLocked = milestone?.is_unlocked === false;
-  const isLaunchZone = milestone?.is_launch_zone; // From our new logic
-  const cityName = milestone?.zone_name || "your area";
+  const isLaunchZone = milestone?.is_launch_zone;
 
     // 1. Unified Query for the entire backend response
   const { data: feedData, isLoading: loading } = useQuery({
@@ -366,7 +365,6 @@ const Feed = () => {
   };
 
   const displayEvents = getFilteredEvents();
-  const isLocked = milestone?.is_unlocked === false;
 
   return (
     <div className="min-h-screen bg-background pb-24">
