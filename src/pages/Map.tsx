@@ -624,7 +624,7 @@ const MapPage = () => {
                 {(activeView === 'friends' ? friendsMapped : events).map((item: any) => (
                     <div
                       key={item.id}
-                      className="flex-shrink-0 w-36 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-center flex flex-col items-center justify-center gap-2 text-center"
+                      className="flex-shrink-0 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-center flex flex-col items-center justify-center gap-2 text-center"
                       onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
                     >
                       <div className="relative">

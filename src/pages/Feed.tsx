@@ -536,7 +536,7 @@ const Feed = () => {
                                     </div> 
                                     <Button 
                                         className="rounded-full px-6 gap-2 shadow-md"
-                                        onClick={() => navigate('/app/messages?type=community')}
+                                        onClick={() => navigate('/app/messages?tab=community')}
                                     >
                                         <Plus className="w-4 h-4" /> Create Community
                                     </Button>
