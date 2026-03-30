@@ -132,12 +132,13 @@ serve(async (req) => {
       success: true, 
       events: eventsData, 
       communities: communitiesData,
-      location_context: activeZone?.name || city || "Global mode",
+      // ALWAYS return the detected city, even if it's not a "Zone"
+      location_context: detectedCity, 
       milestone: {
         current: pioneerCount || 0,
-        target: activeZone?.threshold || 0,
+        target: activeZone?.threshold || 500,
         is_unlocked: !isCityLocked,
-        zone_name: activeZone?.name || "Global mode"
+        zone_name: detectedCity
       }
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
