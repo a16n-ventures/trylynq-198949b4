@@ -115,8 +115,8 @@ const Feed = () => {
       });
       if (error) throw error;
       
-      // UPDATE: Sync the UI name with what the backend found
-      if (data.milestone?.zone_name && data.milestone.zone_name !== "Global mode") {
+       // ALWAYS sync the name from the backend milestone
+        if (data.milestone?.zone_name) {
           setLocationName(data.milestone.zone_name);
         }
     
