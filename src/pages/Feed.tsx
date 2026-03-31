@@ -123,7 +123,7 @@ const Feed = () => {
   const isLaunchZone = milestone?.is_launch_zone;
   
   // Use the name detected by reverse geocoding in the Edge Function
-  const cityName = milestone?.zone_name || (locationLoading ? "Detecting..." : "Your area");
+  const cityName = milestone?.zone_name || (locationLoading ? "Detecting..." : "Your City");
   
   const events = feedData?.events || [];
   const communities = feedData?.communities || [];
@@ -580,7 +580,7 @@ const Feed = () => {
                                     </div>
                                     <div>
                                         <p className="font-semibold text-base">No events for this vibe yet</p>
-                                        <p className="text-sm text-muted-foreground mt-1">Be the first to create one in your area!</p>
+                                        <p className="text-sm text-muted-foreground mt-1">Be the first to create one in your city!</p>
                                     </div>
                                     <Button 
                                         className="rounded-full px-6 gap-2 shadow-md"
