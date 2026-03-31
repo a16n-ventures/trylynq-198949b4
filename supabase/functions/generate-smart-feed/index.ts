@@ -40,9 +40,9 @@ serve(async (req) => {
     // This drastically increases cache hits and prevents redundant API calls.
     const cacheKey = `${user_lat.toFixed(2)}_${user_long.toFixed(2)}`;
     
-    let cityName = geoCache.get(cacheKey) || "Your City";
+    let cityName: string | null = geoCache.has(cacheKey) ? geoCache.get(cacheKey) : null
   
-          if (!geoCache.has(cacheKey)) {
+      if (!cityName) {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s limit
@@ -66,13 +66,25 @@ serve(async (req) => {
                        addr.neighbourhood || 
                        addr.state_district || 
                        addr.county || 
-                       "Your City"; // High-confidence fallback if you're near the coords
+                       null; // High-confidence fallback if you're near the coords
             geoCache.set(cacheKey, cityName); // Save to local cache
           }
         } catch (e) {
           console.error("Geocoding timed out, using fallback");
-        }
+        } 
       }
+      
+      cityName = cityName ?? "Your City"; 
+      
+      if (cityName === "Your City") {
+        for (const [_, zone] of Object.entries(LAUNCH_ZONES)) {
+            const dist = calculateDistance(user_lat, user_long, zone.coords.lat, zone.coords.long);
+            if (dist <= 25) { // 25km radius as a generous fallback
+              cityName = zone.name;
+              break;
+            }
+          }
+        }
       
       // 2. FUZZY MATCHING (Requirement 1 & 2)
       let activeZone = null;
