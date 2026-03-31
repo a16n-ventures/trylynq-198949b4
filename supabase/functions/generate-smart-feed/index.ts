@@ -80,8 +80,7 @@ serve(async (req) => {
         .ilike('location', `%${searchName}%`);
   
       // Logic for UI branching
-      const isLaunchZone = !!activeZone;
-      const isUnlocked = isLaunchZone && pioneerCount >= activeZone.threshold;
+      const isUnlocked = isLaunchZone && pioneerCount >= (activeZone?.threshold ?? 0);
   
       return new Response(JSON.stringify({
         success: true,
