@@ -67,7 +67,7 @@ serve(async (req) => {
                        addr.state_district || 
                        addr.county || 
                        null; // High-confidence fallback if you're near the coords
-            geoCache.set(cacheKey, cityName); // Save to local cache
+            if (cityName) geoCache.set(cacheKey, cityName); // Save to local cache
           }
         } catch (e) {
           console.error("Geocoding timed out, using fallback");
