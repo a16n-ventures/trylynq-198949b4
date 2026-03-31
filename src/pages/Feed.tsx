@@ -483,6 +483,7 @@ const Feed = () => {
               
               {/* BRANCH 1: Official Launch Zone (Zaria/Abuja) */}
               {isLaunchZone ? (
+                <>
                   <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
                     {cityName} IS LOADING...
                   </h2>
@@ -501,6 +502,7 @@ const Feed = () => {
                       />
                     </div>
                   </div>
+                </>
               ) : (
                 /* BRANCH 2: Generic "Coming Soon" (Anywhere else) */
                 <div className="space-y-4 py-4 text-center">
