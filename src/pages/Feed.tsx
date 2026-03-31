@@ -495,7 +495,8 @@ const Feed = () => {
     {activeTab === 'for_you' && !isUnlocked && (
           <div className="mx-4 mb-8 p-6 bg-card rounded-3xl border shadow-xl relative overflow-hidden">
             <div className="relative z-10">
-            <MapPin className="w-10 h-10 text-muted-foreground/30 mx-auto" />  
+            {/* <MapPin className="w-10 h-10 text-muted-foreground/30 mx-auto" />  
+            */}
               
               {/* BRANCH 1: Official Launch Zone (Zaria/Abuja) */}
               {isLaunchZone ? (
@@ -522,7 +523,7 @@ const Feed = () => {
               ) : (
                 /* BRANCH 2: Generic "Coming Soon" (Anywhere else) */
                 <div className="space-y-4 py-4 text-center">
-                  <Lock className="w-8 h-8 text-primary animate-pulse mb-4" />
+                  <Lock className="w-8 h-8 text-primary animate-pulse mx-auto mb-4" />
                   <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
                     {cityName || "CITY"} IS UNAVAILABLE
                   </h2>
@@ -533,7 +534,7 @@ const Feed = () => {
               )}
               
               <Button className="w-full h-12 rounded-2xl font-bold uppercase">
-                <Plus className="w-4 h-4 mr-2" /> Nominate {cityName}
+                <MapPin className="w-4 h-4 mr-2" /> Nominate {cityName}
               </Button>
             </div>
           </div>
