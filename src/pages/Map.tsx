@@ -76,7 +76,22 @@ const MapPage = () => {
   const [isNavigating, setIsNavigating] = useState(false);
   const [navigationTarget, setNavigationTarget] = useState<{ lat: number; lng: number; name: string } | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null);
-  const [isRouting, setIsRouting] = useState(false);
+  const [isRouting, setIsRouting] = useState(false); 
+  
+  const { data: feedData } = useQuery({
+    queryKey: ['smart-feed', user?.id, location?.latitude?.toFixed(2), location?.longitude?.toFixed(2)],
+    queryFn: async () => {
+      const { data } = await supabase.functions.invoke('generate-smart-feed', {
+        body: { user_id: user?.id, user_lat: location?.latitude, user_long: location?.longitude }
+      });
+      return data;
+    },
+    enabled: !!user && !!location,
+  });
+  
+  const milestone = feedData?.milestone;
+  const isUnlocked = milestone?.is_unlocked;
+  const isLaunchZone = milestone?.is_launch_zone;
 
   // --- 1. Fetch Friend Data ---
   const friendIds = useMemo(() => {
@@ -202,7 +217,10 @@ const MapPage = () => {
     
     // Detect if ABU Zaria is currently in "Stealth Mode"
     const isCityLocked = events && events.length > 0 && (events[0] as any)?.is_locked;
-
+    
+    // Stealth mode logic: If it's a launch zone and NOT unlocked yet
+    const isStealthActive = isLaunchZone && !isUnlocked;
+  
     return (nearbyFriendsRaw
       .map((loc: any) => {
         // Original Distance Calculation
@@ -223,15 +241,16 @@ const MapPage = () => {
         return {
           id: loc.user_id,
           user_id: loc.user_id,
-          name: isCityLocked ? "Zaria Pioneer" : (loc.profiles?.display_name || 'Friend'),
-          avatar: isCityLocked ? null : loc.profiles?.avatar_url,
+          name: isStealthActive ? "Pioneer" : loc.profiles?.display_name,
+          avatar: isStealthActive ? null : loc.profiles?.avatar_url,
+          is_stealth: isStealthActive, // Pass this flag to the card
           locationLabel: isCityLocked ? 'Stealth Mode' : 'On the map',
           coordinates: { lat: displayLat, lng: displayLng },
           status: online ? 'online' : 'offline',
           lastSeen: statusText,
           distanceKm: Number(dist.toFixed(1)),
-          latitude: displayLat,
-          longitude: displayLng,
+          latitude: isStealthActive ? loc.latitude + (Math.random() - 0.5) * 0.002 : loc.latitude,
+          longitude: isStealthActive ? loc.longitude + (Math.random() - 0.5) * 0.002 : loc.longitude,
           is_premium: premiumStatus[loc.user_id] || false,
           profiles: loc.profiles,
           is_pulse: isCityLocked
@@ -240,7 +259,7 @@ const MapPage = () => {
       .filter(Boolean) as FriendOnMap[])
       // Sort: NEAREST FIRST
       .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-  }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus, events]);
+  }, [nearbyFriendsRaw, isLaunchZone, isUnlocked, friendsPresence, location, discoveryRadiusKm, premiumStatus, events]);
 
   const nearbyEventsForMap = useMemo(() => {
     return events.map((e: any) => ({
@@ -354,7 +373,7 @@ const MapPage = () => {
     <div className="relative h-screen w-screen overflow-hidden bg-background">
       
       {/* LAYER 1: MAP */}
-      <div className="absolute inset-0 z-0 h-full w-full">
+      <div className={`absolute inset-0 z-0 h-full w-full transition-all duration-700 ${(!isUnlocked && !isLaunchZone) ? 'blur-xl grayscale pointer-events-none' : ''}`}>
         <LeafletMap
           ref={mapRef}
           userLocation={location}
@@ -442,16 +461,21 @@ const MapPage = () => {
         <div className="pointer-events-auto px-4 pb-2 z-[60] mb-20 max-h-[45vh] flex flex-col justify-end">
           
           {/* Recenter FAB */}
-          {!selectedFriend && !selectedEvent && !isNavigating && (
-            <div className="flex justify-end mb-4">
-              <Button
-                onClick={() => location ? mapRef.current?.recenter() : requestLocation()}
-                className="rounded-full h-12 w-12 shadow-xl bg-background/90 text-primary border border-white/20"
-              >
-                {locationLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Crosshair className="h-6 w-6 text-white" />}
-              </Button>
-            </div>
-          )}
+          {!isNavigating && !selectedFriend && !selectedEvent && (
+            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
+              {(!isUnlocked && !isLaunchZone) ? (
+                /* ONLY show invite card if unavailable */
+                <div className="flex-shrink-0 w-full px-4 snap-center">
+                  <Card className="p-8 rounded-3xl border-2 border-dashed flex flex-col items-center text-center bg-background/80 backdrop-blur-md">
+                    <MapPin className="w-10 h-10 text-muted-foreground/30 mb-4" />
+                    <h3 className="font-bold text-lg uppercase">{milestone?.zone_name || 'City'} is Loading</h3>
+                    <p className="text-sm text-muted-foreground mb-4">We need {milestone?.target} pioneers to unlock this zone.</p>
+                    <Button className="w-full rounded-2xl" onClick={() => navigate('/app/friends')}>
+                       <UserPlus className="w-4 h-4 mr-2" /> Nominate this City
+                    </Button>
+                  </Card>
+                </div>
+              ) : (
 
           {/* 1. NAVIGATION ACTIVE CARD */}
           {isNavigating && navigationTarget && (
@@ -486,19 +510,25 @@ const MapPage = () => {
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-4">
                     <div className="relative">
-                      <Avatar className="w-16 h-16 border-4 border-background shadow-md">
+                      <Avatar className={`w-16 h-16 border-4 border-background ${selectedFriend.is_stealth ? 'blur-md' : ''}`}>
                         <AvatarImage src={selectedFriend.avatar} />
-                        <AvatarFallback>{selectedFriend.name[0]}</AvatarFallback>
+                        <AvatarFallback>?</AvatarFallback>
                       </Avatar>
-                      {selectedFriend.status === 'online' && (
-                        <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-background ring-2 ring-green-500/20" />
+                      {selectedFriend.is_stealth && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Lock className="w-5 h-5 text-white/50" />
+                        </div>
                       )}
                     </div>
-                    <div>
-                      <h3 className="font-bold text-xl flex items-center gap-2">
-                        {selectedFriend.name}
-                        {selectedFriend.is_premium && <PremiumBadge />}
+
+                    <div><h3 className="font-bold text-xl">
+                        {selectedFriend.is_stealth ? "Hidden Pioneer" : selectedFriend.name}
                       </h3>
+                      {selectedFriend.is_stealth && (
+                        <Badge variant="outline" className="text-[10px] bg-primary/10 border-primary/20 text-primary">
+                           Unlocks at {milestone?.target} members
+                        </Badge>
+                      )}
                       <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
                         <span className="flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded-full">
                           <MapPin className="w-3 h-3" /> {selectedFriend.distanceKm}km
