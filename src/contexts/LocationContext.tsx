@@ -206,7 +206,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
           startWatching();
         },
         handleError,
-        { enableHighAccuracy: false, timeout: 10000 }
+        { enableHighAccuracy: true, timeout: 10000 }
       );
     };
   
@@ -215,7 +215,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       watchId.current = navigator.geolocation.watchPosition(
         handleSuccess,
         (err) => console.warn("Watch warning:", err.message), 
-        { enableHighAccuracy: false, timeout: 30000, maximumAge: 30000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     };
   
