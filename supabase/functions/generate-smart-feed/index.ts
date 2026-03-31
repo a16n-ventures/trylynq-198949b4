@@ -59,7 +59,7 @@ serve(async (req) => {
         const { count: pioneerCount } = await supabase
           .from('profiles')
           .select('*', { count: 'exact', head: true })
-          .ilike('city', `%${activeZone?.name || cityName}%`);
+          .ilike('location', `%${activeZone?.name || cityName}%`);
       
         const isLaunchZone = !!activeZone;
         const isUnlocked = pioneerCount >= (activeZone?.threshold || 999999); // Generic cities never "unlock" automatically
