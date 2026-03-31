@@ -27,6 +27,8 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
+const geoCache = new Map(); 
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -34,24 +36,28 @@ serve(async (req) => {
     const { user_id, user_lat, user_long } = await req.json();
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
           
-      // 1. REVERSE GEOCODE (Always do this first for the UI label)
-      let cityName = "Unknown Location";
-      if (user_lat && user_long) {
+    // ROUNDING: Round lat/long to 2 decimal places (~1.1km precision)
+    // This drastically increases cache hits and prevents redundant API calls.
+    const cacheKey = `${user_lat.toFixed(2)}_${user_long.toFixed(2)}`;
+    
+    let cityName = geoCache.get(cacheKey) || "your area";
+  
+          if (!geoCache.has(cacheKey)) {
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s limit
+    
           const geoRes = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${user_lat}&lon=${user_long}`, 
             { 
-              headers: { 
-                'User-Agent': 'Ahmia-Zaria-Launch-V1', // Use a unique string
-                'Accept-Language': 'en' 
-              } 
+              headers: { 'User-Agent': 'Ahmia-App-Zaria' },
+              signal: controller.signal 
             }
           );
-          
+    
           if (geoRes.ok) {
-            const geoData = await geoRes.json();
-            const addr = geoData.address;
-            
+            const data = await geoRes.json();
+            const addr = data.address;
             // Broaden the search for the name
             cityName = addr.city || 
                        addr.town || 
@@ -61,9 +67,10 @@ serve(async (req) => {
                        addr.state_district || 
                        addr.county || 
                        "your area"; // High-confidence fallback if you're near the coords
+            geoCache.set(cacheKey, cityName); // Save to local cache
           }
         } catch (e) {
-          console.error("Geocoding failed, falling back to coordinate check");
+          console.error("Geocoding timed out, using fallback");
         }
       }
       
