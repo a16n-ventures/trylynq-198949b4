@@ -40,7 +40,7 @@ serve(async (req) => {
     // This drastically increases cache hits and prevents redundant API calls.
     const cacheKey = `${user_lat.toFixed(2)}_${user_long.toFixed(2)}`;
     
-    let cityName = geoCache.get(cacheKey) || "your area";
+    let cityName = geoCache.get(cacheKey) || "Your area";
   
           if (!geoCache.has(cacheKey)) {
         try {
@@ -66,7 +66,7 @@ serve(async (req) => {
                        addr.neighbourhood || 
                        addr.state_district || 
                        addr.county || 
-                       "your area"; // High-confidence fallback if you're near the coords
+                       "Your area"; // High-confidence fallback if you're near the coords
             geoCache.set(cacheKey, cityName); // Save to local cache
           }
         } catch (e) {
