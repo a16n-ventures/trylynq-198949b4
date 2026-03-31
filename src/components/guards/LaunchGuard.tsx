@@ -7,7 +7,6 @@ import { Loader2 } from 'lucide-react';
 interface LaunchGuardProps {
   children: (data: { 
     isLocked: boolean; 
-    isGlobal: boolean; 
     milestone: any; 
     cityName: string;
     loading: boolean;
@@ -38,7 +37,6 @@ export const LaunchGuard = ({ children }: LaunchGuardProps) => {
     const milestone = feedData?.milestone;
     // Standardize the lock check to the backend boolean
     const isLocked = milestone?.is_unlocked === false;
-    const isGlobal = milestone?.zone_name === "Global mode";
     const cityName = milestone?.zone_name || "Your area";
   
     if (isLoading) {
@@ -53,7 +51,6 @@ export const LaunchGuard = ({ children }: LaunchGuardProps) => {
     // where to put the blur and where to put the "Waiting Room"
     return <>{children({ 
       isLocked, 
-      isGlobal, 
       milestone, 
       cityName, 
       loading: isLoading,
