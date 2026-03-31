@@ -123,7 +123,7 @@ const Feed = () => {
   const isLaunchZone = milestone?.is_launch_zone;
   
   // Use the name detected by reverse geocoding in the Edge Function
-  const cityName = milestone?.zone_name || (locationLoading ? "Detecting..." : "your area");
+  const cityName = milestone?.zone_name || (locationLoading ? "Detecting..." : "Your area");
   
   const events = feedData?.events || [];
   const communities = feedData?.communities || [];
