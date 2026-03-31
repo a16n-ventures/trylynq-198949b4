@@ -110,6 +110,7 @@ const Feed = () => {
           user_long: location?.longitude, 
         }
       });
+      if (error) throw error;
       return data; 
     },
     enabled: !!user && !!location,
@@ -122,7 +123,7 @@ const Feed = () => {
   const isLaunchZone = milestone?.is_launch_zone;
   
   // Use the name detected by reverse geocoding in the Edge Function
-  const cityName = milestone?.zone_name || (locationLoading ? "Detecting..." : "Your area");
+  const cityName = milestone?.zone_name || (locationLoading ? "Detecting..." : "your area");
   
   const events = feedData?.events || [];
   const communities = feedData?.communities || [];
@@ -372,7 +373,7 @@ const Feed = () => {
                 </h1>
                 <p className="text-xs text-muted-foreground">Find your vibe for today</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               {isPremium && (
                 <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
                   <Sparkles className="w-3 h-3 mr-1" /> Pro
@@ -507,7 +508,7 @@ const Feed = () => {
                 <div className="space-y-4 py-4 text-center">
                   <MapPin className="w-10 h-10 text-muted-foreground/30 mx-auto" />
                   <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
-                    {cityName || "CITY"} UNAVAILABLE
+                    {cityName || "CITY"} IS UNAVAILABLE
                   </h2>
                   <p className="text-sm text-muted-foreground mb-6">
                     Ahmia hasn't landed in {cityName} yet. Want to be our campus lead here?
