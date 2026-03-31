@@ -96,25 +96,6 @@ const Feed = () => {
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
 
-  // Fetching Logic
-  const FEED_QUERY_KEY = ['smart-feed', user?.id, location?.latitude?.toFixed(2), location?.longitude?.toFixed(2)];
-  
-  const { data: feedData, isLoading: loading } = useQuery({
-    queryKey: FEED_QUERY_KEY,
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('generate-smart-feed', {
-        body: { user_id: user?.id, user_lat: location?.latitude, user_long: location?.longitude }
-      });
-      if (error) throw error;
-      return data; 
-    },
-    enabled: !!user && !!location,
-    staleTime: 1000 * 60 * 5,
-  }); 
-
-  const events = feedData?.events || [];
-  const communities = feedData?.communities || [];
-
   // Realtime & Subscriptions
   useEffect(() => {
     if (!user) return;
