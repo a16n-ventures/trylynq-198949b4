@@ -51,5 +51,13 @@ export const LaunchGuard = ({ children }: LaunchGuardProps) => {
   
     // We return the render prop so the parent (Feed/Map) can decide 
     // where to put the blur and where to put the "Waiting Room"
-    return <>{children({ isLocked, isGlobal, milestone, cityName, loading: isLoading })}</>;
+    return <>{children({ 
+      isLocked, 
+      isGlobal, 
+      milestone, 
+      cityName, 
+      loading: isLoading,
+      events: feedData?.events || [], // Add this
+      communities: feedData?.communities || [] // Add this
+    })}</>;
 };
