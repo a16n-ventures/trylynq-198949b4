@@ -94,7 +94,6 @@ const Feed = () => {
   // Data State
   const [aiInsights, setAiInsights] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [locationName, setLocationName] = useState("Detecting...");
 
   // FIX: Use React Query for events to prevent flickering.
   // queryFn is defined inline so it's always in scope and can close over `location`.
@@ -477,7 +476,6 @@ const Feed = () => {
     )}
 
     {/* B. WAITING ROOM / MILESTONE UI (Zaria Support) */}
-    {/* USE THIS UNIFIED BLOCK for both Launch Zones and Coming Soon areas */}
     {activeTab === 'for_you' && isLocked && (
           <div className="mx-4 mb-8 p-6 bg-card rounded-3xl border shadow-xl relative overflow-hidden">
             <div className="relative z-10">
@@ -485,40 +483,39 @@ const Feed = () => {
               
               {/* BRANCH 1: Official Launch Zone (Zaria/Abuja) */}
               {isLaunchZone ? (
-                <>
-                  <h2 className="text-2xl font-black mb-2 italic uppercase leading-none">
+                  <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
                     {cityName} IS LOADING...
                   </h2>
                   <p className="text-sm text-muted-foreground mb-6">
-                    Ahmia goes live here once we hit {milestone.target} Pioneers.
+                    Join {currentCount} pioneers in {cityName}. We unlock at {targetCount}!
                   </p>
                   <div className="space-y-2 mb-6">
                     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
                       <span>Progress</span>
-                      <span className="text-primary">{milestone.current} / {milestone.target}</span>
+                      <span className="text-primary">{currentCount} / {targetCount}</span>
                     </div>
                     <div className="h-3 w-full bg-muted rounded-full overflow-hidden border">
                       <div 
                         className="h-full bg-primary transition-all duration-1000" 
-                        style={{ width: `${(milestone.current / milestone.target) * 100}%` }}
+                        style={{ width: `${(currentCount / targetCount) * 100}%` }}
                       />
                     </div>
                   </div>
-                </>
               ) : (
                 /* BRANCH 2: Generic "Coming Soon" (Anywhere else) */
-                <>
-                  <h2 className="text-2xl font-black mb-2 italic uppercase leading-none">
+                <div className="space-y-4 py-4 text-center">
+                  <MapPin className="w-10 h-10 text-muted-foreground/30 mx-auto" />
+                  <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
                     {cityName || "CITY"} UNAVAILABLE
                   </h2>
                   <p className="text-sm text-muted-foreground mb-6">
-                    We haven't touched down in {cityName} yet. Want to bring Ahmia to your campus?
+                    Ahmia hasn't landed in {cityName} yet. Want to be our campus lead here?
                   </p>
-                </>
+                </div>
               )}
               
               <Button className="w-full h-12 rounded-2xl font-bold uppercase italic">
-                <Users className="w-4 h-4 mr-2" /> Invite Pioneers
+                <Users className="w-4 h-4 mr-2" /> Invite Pioneers to {cityName}
               </Button>
             </div>
           </div>
