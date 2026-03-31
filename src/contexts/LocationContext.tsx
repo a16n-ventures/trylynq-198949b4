@@ -35,7 +35,15 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // In LocationContext.tsx, update the useState initialization
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      // If we have a cached location, no need to show loading
+      return !localStorage.getItem(LOCAL_KEY);
+    } catch {
+      return true;
+    }
+  });
   
   const watchId = useRef<number | null>(null);
   const lastSentRef = useRef<number>(0);
