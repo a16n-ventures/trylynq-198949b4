@@ -507,7 +507,7 @@ const Feed = () => {
                 <div className="space-y-4 py-4 text-center">
                   <MapPin className="w-10 h-10 text-muted-foreground/30 mx-auto" />
                   <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
-                    {cityName || "CITY"} IS ON THE WAY
+                    {cityName || "CITY"} UNAVAILABLE
                   </h2>
                   <p className="text-sm text-muted-foreground mb-6">
                     Ahmia hasn't landed in {cityName} yet. Want to be our campus lead here?
