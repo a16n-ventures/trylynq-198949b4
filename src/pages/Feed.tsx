@@ -91,31 +91,46 @@ const Feed = () => {
   // FIX: Declare location BEFORE it is used in the queryKey below
   const { location, isLoading: locationLoading, error: locationError } = useGeolocation();
   
+  // NEW: Also read coordinates directly from DB as a reliable fallback
+  const { data: dbLocation } = useQuery({
+    queryKey: ['user-db-location', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('user_locations')
+        .select('latitude, longitude')
+        .eq('user_id', user!.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user?.id,
+  }); 
+  
   // Data State
   const [aiInsights, setAiInsights] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-
-  // FIX: Use React Query for events to prevent flickering.
-  // queryFn is defined inline so it's always in scope and can close over `location`.
-  const FEED_QUERY_KEY = ['smart-feed', user?.id, location?.latitude?.toFixed(2), location?.longitude?.toFixed(2)];
   
-    // 1. Unified Query for the entire backend response
+  // Use GPS if available, fall back to DB coords
+  const resolvedLocation = location ?? dbLocation;
+  
+  // Update your query key and queryFn to use resolvedLocation
+  const FEED_QUERY_KEY = ['smart-feed', user?.id, resolvedLocation?.latitude?.toFixed(2), resolvedLocation?.longitude?.toFixed(2)];
+  
   const { data: feedData, isLoading: loading } = useQuery({
     queryKey: FEED_QUERY_KEY,
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke('generate-smart-feed', {
         body: { 
           user_id: user?.id, 
-          user_lat: location?.latitude, 
-          user_long: location?.longitude, 
+          user_lat: resolvedLocation?.latitude,   // ← was location?.latitude
+          user_long: resolvedLocation?.longitude, // ← was location?.longitude
         }
       });
       if (error) throw error;
       return data; 
     },
-    enabled: !!user && !!location,
+    enabled: !!user && !!resolvedLocation, // ← was !!location
     staleTime: 1000 * 60 * 5,
-  }); 
+  });
   
   // 2. Define derived state AFTER the query
   const milestone = feedData?.milestone;
