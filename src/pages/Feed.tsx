@@ -103,6 +103,7 @@ const Feed = () => {
   const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
+  const [milestone, setMilestone] = useState<{ current: number; target: number; is_unlocked: boolean } | null>(null);
 
   // Fetch discovery radius from profile preferences
   const { data: userProfile } = useQuery({
@@ -227,6 +228,7 @@ const Feed = () => {
       if (error) throw error;
 
       if (response) {
+        setMilestone(response.milestone || null);
         // Fetch user's attending events to check is_attending
         const { data: myAttendance } = await supabase
           .from('event_attendees')
@@ -478,52 +480,95 @@ const Feed = () => {
                 </TabsList>
             </div>
 
-            {/* CITY UNAVAILABLE OVERLAY */}
-            {(showCityUnavailable || cityNotDetected) ? (
-              <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
-                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Rocket className="w-10 h-10 text-primary" />
+            {/* REFINED CITY LOGIC: DETECTED -> LAUNCH ZONE (LOCKED) -> UNAVAILABLE */}
+              {cityNotDetected ? (
+                // 1. HARD LOCK: NO GPS
+                <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
+                  <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+                    <MapPin className="w-10 h-10 text-muted-foreground" />
+                  </div>
+                  <h2 className="text-xl font-bold">Location Required</h2>
+                  <p className="text-sm text-muted-foreground max-w-xs">Please enable location access to discover events near you.</p>
+                  <Button variant="outline" onClick={() => window.location.reload()}>Retry Detection</Button>
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold mb-2">
-                    {cityNotDetected ? 'City Not Detected' : 'Coming Soon'}
-                  </h2>
-                  <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                    {cityNotDetected 
-                      ? 'We couldn\'t detect your location. Please enable location access to discover events near you.'
-                      : `We're not in ${locationName !== 'Detecting...' ? locationName : 'your city'} yet, but we're expanding fast! Invite friends to help unlock your city.`
-                    }
-                  </p>
+              
+              ) : !milestone?.is_unlocked ? (
+                // 2. THE WAITING ROOM (Launch Zone but under threshold)
+                <div className="space-y-6">
+                  {/* MILESTONE CARD */}
+                  <div className="mx-4 mt-4 p-6 bg-card rounded-3xl border shadow-xl relative overflow-hidden bg-gradient-to-br from-background to-primary/5">
+                    <div className="relative z-10 text-center">
+                      <Rocket className="w-10 h-10 text-primary mx-auto mb-4 animate-bounce" />
+                      <h2 className="text-2xl font-black mb-1 uppercase italic tracking-tighter">
+                        {locationName} is Loading
+                      </h2>
+                      <p className="text-sm text-muted-foreground mb-6">
+                        {milestone ? `Join ${milestone.current} pioneers. We unlock at ${milestone.target}!` : "Gathering pioneers..."}
+                      </p>
+              
+                      {milestone && (
+                        <div className="space-y-2 mb-6 px-2">
+                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-primary">
+                            <span>Launch Progress</span>
+                            <span>{Math.round((milestone.current / milestone.target) * 100)}%</span>
+                          </div>
+                          <div className="h-3 w-full bg-muted rounded-full overflow-hidden border p-[2px]">
+                            <div 
+                              className="h-full bg-primary rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(var(--primary),0.5)]" 
+                              style={{ width: `${Math.min(100, (milestone.current / milestone.target) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+              
+                      <Button className="w-full h-12 rounded-2xl font-bold uppercase gap-2 shadow-lg shadow-primary/20" onClick={() => navigate('/app/friends')}>
+                        <UserPlus className="w-4 h-4" /> Invite friends to {locationName}
+                      </Button>
+                    </div>
+                  </div>
+              
+                  {/* BLURRED FEED TEASER */}
+                  <div className="px-4 opacity-30 grayscale blur-lg pointer-events-none select-none overflow-hidden h-[40vh]">
+                     <h3 className="font-bold mb-4">Happening soon in {locationName}...</h3>
+                     <div className="space-y-4">
+                       {displayEvents.length > 0 ? (
+                         displayEvents.slice(0, 2).map((event) => (
+                           <Card key={event.id} className="overflow-hidden border-0 shadow-sm">
+                             <div className="h-32 bg-muted w-full" />
+                             <CardContent className="p-4 h-20 bg-card" />
+                           </Card>
+                         ))
+                       ) : (
+                         // Fallback skeleton if no events are returned yet
+                         [1, 2].map((i) => (
+                           <div key={i} className="h-48 bg-muted rounded-2xl mb-4 animate-pulse" />
+                         ))
+                       )}
+                     </div>
+                  </div>
                 </div>
-                
-                {launchCityName && (
-                  <Badge variant="outline" className="text-sm px-4 py-1.5">
-                    <Globe className="w-3.5 h-3.5 mr-1.5" /> Nearest zone: {launchCityName}
-                  </Badge>
-                )}
-
-                <Card className="w-full max-w-sm border-dashed border-2 border-primary/30 bg-primary/5">
-                  <CardContent className="p-5 text-center space-y-3">
-                    <UserPlus className="w-8 h-8 text-primary mx-auto" />
-                    <h3 className="font-bold text-base">Invite Friends</h3>
-                    <p className="text-xs text-muted-foreground">Help us launch in your city by inviting your friends!</p>
-                    <Button className="w-full gap-2" onClick={() => navigate('/app/friends')}>
-                      <UserPlus className="w-4 h-4" /> Invite Friends
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                {cityNotDetected && (
-                  <Button variant="outline" onClick={() => window.location.reload()}>
-                    Retry Location Detection
+              
+              ) : showCityUnavailable ? (
+                // 3. COMING SOON (Existing Robust UI for unsupported cities)
+                <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
+                  <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Globe className="w-10 h-10 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold mb-2">Coming Soon</h2>
+                    <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                      Ahmia hasn't landed in {locationName} yet, but we're expanding fast!
+                    </p>
+                  </div>
+                  <Button className="gap-2" variant="outline" onClick={() => navigate('/app/friends')}>
+                     <Megaphone className="w-4 h-4" /> Nominate {locationName}
                   </Button>
-                )}
-              </div>
-            ) : (
-            <div className="container-mobile py-2 space-y-6">
-
-                {/* EVENTS FEED */}
-                <TabsContent value={activeTab} className="mt-0 space-y-5 px-4 min-h-[50vh]">
+                </div>
+              
+              ) : (
+                // 4. THE FULL FEED (When unlocked)
+                <div className="container-mobile py-2 space-y-6">
+                  <TabsContent value={activeTab} className="mt-0 space-y-5 px-4 min-h-[50vh]">
                     {activeTab === 'communities' ? (
                         // COMMUNITIES VIEW
                         <div className="space-y-3">
