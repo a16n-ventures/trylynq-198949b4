@@ -11,7 +11,7 @@ import {
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
   Clock, Check, Megaphone, SlidersHorizontal, Repeat,
-  ArrowRight, Music, Martini, Palette, Zap, Lock, Rocket, UserPlus, Globe
+  ArrowRight, Music, Martini, Palette, Zap, Rocket, UserPlus, Globe
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -482,11 +482,11 @@ const Feed = () => {
             {(showCityUnavailable || cityNotDetected) ? (
               <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
                 <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Lock className="w-10 h-10 text-primary" />
+                  <Rocket className="w-10 h-10 text-primary" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold mb-2">
-                    {cityNotDetected ? 'City Not Detected' : 'Coming Soon 🚀'}
+                    {cityNotDetected ? 'City Not Detected' : 'Coming Soon'}
                   </h2>
                   <p className="text-sm text-muted-foreground max-w-xs mx-auto">
                     {cityNotDetected 
@@ -521,40 +521,6 @@ const Feed = () => {
               </div>
             ) : (
             <div className="container-mobile py-2 space-y-6">
-                
-                {/* AI Insight (Premium VIP Section) */}
-                {isPremium && activeTab === 'for_you' && (
-                    <div className="mx-4 mt-2 space-y-3">
-                      {/* VIP Status Bar */}
-                      <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/15 via-primary/10 to-purple-500/15 border border-amber-300/30 dark:border-amber-700/30 rounded-2xl p-4 shadow-sm">
-                        <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl" />
-                        <div className="flex items-center gap-3 relative z-10">
-                          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md">
-                            <Sparkles className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-foreground flex items-center gap-1.5">Premium Member <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] px-1.5">VIP</Badge></p>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">Ad-free · {discoveryRadiusKm}km radius · Priority discovery · AI insights</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Vibe Check (AI Insight) */}
-                      {aiInsights && (
-                        <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 shadow-sm">
-                            <div className="flex items-start gap-3">
-                              <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
-                                <Sparkles className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1">
-                                <h3 className="font-bold text-xs text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-1">AI Vibe Check</h3>
-                                <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">{aiInsights}</p>
-                              </div>
-                            </div>
-                        </div>
-                      )}
-                    </div>
-                )}
 
                 {/* EVENTS FEED */}
                 <TabsContent value={activeTab} className="mt-0 space-y-5 px-4 min-h-[50vh]">
