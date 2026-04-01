@@ -79,7 +79,7 @@ serve(async (req) => {
       if (cityName === "Your City") {
         for (const [_, zone] of Object.entries(LAUNCH_ZONES)) {
             const dist = calculateDistance(user_lat, user_long, zone.coords.lat, zone.coords.long);
-            if (dist <= 50) { // 30km radius as a generous fallback
+            if (dist <= 25) { // 30km radius as a generous fallback
               cityName = zone.name;
               break;
             }
@@ -92,7 +92,7 @@ serve(async (req) => {
         const dist = calculateDistance(user_lat, user_long, zone.coords.lat, zone.coords.long);
         
         // Check by distance OR if the geocoded city name matches our zone name
-        if (dist <= 50 || cityName.toLowerCase().includes(zone.name.toLowerCase())) { 
+        if (dist <= 25 || cityName.toLowerCase().includes(zone.name.toLowerCase())) { 
           activeZone = zone;
           break;
         }
