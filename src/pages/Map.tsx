@@ -6,18 +6,20 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
   MessageCircle, Calendar, Users, Loader2, X, 
-  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus
+  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Rocket
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGeolocation } from '@/contexts/LocationContext';
 import { useFriends } from '@/hooks/useFriends';
+import { useLaunchZone } from '@/hooks/useLaunchZone';
+import { ContactImportModal } from '@/components/ContactImportModal';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import LeafletMap from '@/components/map/LeafletMap';
 import type { LeafletMapHandle } from '@/components/map/LeafletMap';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
 // --- Types ---
@@ -56,16 +58,17 @@ const PremiumBadge = () => (
 const MapPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const mapRef = useRef<LeafletMapHandle>(null);
   
   // Global State
-  const { location, requestLocation, isLoading: locationLoading, error: locationError, locationName } = useGeolocation();
+  const { location, requestLocation, isLoading: locationLoading, error: locationError } = useGeolocation();
   const { friends = [] } = useFriends(user?.id);
+  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading } = useLaunchZone(location?.latitude, location?.longitude);
 
   // Local State
   const [searchQuery, setSearchQuery] = useState('');
   const [friendsPresence, setFriendsPresence] = useState<Record<string, 'online' | 'offline'>>({});
+  const [showContactImport, setShowContactImport] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<FriendOnMap | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [isGhostMode, setIsGhostMode] = useState(false);
@@ -92,7 +95,7 @@ const MapPage = () => {
       if (friendIds.length === 0) return [];
       const { data } = await supabase
         .from('user_locations')
-        .select('user_id, latitude, longitude, is_sharing_location, status_bubble, updated_at')
+        .select('user_id, latitude, longitude, is_sharing_location, updated_at')
         .in('user_id', friendIds);
       return data || [];
     },
@@ -134,6 +137,7 @@ const MapPage = () => {
     return (prefs?.discovery_radius ?? 20000) / 1000; // Default 20km for Map (wider than feed)
   }, [userProfile]);
 
+  // --- 3. Process & Sort Friends ---
   const nearbyFriendsRaw = useMemo(() => {
     if (!location) return [];
     const uniqueFriendsMap = new Map();
@@ -141,7 +145,7 @@ const MapPage = () => {
       const isRequester = friendship.requester_id === user?.id;
       const profile = isRequester ? friendship.addressee : friendship.requester;
       const friendId = isRequester ? friendship.addressee_id : friendship.requester_id;
-      const loc = friendLocations.find((l: any) => l.user_id === friendId);
+      const loc = friendLocations.find(l => l.user_id === friendId);
       if (loc && loc.latitude && loc.longitude) {
         uniqueFriendsMap.set(friendId, {
           user_id: friendId,
@@ -156,9 +160,43 @@ const MapPage = () => {
     return Array.from(uniqueFriendsMap.values());
   }, [friends, friendLocations, location, user?.id]);
 
-  // --- FIX: Move events query BEFORE friendsMapped so it's declared before use ---
+  const friendsMapped: FriendOnMap[] = useMemo(() => {
+    if (!location) return [];
+    
+    return (nearbyFriendsRaw
+      .map((loc: any) => {
+        const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
+        if (dist > discoveryRadiusKm) return null; // Radius Filter
+
+        const online = friendsPresence[loc.user_id] === 'online';
+        let statusText = 'Offline';
+        if (online) statusText = 'Active now';
+        else if (!loc.is_sharing) statusText = 'Location paused';
+        else statusText = 'Active recently';
+
+        return {
+          id: loc.user_id,
+          user_id: loc.user_id,
+          name: loc.profiles?.display_name || 'Friend',
+          avatar: loc.profiles?.avatar_url,
+          locationLabel: 'On the map',
+          coordinates: { lat: loc.latitude, lng: loc.longitude },
+          status: online ? 'online' : 'offline',
+          lastSeen: statusText,
+          distanceKm: Number(dist.toFixed(1)),
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          is_premium: premiumStatus[loc.user_id] || false,
+          profiles: loc.profiles
+        };
+      })
+      .filter(Boolean) as FriendOnMap[])
+      // ✅ SORTING: NEAREST FIRST
+      .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+  }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus]);
+
   // --- 4. Events (With Clyx "Decide" Data) ---
-  const { data: events = [], isLoading: eventsLoading } = useQuery({
+ const { data: events = [], isLoading: eventsLoading } = useQuery({
     queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
       if (!location) return [];
@@ -194,53 +232,6 @@ const MapPage = () => {
     },
     enabled: !!location && activeView === 'events',
   });
-
-  // --- 3. Process & Sort Friends ---
-  // (Moved after events query so `events` is in scope for the dependency array)
-  const friendsMapped: FriendOnMap[] = useMemo(() => {
-    if (!location) return [];
-    
-    // Detect if ABU Zaria is currently in "Stealth Mode"
-    const isCityLocked = events && events.length > 0 && (events[0] as any)?.is_locked;
-
-    return (nearbyFriendsRaw
-      .map((loc: any) => {
-        // Original Distance Calculation
-        const dist = distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude);
-        if (dist > discoveryRadiusKm) return null;
-
-        // Original Presence/Status Logic
-        const online = friendsPresence[loc.user_id] === 'online';
-        let statusText = 'Offline';
-        if (online) statusText = 'Active now';
-        else if (!loc.is_sharing) statusText = 'Location paused';
-        else statusText = 'Active recently';
-
-        // Stealth Mode "Fuzzing"
-        const displayLat = isCityLocked ? loc.latitude + (Math.random() - 0.5) * 0.003 : loc.latitude;
-        const displayLng = isCityLocked ? loc.longitude + (Math.random() - 0.5) * 0.003 : loc.longitude;
-
-        return {
-          id: loc.user_id,
-          user_id: loc.user_id,
-          name: isCityLocked ? "Zaria Pioneer" : (loc.profiles?.display_name || 'Friend'),
-          avatar: isCityLocked ? null : loc.profiles?.avatar_url,
-          locationLabel: isCityLocked ? 'Stealth Mode' : 'On the map',
-          coordinates: { lat: displayLat, lng: displayLng },
-          status: online ? 'online' : 'offline',
-          lastSeen: statusText,
-          distanceKm: Number(dist.toFixed(1)),
-          latitude: displayLat,
-          longitude: displayLng,
-          is_premium: premiumStatus[loc.user_id] || false,
-          profiles: loc.profiles,
-          is_pulse: isCityLocked
-        };
-      })
-      .filter(Boolean) as FriendOnMap[])
-      // Sort: NEAREST FIRST
-      .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-  }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus, events]);
 
   const nearbyEventsForMap = useMemo(() => {
     return events.map((e: any) => ({
@@ -279,41 +270,7 @@ const MapPage = () => {
     } as any);
     setIsGhostMode(newValue);
     toast.success(newValue ? "Ghost Mode On 👻" : "You are visible on map");
-  }; 
-  
-  useEffect(() => {
-  if (!user) return;
-
-  // Listen for changes specifically in the user_locations table
-  const channel = supabase
-    .channel('public:user_locations')
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'user_locations',
-      },
-      (payload) => {
-        const updatedLocation = payload.new;
-        
-        // Update the React Query cache so the UI re-renders instantly
-        queryClient.setQueryData(['friend-locations', friendIds], (oldData: any[] | undefined) => {
-          if (!oldData) return oldData;
-          return oldData.map((loc) => 
-            loc.user_id === updatedLocation.user_id 
-              ? { ...loc, status_bubble: updatedLocation.status_bubble } 
-              : loc
-          );
-        });
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
   };
-}, [user, friendIds, queryClient]);
 
   // --- 6. Navigation ---
   const handleGetDirections = async (destLat: number, destLng: number, destName: string) => {
@@ -346,15 +303,16 @@ const MapPage = () => {
     if (!q) return list;
     return list.filter((item: any) => (item.name || item.title).toLowerCase().includes(q));
   }, [searchQuery, friendsMapped, events, activeView]);
-  
-  const isLowDensity = friendsMapped.length < 5;
-  const showGlobalDiscovery = isLowDensity && activeView === 'friends';
+
+  const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
+  const cityNotDetected = !locationLoading && !launchZoneLoading && !location;
+  const mapBlurred = showCityUnavailable || cityNotDetected;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background">
       
       {/* LAYER 1: MAP */}
-      <div className="absolute inset-0 z-0 h-full w-full">
+      <div className={`absolute inset-0 z-0 h-full w-full transition-all duration-500 ${mapBlurred ? 'blur-lg pointer-events-none' : ''}`}>
         <LeafletMap
           ref={mapRef}
           userLocation={location}
@@ -366,27 +324,58 @@ const MapPage = () => {
         />
       </div>
 
+      {/* CITY UNAVAILABLE OVERLAY (on top of blurred map) */}
+      {mapBlurred && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center px-6 text-center bg-background/60 backdrop-blur-sm">
+          <div className="max-w-sm space-y-6">
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+              <Rocket className="w-10 h-10 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold mb-2">
+                {cityNotDetected ? 'City Not Detected' : 'Coming Soon 🚀'}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {cityNotDetected 
+                  ? 'Enable location access to see your friends on the map.'
+                  : 'We\'re not in your city yet! Invite friends to help unlock it.'
+                }
+              </p>
+            </div>
+            
+            {launchCityName && (
+              <Badge variant="outline" className="text-sm px-4 py-1.5">
+                <Globe className="w-3.5 h-3.5 mr-1.5" /> Nearest zone: {launchCityName}
+              </Badge>
+            )}
+
+            <Card className="border-dashed border-2 border-primary/30 bg-primary/5">
+              <CardContent className="p-5 text-center space-y-3">
+                <UserPlus className="w-8 h-8 text-primary mx-auto" />
+                <h3 className="font-bold text-base">Invite Friends</h3>
+                <p className="text-xs text-muted-foreground">Help us launch in your city!</p>
+                <Button className="w-full gap-2" onClick={() => setShowContactImport(true)}>
+                  <UserPlus className="w-4 h-4" /> Invite Friends
+                </Button>
+              </CardContent>
+            </Card>
+
+            {cityNotDetected && (
+              <Button variant="outline" onClick={requestLocation}>
+                Enable Location
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {/* LAYER 2: CLYX UI OVERLAY */}
+      {!mapBlurred && (
       <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
         
         {/* A. COMMAND ISLAND */}
         {!isNavigating && (
           <div className="pt-safe-top px-4 mt-4 pointer-events-auto">
             <div className="flex flex-col gap-3">
-              
-              {/* ZARIA STEALTH MODE INDICATOR */}
-              {events.length > 0 && (events[0] as any).is_locked && (
-                <div className="mb-1 bg-primary/20 backdrop-blur-md border border-primary/30 rounded-2xl p-3 flex items-center justify-between animate-pulse">
-                  <div className="flex items-center gap-2">
-                    <Radar className="w-4 h-4 text-primary" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-primary">
-                      Zaria Stealth Mode: 342/500 Joined
-                    </span>
-                  </div>
-                  <Badge variant="outline" className="text-[9px] border-primary/50 text-primary">LOCKED</Badge>
-                </div>
-              )}
-
               <div className="flex items-center gap-2">
                 <div className="relative flex-1 h-12 bg-background/80 backdrop-blur-xl border border-white/20 rounded-2xl shadow-lg flex items-center px-4">
                   <Search className="w-5 h-5 text-muted-foreground mr-3" />
@@ -554,11 +543,10 @@ const MapPage = () => {
                   </div>
                 </div>
 
-                {/* FIX: Guard against undefined friend_images with fallback to [] */}
                 <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
                   <div className="flex items-center -space-x-3">
-                    {(selectedEvent.friend_images ?? []).length > 0 ? (
-                      (selectedEvent.friend_images ?? []).map((img: string, i: number) => (
+                    {selectedEvent.friend_images.length > 0 ? (
+                      selectedEvent.friend_images.map((img: string, i: number) => (
                         <Avatar key={i} className="w-8 h-8 border-2 border-background">
                           <AvatarImage src={img} />
                         </Avatar>
@@ -571,7 +559,7 @@ const MapPage = () => {
                     </div>
                   </div>
                   <div className="text-xs font-medium text-right">
-                    <p className="text-primary">{(selectedEvent.friend_images ?? []).length} friends</p>
+                    <p className="text-primary">{selectedEvent.friend_images.length} friends</p>
                     <p className="text-muted-foreground">are going</p>
                   </div>
                 </div>
@@ -592,73 +580,56 @@ const MapPage = () => {
                 </div>
               </CardContent>
             </Card>
-          )} 
-          
-          {/* 4. ADAPTIVE LIST */}
+          )}
+
+          {/* 4. DEFAULT LIST */}
           {!isNavigating && !selectedFriend && !selectedEvent && (
-            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
-              
-              {/* If Low Density, show the "Global Discovery" twist first */}
-              {/* LEFT BOOKEND: Global Discovery with Social Proof */}
-                {showGlobalDiscovery && (
-                  <div className="flex-shrink-0 snap-start">
-                    <Card className="h-40 w-48 rounded-3xl border-2 border-dashed border-primary/30 bg-primary/10 flex flex-col items-center justify-center p-4 text-center relative overflow-hidden">
-                      <div className="absolute -right-4 -top-4 w-12 h-12 bg-primary/10 rounded-full blur-xl" />
-                      <Globe className="w-8 h-8 text-primary mb-2 animate-spin-slow" />
-                      <h4 className="font-bold text-white text-sm">Quiet in {locationName || 'your area'}?</h4>
-                      <p className="text-[10px] text-white mb-2 leading-tight">
-                        Join communities in {locationName || 'the city'} to meet people.
-                      </p>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="h-8 rounded-full text-[10px] px-4 bg-background shadow-sm hover:scale-105 transition-transform" 
-                        onClick={() => navigate('/app/feed?tab=communities')}
-                      >
-                        Explore Communities
-                      </Button>
-                    </Card>
-                  </div>
-                )}
-               
-                {(activeView === 'friends' ? friendsMapped : events).map((item: any) => (
-                    <div
-                      key={item.id}
-                      className="flex-shrink-0 w-36 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-center flex flex-col items-center justify-center gap-2 text-center"
-                      onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
-                    >
-                      <div className="relative">
-                        <Avatar className="w-14 h-14 shadow-md">
-                          <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
-                          <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
-                        </Avatar>
-                        {activeView === 'friends' && item.status === 'online' && (
-                          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
-                        )}
-                      </div>
-                      <div className="w-full px-1">
-                        <h4 className="font-bold text-sm truncate">{item.name || item.title}</h4>
-                        <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
-                          <MapPin className="w-3 h-3" /> {item.distanceKm}km
-                        </p>
-                      </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
+              {activeView === 'friends' && (
+                <div className="flex-shrink-0 w-36 snap-start">
+                  <Button 
+                    variant="outline" 
+                    className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-accent/50"
+                    onClick={() => setShowContactImport(true)}
+                  >
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                      <UserPlus className="w-5 h-5" />
                     </div>
-                  ))} 
-                  
-                  {/* Invite Friends Card appended to the end of the scroll */}
-                  {activeView === 'friends' && (
-                    <div className="flex-shrink-0 w-48 snap-end">
-                      <Button variant="outline" className="w-full h-40 rounded-3xl border-dashed border-2" onClick={() => navigate('/app/friends')}>
-                        <UserPlus className="w-5 h-5" />
-                        <span className="text-xs font-medium">Invite Friends</span>
-                      </Button>
-                    </div>
+                    <span className="text-xs font-medium">Invite Friends</span>
+                  </Button>
+                </div>
               )}
+              
+              {(activeView === 'friends' ? friendsMapped : events).map((item: any) => (
+                <div
+                  key={item.id}
+                  className="flex-shrink-0 w-36 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-start flex flex-col items-center justify-center gap-2 text-center"
+                  onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
+                >
+                  <div className="relative">
+                    <Avatar className="w-14 h-14 shadow-md">
+                      <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
+                      <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
+                    </Avatar>
+                    {activeView === 'friends' && item.status === 'online' && (
+                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
+                    )}
+                  </div>
+                  <div className="w-full px-1">
+                    <h4 className="font-bold text-sm truncate">{item.name || item.title}</h4>
+                    <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
+                      <MapPin className="w-3 h-3" /> {item.distanceKm}km
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
       </div>
+      )}
 
+      <ContactImportModal open={showContactImport} onOpenChange={setShowContactImport} />
     </div>
   );
 };

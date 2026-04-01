@@ -6,12 +6,12 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
   Clock, Check, Megaphone, SlidersHorizontal, Repeat,
-  ArrowRight, Music, Martini, Palette, Zap, Lock
+  ArrowRight, Music, Martini, Palette, Zap, Rocket, UserPlus, Globe
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom';
 import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 import { useGeolocation } from '@/contexts/LocationContext'; 
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
+import { useLaunchZone } from '@/hooks/useLaunchZone';
 import { Bell } from 'lucide-react';
 
 // --- TYPES ---
@@ -85,71 +86,17 @@ const getEventStatus = (startDate: string) => {
 const Feed = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { unreadCount } = useRealtimeNotifications(user?.id);
-
-  // FIX: Declare location BEFORE it is used in the queryKey below
-  const { location, isLoading: locationLoading, error: locationError } = useGeolocation();
-  
-  // NEW: Also read coordinates directly from DB as a reliable fallback
-  const { data: dbLocation } = useQuery({
-    queryKey: ['user-db-location', user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('latitude, longitude')
-        .eq('user_id', user!.id)
-        .maybeSingle();
-      return data;
-    },
-    enabled: !!user?.id,
-  }); 
   
   // Data State
+  const [events, setEvents] = useState<Event[]>([]);
+  const [communities, setCommunities] = useState<Community[]>([]);
   const [aiInsights, setAiInsights] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // Use GPS if available, fall back to DB coords
-  const resolvedLocation = location ?? dbLocation;
-  
-  // Update your query key and queryFn to use resolvedLocation
-  const FEED_QUERY_KEY = ['smart-feed', user?.id, resolvedLocation?.latitude?.toFixed(2), resolvedLocation?.longitude?.toFixed(2)
-  ].filter(Boolean); 
-  
-  const { data: feedData, isLoading: loading } = useQuery({
-    queryKey: FEED_QUERY_KEY,
-    queryFn: async () => { 
-      
-      if (!resolvedLocation?.latitude || !resolvedLocation?.longitude) return null; 
-      
-      const { data, error } = await supabase.functions.invoke('generate-smart-feed', {
-        body: { 
-          user_id: user?.id, 
-          user_lat: resolvedLocation?.latitude,   // ← was location?.latitude
-          user_long: resolvedLocation?.longitude, // ← was location?.longitude
-        }
-      });
-      if (error) throw error;
-      return data; 
-    },
-    enabled: !!user?.id && typeof resolvedLocation?.latitude === 'number',
-    staleTime: 1000 * 60 * 5,
-  });
-  
-  // 2. Define derived state AFTER the query
-  const milestone = feedData?.milestone;
-  const isUnlocked = milestone?.is_unlocked;
-  const isLaunchZone = milestone?.is_launch_zone;
-  
-  // In Feed.tsx, replace line 126
-  const cityName = milestone?.zone_name || 
-                   (locationLoading || loading ? "Detecting..." : "Your City");
-  
-  const events = feedData?.events || [];
-  const communities = feedData?.communities || [];
-  const currentCount = milestone?.current || 0;
-  const targetCount = milestone?.target || 500;
-  
+  const { location, isLoading: locationLoading, error: locationError } = useGeolocation();
+  const [locationName, setLocationName] = useState("Detecting...");
+  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading } = useLaunchZone(location?.latitude, location?.longitude);
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -170,31 +117,18 @@ const Feed = () => {
 
   const discoveryRadiusKm = useMemo(() => {
     const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
-    // Default to 25km if no preference is found
-    return (prefs?.discovery_radius ?? 25000) / 1000; 
+    return (prefs?.discovery_radius ?? 25000) / 1000; // Default 25km
   }, [userProfile]);
 
-  // --- INITIALIZATION & REALTIME ---
+  // --- INITIALIZATION ---
   useEffect(() => {
-  if (!user) return;
-  checkPremium();
+    if (!user) return;
+    fetchSmartFeed();
+    checkPremium();
+  }, [user, location?.latitude, location?.longitude]);
 
-  const channel = supabase
-    .channel('feed-updates')
-    .on('postgres_changes', 
-      { event: 'INSERT', schema: 'public', table: 'events' }, 
-      () => {
-        // This clears the cache and forces a fresh background fetch
-        queryClient.invalidateQueries({ queryKey: ['smart-feed'] });
-      }
-    )
-    .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user, queryClient]); 
-
-  // --- FETCH FRIENDS FOR MODAL ---
-  useEffect(() => {
+  // --- FETCH FRIENDS FOR MODAL (NUCLEAR FIX) ---
+    useEffect(() => {
     if (!selectedEvent?.id || !user) return;
   
     const fetchFriendsGoing = async () => {
@@ -206,7 +140,7 @@ const Feed = () => {
           .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
           .eq('status', 'accepted');
         
-        const friendIds = friendships?.map((f: any) => 
+        const friendIds = friendships?.map(f => 
           f.requester_id === user.id ? f.addressee_id : f.requester_id
         ) || [];
   
@@ -222,7 +156,7 @@ const Feed = () => {
   
         if (!attendees || attendees.length === 0) return;
   
-        const attendeeIds = attendees.map((a: any) => a.user_id);
+        const attendeeIds = attendees.map(a => a.user_id);
   
         // 3. Fetch their profiles/avatars
         const { data: profiles } = await supabase
@@ -232,7 +166,7 @@ const Feed = () => {
           .limit(5);
   
         if (profiles && profiles.length > 0) {
-          const avatars = profiles.map((p: any) => p.avatar_url).filter(Boolean);
+          const avatars = profiles.map(p => p.avatar_url).filter(Boolean);
           
           // 4. Update selected event state
           setSelectedEvent(prev => {
@@ -250,11 +184,90 @@ const Feed = () => {
 
   const checkPremium = async () => {
     if (!user?.id) return;
+    // Check both subscriptions AND premium_features for consistency
     const [{ data: subData }, { data: featureData }] = await Promise.all([
       supabase.from('subscriptions').select('status').eq('user_id', user.id).eq('status', 'active').maybeSingle(),
       supabase.from('premium_features').select('feature_type').eq('user_id', user.id).eq('is_active', true).gt('expires_at', new Date().toISOString()).limit(1)
     ]);
     setIsPremium(!!subData || (featureData && featureData.length > 0));
+  };
+
+  // --- FETCHING (The Clyx Engine) ---
+  const fetchSmartFeed = async () => {
+    setLoading(true);
+    try {
+      // 1. Get Location from Context (Single Source of Truth)
+      let currentLat = location?.latitude;
+      let currentLong = location?.longitude;
+      let city = 'Detecting...';
+
+      // If Context is ready, reverse geocode for the header name
+      if (currentLat && currentLong) {
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLong}`);
+          const data = await res.json();
+          city = data.address.city || data.address.town || data.address.state || "Nearby";
+          setLocationName(city);
+        } catch (e) {
+          console.warn("Reverse geocoding failed", e);
+          setLocationName("Global Mode");
+        }
+      }
+
+      // 2. Call the Intelligent Backend
+      const { data: response, error } = await supabase.functions.invoke('generate-smart-feed', {
+        body: { 
+          user_id: user?.id, 
+          user_lat: currentLat, 
+          user_long: currentLong, 
+          city: city 
+        }
+      });
+
+      if (error) throw error;
+
+      if (response) {
+        // Fetch user's attending events to check is_attending
+        const { data: myAttendance } = await supabase
+          .from('event_attendees')
+          .select('event_id')
+          .eq('user_id', user?.id || '');
+        const attendingIds = new Set(myAttendance?.map(a => a.event_id) || []);
+
+        // Events (The Core)
+        if (response.events) {
+          setEvents(response.events.map((e: any) => ({
+            ...e,
+            attendee_count: e.attendee_count || 0,
+            is_attending: attendingIds.has(e.id),
+            friend_images: e.friend_images || []
+          })));
+        }
+        
+        // Communities — deduplicate by ID before setting state
+        if (response.communities) {
+          const seen = new Set<string>();
+          const unique = response.communities.filter((c: any) => {
+            if (seen.has(c.id)) return false;
+            seen.add(c.id);
+            return true;
+          });
+          setCommunities(unique.map((c: any) => ({
+            ...c,
+            avatar_url: c.cover_url || c.avatar_url || null,
+            is_premium: c.is_premium || false,
+            join_fee: c.join_fee || 0,
+          })));
+        }
+
+        setAiInsights(response.ai_insights || null);
+      }
+    } catch (err) {
+      console.error("Feed Error:", err);
+      toast.error("Could not load discovery feed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // --- RSVP (RSVP first, then prompt payment for paid events) ---
@@ -277,10 +290,8 @@ const Feed = () => {
       attendee_count: Math.max(0, (e.attendee_count || 0) + modifier)
     });
   
-    // FIX: Use queryClient.setQueryData for optimistic updates instead of setEvents
-    queryClient.setQueryData<Event[]>(FEED_QUERY_KEY, (prev = []) =>
-      prev.map(e => e.id === eventId ? updateEventState(e) : e)
-    );
+    // Optimistic update
+    setEvents(prev => prev.map(e => e.id === eventId ? updateEventState(e) : e));
     if (selectedEvent?.id === eventId) {
       setSelectedEvent(prev => prev ? updateEventState(prev) : null);
     }
@@ -297,8 +308,8 @@ const Feed = () => {
         // Then prompt payment for paid events
         if (targetEvent.ticket_price && targetEvent.ticket_price > 0) {
           const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
-          if (flwKey && (window as any).FlutterwaveCheckout) {
-            (window as any).FlutterwaveCheckout({
+          if (flwKey && window.FlutterwaveCheckout) {
+            window.FlutterwaveCheckout({
               public_key: flwKey,
               tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
               amount: targetEvent.ticket_price,
@@ -342,16 +353,13 @@ const Feed = () => {
       console.error('RSVP Failed:', e);
       toast.error(e.message || "Action failed");
       
-      // FIX: Revert optimistic update via queryClient
       const revertEventState = (ev: Event): Event => ({
         ...ev,
         is_attending: isCurrentlyAttending,
         attendee_count: Math.max(0, (ev.attendee_count || 0) - modifier)
       });
       
-      queryClient.setQueryData<Event[]>(FEED_QUERY_KEY, (prev = []) =>
-        prev.map(e => e.id === eventId ? revertEventState(e) : e)
-      );
+      setEvents(prev => prev.map(e => e.id === eventId ? revertEventState(e) : e));
       if (selectedEvent?.id === eventId) {
         setSelectedEvent(prev => prev ? revertEventState(prev) : null);
       }
@@ -380,6 +388,10 @@ const Feed = () => {
 
   const displayEvents = getFilteredEvents();
 
+  // Determine if we should show the city unavailable overlay
+  const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
+  const cityNotDetected = !locationLoading && !launchZoneLoading && !location;
+
   return (
     <div className="min-h-screen bg-background pb-24">
       
@@ -389,14 +401,20 @@ const Feed = () => {
             <div className="flex items-center justify-between mb-3">
             <div>
                 <h1 className="text-xl font-bold flex items-center gap-2">
-                Discover <span className="text-primary">{cityName}</span>
+                Discover <span className="text-primary">{locationName}</span>
                 </h1>
-                <p className="text-xs text-muted-foreground">Find your vibe for today</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  {location ? (
+                    <><MapPin className="w-3 h-3" /> {locationName}</>
+                  ) : (
+                    'Detecting your location...'
+                  )}
+                </p>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               {isPremium && (
                 <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
-                  <Sparkles className="w-3 h-3 mr-1" /> Pro
+                  <Sparkles className="w-3 h-3 mr-1" /> Premium
                 </Badge>
               )}
               <Button 
@@ -460,93 +478,87 @@ const Feed = () => {
                 </TabsList>
             </div>
 
-    {/* CONTENT AREA */}
-    <div className="container-mobile py-2 space-y-6"> 
-    
-    {/* A. PREMIUM SECTION */}
-    {/* {isPremium && activeTab === 'for_you' && (
-        <div className="mx-4 mt-2 space-y-3">
-          <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/15 via-primary/10 to-purple-500/15 border border-amber-300/30 dark:border-amber-700/30 rounded-2xl p-4 shadow-sm">
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl" />
-            <div className="flex items-center gap-3 relative z-10">
-              <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-foreground flex items-center gap-1.5">Premium Member <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] px-1.5">VIP</Badge></p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Ad-free · {discoveryRadiusKm}km radius · Priority discovery · AI insights</p>
-              </div>
-            </div>
-          </div>
-
-          {aiInsights && (
-            <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xs text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-1">AI Vibe Check</h3>
-                    <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">{aiInsights}</p>
-                  </div>
+            {/* CITY UNAVAILABLE OVERLAY */}
+            {(showCityUnavailable || cityNotDetected) ? (
+              <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
+                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Rocket className="w-10 h-10 text-primary" />
                 </div>
-            </div>
-          )} 
-        </div>
-    )} */}
-
-    {/* B. WAITING ROOM / MILESTONE UI (Zaria Support) */}
-    {activeTab === 'for_you' && !isUnlocked && (
-          <div className="mx-4 mb-8 p-6 bg-card rounded-3xl border shadow-xl relative overflow-hidden">
-            <div className="relative z-10">
-            {/* <MapPin className="w-10 h-10 text-muted-foreground/30 mx-auto" />  
-            */}
-              
-              {/* BRANCH 1: Official Launch Zone (Zaria/Abuja) */}
-              {isLaunchZone ? (
-                <>
-                  <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
-                    {cityName} IS LOADING...
+                <div>
+                  <h2 className="text-xl font-bold mb-2">
+                    {cityNotDetected ? 'City Not Detected' : 'Coming Soon 🚀'}
                   </h2>
-                  <p className="text-sm text-muted-foreground mb-6">
-                    Join {milestone.current} pioneers in {cityName}. We unlock at {milestone.target}!
-                  </p>
-                  <div className="space-y-2 mb-6">
-                    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
-                      <span>Progress</span>
-                      <span className="text-primary">{milestone.current} / {milestone.target}</span>
-                    </div>
-                    <div className="h-3 w-full bg-muted rounded-full overflow-hidden border">
-                      <div 
-                        className="h-full bg-primary transition-all duration-1000" 
-                        style={{ width: `${(milestone.current / milestone.target) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                /* BRANCH 2: Generic "Coming Soon" (Anywhere else) */
-                <div className="space-y-4 py-4 text-center">
-                  <Lock className="w-8 h-8 text-primary animate-pulse mx-auto mb-4" />
-                  <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
-                    {cityName || "CITY"} IS UNAVAILABLE
-                  </h2>
-                  <p className="text-sm text-muted-foreground mb-6">
-                    Ahmia hasn't landed in {cityName} yet. Want to be our campus lead here?
+                  <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                    {cityNotDetected 
+                      ? 'We couldn\'t detect your location. Please enable location access to discover events near you.'
+                      : `We're not in ${locationName !== 'Detecting...' ? locationName : 'your city'} yet, but we're expanding fast! Invite friends to help unlock your city.`
+                    }
                   </p>
                 </div>
-              )}
-              
-              <Button className="w-full h-12 rounded-2xl font-bold uppercase">
-                <MapPin className="w-4 h-4 mr-2" /> Nominate {cityName}
-              </Button>
-            </div>
-          </div>
-        )}
+                
+                {launchCityName && (
+                  <Badge variant="outline" className="text-sm px-4 py-1.5">
+                    <Globe className="w-3.5 h-3.5 mr-1.5" /> Nearest zone: {launchCityName}
+                  </Badge>
+                )}
 
-        {/* The feed below will be blurred/hidden if isLocked is true */}
-        <TabsContent value={activeTab} className={!isUnlocked ? "opacity-40 grayscale blur-sm pointer-events-none" : ""}>
-          {activeTab === 'communities' ? (
+                <Card className="w-full max-w-sm border-dashed border-2 border-primary/30 bg-primary/5">
+                  <CardContent className="p-5 text-center space-y-3">
+                    <UserPlus className="w-8 h-8 text-primary mx-auto" />
+                    <h3 className="font-bold text-base">Invite Friends</h3>
+                    <p className="text-xs text-muted-foreground">Help us launch in your city by inviting your friends!</p>
+                    <Button className="w-full gap-2" onClick={() => navigate('/app/friends')}>
+                      <UserPlus className="w-4 h-4" /> Invite Friends
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {cityNotDetected && (
+                  <Button variant="outline" onClick={() => window.location.reload()}>
+                    Retry Location Detection
+                  </Button>
+                )}
+              </div>
+            ) : (
+            <div className="container-mobile py-2 space-y-6">
+                
+                {/* AI Insight (Premium VIP Section) */}
+                {isPremium && activeTab === 'for_you' && (
+                    <div className="mx-4 mt-2 space-y-3">
+                      {/* VIP Status Bar */}
+                      <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/15 via-primary/10 to-purple-500/15 border border-amber-300/30 dark:border-amber-700/30 rounded-2xl p-4 shadow-sm">
+                        <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-400/10 rounded-full blur-2xl" />
+                        <div className="flex items-center gap-3 relative z-10">
+                          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-foreground flex items-center gap-1.5">Premium Member <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] px-1.5">VIP</Badge></p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">Ad-free · {discoveryRadiusKm}km radius · Priority discovery · AI insights</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Vibe Check (AI Insight) */}
+                      {aiInsights && (
+                        <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/40 dark:to-orange-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 shadow-sm">
+                            <div className="flex items-start gap-3">
+                              <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                                <Sparkles className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1">
+                                <h3 className="font-bold text-xs text-amber-900 dark:text-amber-200 uppercase tracking-wider mb-1">AI Vibe Check</h3>
+                                <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">{aiInsights}</p>
+                              </div>
+                            </div>
+                        </div>
+                      )}
+                    </div>
+                )}
+
+                {/* EVENTS FEED */}
+                <TabsContent value={activeTab} className="mt-0 space-y-5 px-4 min-h-[50vh]">
+                    {activeTab === 'communities' ? (
                         // COMMUNITIES VIEW
                         <div className="space-y-3">
                             {loading ? (
@@ -559,13 +571,7 @@ const Feed = () => {
                                     <div>
                                         <p className="font-semibold">No communities yet</p>
                                         <p className="text-sm text-muted-foreground">Be the first to create one!</p>
-                                    </div> 
-                                    <Button 
-                                        className="rounded-full px-6 gap-2 shadow-md"
-                                        onClick={() => navigate('/app/messages?tab=community')}
-                                    >
-                                        <Plus className="w-4 h-4" /> Create Community
-                                    </Button>
+                                    </div>
                                 </div>
                             ) : communities.map(c => (
                             <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => setSelectedCommunity(c)}>
@@ -601,11 +607,11 @@ const Feed = () => {
                                     </div>
                                     <div>
                                         <p className="font-semibold text-base">No events for this vibe yet</p>
-                                        <p className="text-sm text-muted-foreground mt-1">Be the first to create one in your city!</p>
+                                        <p className="text-sm text-muted-foreground mt-1">Be the first to create one in your area!</p>
                                     </div>
                                     <Button 
                                         className="rounded-full px-6 gap-2 shadow-md"
-                                        onClick={() => navigate('/create-event')}
+                                        onClick={() => navigate('/app/events/create')}
                                     >
                                         <Plus className="w-4 h-4" /> Create Event
                                     </Button>
@@ -697,6 +703,7 @@ const Feed = () => {
                     )}
                 </TabsContent>
             </div>
+            )}
         </Tabs>
       </div>
 
