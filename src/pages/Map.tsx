@@ -323,49 +323,56 @@ const MapPage = () => {
           routeCoordinates={routeCoordinates}
         />
       </div>
-
-      {/* CITY UNAVAILABLE OVERLAY (on top of blurred map) */}
+      
+      {/* CITY UNAVAILABLE OVERLAY (Refined with Milestone Logic) */}
       {mapBlurred && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center px-6 text-center bg-background/60 backdrop-blur-sm">
-          <div className="max-w-sm space-y-6">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-              <Rocket className="w-10 h-10 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold mb-2">
-                {cityNotDetected ? 'City Not Detected' : 'Coming Soon'}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {cityNotDetected 
-                  ? 'Enable location access to see your friends on the map.'
-                  : 'We\'re not in your city yet! Invite friends to help unlock it.'
-                }
-              </p>
-            </div>
-            
-            {launchCityName && (
-              <Badge variant="outline" className="text-sm px-4 py-1.5">
-                <Globe className="w-3.5 h-3.5 mr-1.5" /> Nearest zone: {launchCityName}
-              </Badge>
-            )}
-
-            <Card className="border-dashed border-2 border-primary/30 bg-primary/5">
-              <CardContent className="p-5 text-center space-y-3">
-                <UserPlus className="w-8 h-8 text-primary mx-auto" />
-                <h3 className="font-bold text-base">Invite Friends</h3>
-                <p className="text-xs text-muted-foreground">Help us launch in your city!</p>
-                <Button className="w-full gap-2" onClick={() => setShowContactImport(true)}>
-                  <UserPlus className="w-4 h-4" /> Invite Friends
-                </Button>
-              </CardContent>
-            </Card>
-
-            {cityNotDetected && (
-              <Button variant="outline" onClick={requestLocation}>
-                Enable Location
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center px-6 text-center bg-background/40 backdrop-blur-md">
+          {!milestone?.is_unlocked && !cityNotDetected ? (
+            /* PRECISE ROCKET CARD OVERLAY */
+            <Card className="w-full max-w-sm p-8 bg-background/90 rounded-[2.5rem] border border-dashed border-primary/30 shadow-2xl space-y-6">
+              <div className="space-y-2">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                  <Radar className="w-8 h-8 text-primary animate-pulse" />
+                </div>
+                <h2 className="text-xl font-black uppercase italic tracking-tighter leading-none">
+                  MAP IS ENCRYPTED
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Launch Zone: <span className="font-bold text-foreground">{milestone?.zone_name || locationName}</span>
+                </p>
+              </div>
+      
+              <div className="space-y-3">
+                <div className="flex justify-between items-end px-1">
+                  <span className="text-[10px] font-bold uppercase text-muted-foreground">Radar Pioneers</span>
+                  <span className="text-sm font-black text-primary">{milestone?.current || 0}/{milestone?.target || 500}</span>
+                </div>
+                <div className="h-3 w-full bg-muted rounded-full overflow-hidden p-[2px]">
+                  <div 
+                    className="h-full bg-primary rounded-full transition-all duration-1000" 
+                    style={{ width: `${((milestone?.current || 0) / (milestone?.target || 500)) * 100}%` }}
+                  />
+                </div>
+              </div>
+      
+              <Button className="w-full h-12 rounded-2xl font-bold uppercase bg-primary text-white" onClick={() => navigate('/app/friends')}>
+                 <UserPlus className="w-4 h-4 mr-2" /> Invite to Unlock Map
               </Button>
-            )}
-          </div>
+            </Card>
+          ) : (
+            /* ORIGINAL COMING SOON / NO GPS UI */
+            <div className="max-w-sm space-y-6">
+                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                  <Globe className="w-10 h-10 text-primary" />
+                </div>
+                <h2 className="text-xl font-bold italic uppercase tracking-tighter">
+                  {cityNotDetected ? 'GPS Signal Lost' : 'Coming Soon'}
+                </h2>
+                <Button variant="outline" className="rounded-full px-8" onClick={() => window.location.reload()}>
+                  {cityNotDetected ? 'Retry' : 'Nominate City'}
+                </Button>
+            </div>
+          )}
         </div>
       )}
       {/* LAYER 2: CLYX UI OVERLAY */}
