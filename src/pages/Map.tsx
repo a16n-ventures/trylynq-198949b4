@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
   MessageCircle, Calendar, Users, Loader2, X, 
-  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Rocket
+  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Lock, Rocket
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -329,7 +329,7 @@ const MapPage = () => {
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center px-6 text-center bg-background/60 backdrop-blur-sm">
           <div className="max-w-sm space-y-6">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-              <Rocket className="w-10 h-10 text-primary" />
+              <Lock className="w-10 h-10 text-primary" />
             </div>
             <div>
               <h2 className="text-xl font-bold mb-2">

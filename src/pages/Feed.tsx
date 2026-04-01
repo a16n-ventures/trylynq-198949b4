@@ -11,7 +11,7 @@ import {
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
   Clock, Check, Megaphone, SlidersHorizontal, Repeat,
-  ArrowRight, Music, Martini, Palette, Zap, Rocket, UserPlus, Globe
+  ArrowRight, Music, Martini, Palette, Zap, Lock, Rocket, UserPlus, Globe
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -482,7 +482,7 @@ const Feed = () => {
             {(showCityUnavailable || cityNotDetected) ? (
               <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
                 <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Rocket className="w-10 h-10 text-primary" />
+                  <Lock className="w-10 h-10 text-primary" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold mb-2">

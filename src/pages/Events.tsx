@@ -45,7 +45,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useGeolocation } from '@/contexts/LocationContext';
 import { useLaunchZone } from '@/hooks/useLaunchZone';
-import { Rocket, UserPlus, Globe } from 'lucide-react';
+import { Lock, Rocket, UserPlus, Globe } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; 
 import { z } from 'zod';
 
@@ -587,7 +587,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
         </div>
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-6">
           <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-            <Rocket className="w-10 h-10 text-primary" />
+            <Lock className="w-10 h-10 text-primary" />
           </div>
           <div>
             <h2 className="text-xl font-bold mb-2">

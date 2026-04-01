@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useGeolocation } from '@/contexts/LocationContext';
 import { useLaunchZone } from '@/hooks/useLaunchZone';
-import { Rocket, UserPlus, Globe } from 'lucide-react';
+import { Lock, Rocket, UserPlus, Globe } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
@@ -363,7 +363,7 @@ export default function Messages() {
       <div className="flex h-screen bg-background items-center justify-center">
         <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6 max-w-md">
           <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-            <Rocket className="w-10 h-10 text-primary" />
+            <Lock className="w-10 h-10 text-primary" />
           </div>
           <div>
             <h2 className="text-xl font-bold mb-2">
