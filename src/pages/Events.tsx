@@ -579,51 +579,55 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
   const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
   const cityNotDetected = !locationLoading && !launchZoneLoading && !location;
 
-  if (showCityUnavailable || cityNotDetected) {
-    return (
-      <div className="container-mobile py-4 pb-24">
-        <div className="flex items-center justify-between px-1 mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Events</h1>
-        </div>
+  // Replace the existing if (showCityUnavailable || cityNotDetected) block
+if (cityNotDetected || !milestone?.is_unlocked) {
+  return (
+    <div className="container-mobile py-4 pb-24 space-y-6">
+      <h1 className="text-2xl font-bold tracking-tight px-1">Events</h1>
+      
+      {cityNotDetected ? (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-6">
-          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-            <Rocket className="w-10 h-10 text-primary" />
+          <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+            <MapPin className="w-10 h-10 text-muted-foreground" />
           </div>
-          <div>
-            <h2 className="text-xl font-bold mb-2">
-              {cityNotDetected ? 'City Not Detected' : 'Coming Soon'}
-            </h2>
-            <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              {cityNotDetected 
-                ? 'We couldn\'t detect your location. Please enable location access to discover events.'
-                : `We're not in your city yet, but we're expanding fast! Invite friends to help unlock your city.`
-              }
-            </p>
-          </div>
-          {launchCityName && (
-            <Badge variant="outline" className="text-sm px-4 py-1.5">
-              <Globe className="w-3.5 h-3.5 mr-1.5" /> Nearest zone: {launchCityName}
-            </Badge>
-          )}
-          <Card className="w-full max-w-sm border-dashed border-2 border-primary/30 bg-primary/5">
-            <CardContent className="p-5 text-center space-y-3">
-              <UserPlus className="w-8 h-8 text-primary mx-auto" />
-              <h3 className="font-bold text-base">Invite Friends</h3>
-              <p className="text-xs text-muted-foreground">Help us launch in your city by inviting your friends!</p>
-              <Button className="w-full gap-2" onClick={() => navigate('/app/friends')}>
-                <UserPlus className="w-4 h-4" /> Invite Friends
-              </Button>
-            </CardContent>
-          </Card>
-          {cityNotDetected && (
-            <Button variant="outline" onClick={() => window.location.reload()}>
-              Retry Location Detection
-            </Button>
-          )}
+          <h2 className="text-xl font-bold italic uppercase tracking-tighter">Location Required</h2>
+          <Button variant="outline" className="rounded-2xl" onClick={() => window.location.reload()}>Retry Detection</Button>
         </div>
-      </div>
-    );
-  }
+      ) : (
+        /* THE ROCKET / PIONEER CARD */
+        <div className="mx-1 p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-xl relative overflow-hidden bg-gradient-to-br from-background to-primary/5">
+          <div className="relative z-10 text-center space-y-4">
+            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+              <Rocket className="w-8 h-8 text-primary/60" />
+            </div>
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
+              {milestone?.zone_name || locationName} IS LOADING...
+            </h2>
+            <p className="text-sm text-muted-foreground px-4">
+              Event hosting unlocks once <span className="text-foreground font-bold">{milestone?.target || 500} Pioneers</span> join.
+            </p>
+            
+            <div className="flex justify-between items-end px-1 pt-2">
+              <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground text-left">Pioneers<br/>Joined</p>
+              <p className="text-sm font-black text-primary">{milestone?.current || 0} / {milestone?.target || 500}</p>
+            </div>
+            
+            <div className="h-4 w-full bg-muted rounded-full overflow-hidden border p-[3px]">
+              <div 
+                className="h-full bg-gradient-to-r from-[#6366f1] to-[#a855f7] rounded-full transition-all duration-1000" 
+                style={{ width: `${Math.min(100, ((milestone?.current || 0) / (milestone?.target || 500)) * 100)}%` }}
+              />
+            </div>
+            
+            <Button className="w-full h-14 rounded-2xl font-bold uppercase gap-2 bg-gradient-to-r from-[#6366f1] to-[#a855f7] border-0 text-white" onClick={() => navigate('/app/friends')}>
+              <UserPlus className="w-5 h-5" /> Invite Friends
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
   return (
     <div className="container-mobile py-4 space-y-6 pb-24">
