@@ -403,7 +403,7 @@ const Feed = () => {
               </div>
             ) : (
               <div className="container-mobile py-2 space-y-6">
-                <TabsContent value={activeTab} className={!milestone.is_unlocked ? "opacity-40 grayscale blur-sm pointer-events-none" : "" "mt-0 space-y-5 px-4 min-h-[50vh]"}>
+                <TabsContent value={activeTab} className="mt-0 space-y-5 px-4 min-h-[50vh]">
                   {activeTab === 'communities' ? (
                     <div className="space-y-3">
                       {loading ? <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div> : 
