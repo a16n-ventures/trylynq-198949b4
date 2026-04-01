@@ -63,7 +63,6 @@ const MapPage = () => {
   // Global State
   const { location, requestLocation, isLoading: locationLoading, error: locationError } = useGeolocation();
   const { friends = [] } = useFriends(user?.id);
-  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading } = useLaunchZone(location?.latitude, location?.longitude);
 
   // Local State
   const [searchQuery, setSearchQuery] = useState('');
