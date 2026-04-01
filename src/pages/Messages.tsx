@@ -358,45 +358,40 @@ export default function Messages() {
   const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
   const cityNotDetected = !locationLoading && !launchZoneLoading && !location;
 
-  if (showCityUnavailable || cityNotDetected) {
+  if (cityNotDetected || !milestone?.is_unlocked) {
     return (
-      <div className="flex h-screen bg-background items-center justify-center">
-        <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6 max-w-md">
-          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-            <Rocket className="w-10 h-10 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold mb-2">
-              {cityNotDetected ? 'City Not Detected' : 'Coming Soon'}
+      <div className="flex h-screen bg-background items-center justify-center p-6">
+        {!milestone?.is_unlocked && !cityNotDetected ? (
+          <div className="w-full max-w-md p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-xl text-center space-y-6">
+             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+              <MessageSquare className="w-8 h-8 text-primary/60" />
+            </div>
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
+              CHATS ARE IN STEALTH
             </h2>
-            <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              {cityNotDetected 
-                ? 'We couldn\'t detect your location. Please enable location access to use messaging.'
-                : `We're not in your city yet, but we're expanding fast! Invite friends to help unlock your city.`
-              }
+            <p className="text-sm text-muted-foreground">
+              Messaging in <span className="font-bold text-foreground">{milestone?.zone_name || locationName}</span> unlocks for pioneers at {milestone?.target || 500} members.
             </p>
-          </div>
-          {launchCityName && (
-            <Badge variant="outline" className="text-sm px-4 py-1.5">
-              <Globe className="w-3.5 h-3.5 mr-1.5" /> Nearest zone: {launchCityName}
-            </Badge>
-          )}
-          <Card className="w-full max-w-sm border-dashed border-2 border-primary/30 bg-primary/5">
-            <CardContent className="p-5 text-center space-y-3">
-              <UserPlus className="w-8 h-8 text-primary mx-auto" />
-              <h3 className="font-bold text-base">Invite Friends</h3>
-              <p className="text-xs text-muted-foreground">Help us launch in your city by inviting your friends!</p>
-              <Button className="w-full gap-2" onClick={() => navigate('/app/friends')}>
-                <UserPlus className="w-4 h-4" /> Invite Friends
-              </Button>
-            </CardContent>
-          </Card>
-          {cityNotDetected && (
-            <Button variant="outline" onClick={() => window.location.reload()}>
-              Retry Location Detection
+  
+            <div className="h-4 w-full bg-muted rounded-full overflow-hidden border p-[3px]">
+              <div 
+                className="h-full bg-gradient-to-r from-primary to-violet-500 rounded-full transition-all duration-1000" 
+                style={{ width: `${((milestone?.current || 0) / (milestone?.target || 500)) * 100}%` }}
+              />
+            </div>
+  
+            <Button className="w-full h-14 rounded-2xl font-bold uppercase shadow-lg bg-primary text-white" onClick={() => navigate('/app/friends')}>
+              <UserPlus className="w-5 h-5 mr-2" /> Invite to {milestone?.zone_name}
             </Button>
-          )}
-        </div>
+          </div>
+        ) : (
+          /* COMING SOON UI */
+          <div className="text-center space-y-6">
+            <Globe className="w-16 h-16 text-primary/20 mx-auto" />
+            <h2 className="text-xl font-bold uppercase italic tracking-tighter italic">Coming Soon</h2>
+            <Button variant="outline" onClick={() => navigate('/app/feed')}>Back to Home</Button>
+          </div>
+        )}
       </div>
     );
   }
