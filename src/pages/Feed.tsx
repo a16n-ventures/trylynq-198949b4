@@ -498,28 +498,27 @@ const Feed = () => {
                   {/* MILESTONE CARD */}
                   <div className="mx-4 mt-4 p-6 bg-card rounded-3xl border shadow-xl relative overflow-hidden bg-gradient-to-br from-background to-primary/5">
                     <div className="relative z-10 text-center">
-                      <Rocket className="w-10 h-10 text-primary mx-auto mb-4 animate-bounce" />
-                      <h2 className="text-2xl font-black mb-1 uppercase italic tracking-tighter">
-                        {locationName} is Loading
-                      </h2>
-                      <p className="text-sm text-muted-foreground mb-6">
-                        {milestone ? `Join ${milestone.current} pioneers. We unlock at ${milestone.target}!` : "Gathering pioneers..."}
-                      </p>
-              
-                      {milestone && (
-                        <div className="space-y-2 mb-6 px-2">
-                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-primary">
-                            <span>Launch Progress</span>
-                            <span>{Math.round((milestone.current / milestone.target) * 100)}%</span>
-                          </div>
-                          <div className="h-3 w-full bg-muted rounded-full overflow-hidden border p-[2px]">
-                            <div 
-                              className="h-full bg-primary rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(var(--primary),0.5)]" 
-                              style={{ width: `${Math.min(100, (milestone.current / milestone.target) * 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
+                      <h2 className="text-2xl font-bold mb-2 uppercase leading-none">
+                    {cityName} IS LOADING...
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Join {milestone.current} pioneers in {cityName}. We unlock at {milestone.target}!
+                  </p>
+                
+                {milestone && (
+                  <div className="space-y-2 mb-6">
+                    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                      <span>Progress</span>
+                      <span className="text-primary">{milestone.current} / {milestone.target}</span>
+                    </div>
+                    <div className="h-3 w-full bg-muted rounded-full overflow-hidden border">
+                      <div 
+                        className="h-full bg-primary transition-all duration-1000" 
+                        style={{ width: `${(milestone.current / milestone.target) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               
                       <Button className="w-full h-12 rounded-2xl font-bold uppercase gap-2 shadow-lg shadow-primary/20" onClick={() => navigate('/app/friends')}>
                         <UserPlus className="w-4 h-4" /> Invite friends to {locationName}
