@@ -11,13 +11,16 @@ const LAUNCH_ZONES = {
     name: "Zaria",
     coords: { lat: 11.1500, long: 7.6500 },
     threshold: 500,
-  },
-  ABUJA: {
+  }
+}; 
+
+{ /* 
+ABUJA: {
     name: "Abuja",
     coords: { lat: 9.0765, long: 7.3986 },
     threshold: 1000,
   },
-};
+  */ }
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; 
