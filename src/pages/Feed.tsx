@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -93,7 +93,7 @@ const Feed = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const { location, isLoading: locationLoading } = useGeolocation();
   const [locationName, setLocationName] = useState("Detecting...");
-  const { isInLaunchZone, isLoading: launchZoneLoading } = useLaunchZone(location?.latitude, location?.longitude);
+  const { isInLaunchZone, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName } = useLaunchZone(location?.latitude, location?.longitude);
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
@@ -101,7 +101,13 @@ const Feed = () => {
   const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
-  const [milestone, setMilestone] = useState<{ current: number; target: number; is_unlocked: boolean; zone_name?: string } | null>(null);
+  // Pioneer milestone derived from launch zone hook
+  const milestone = useMemo(() => ({
+    current: currentCount,
+    target: targetCount,
+    is_unlocked: isInLaunchZone ?? false,
+    zone_name: launchCityName || undefined,
+  }), [currentCount, targetCount, isInLaunchZone, launchCityName]);
 
   const { data: userProfile } = useQuery({
     queryKey: ['user-profile-prefs', user?.id],
@@ -113,8 +119,30 @@ const Feed = () => {
     enabled: !!user?.id,
   });
 
+  // Stabilize location to prevent flickering on every GPS update
+  const lastFetchedLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const hasFetchedRef = useRef(false);
+
   useEffect(() => {
     if (!user) return;
+
+    const lat = location?.latitude;
+    const lng = location?.longitude;
+    const prev = lastFetchedLocationRef.current;
+
+    // Skip re-fetch if location barely moved (< 0.5km)
+    if (prev && lat && lng) {
+      const dLat = Math.abs(lat - prev.lat);
+      const dLng = Math.abs(lng - prev.lng);
+      // ~0.005 degrees ≈ 0.5km
+      if (dLat < 0.005 && dLng < 0.005 && hasFetchedRef.current) return;
+    }
+
+    if (lat && lng) {
+      lastFetchedLocationRef.current = { lat, lng };
+    }
+    hasFetchedRef.current = true;
+
     fetchSmartFeed();
     checkPremium();
   }, [user, location?.latitude, location?.longitude]);
@@ -197,7 +225,7 @@ const Feed = () => {
       if (error) throw error;
 
       if (response) {
-        setMilestone(response.milestone || null);
+        // milestone is now derived from useLaunchZone hook
         const { data: myAttendance } = await supabase
           .from('event_attendees')
           .select('event_id')
@@ -318,7 +346,7 @@ const Feed = () => {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h1 className="text-xl font-bold flex items-center gap-2">
-                  Discover <span className="text-primary">{locationName}</span>
+                  Discover <span className="text-primary">{{milestone?.zone_name || locationName}</span>
                 </h1>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> {locationName}
@@ -412,7 +440,7 @@ const Feed = () => {
                         <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50" onClick={() => setSelectedCommunity(c)}>
                           <Avatar className="h-14 w-14 rounded-xl border"><AvatarImage src={c.avatar_url || undefined} className="object-cover" /><AvatarFallback>{c.name[0]}</AvatarFallback></Avatar>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2"><h4 className="font-bold truncate">{c.name}</h4>{cis_premium && <Badge className="bg-amber-500 text-white border-0 text-[10px]">Exclusive</Badge>}</div>
+                            <div className="flex items-center gap-2"><h4 className="font-bold truncate">{c.name}</h4>{c.is_premium && <Badge className="bg-amber-500 text-white border-0 text-[10px]">Exclusive</Badge>}</div>
                             <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
                             <div className="flex items-center gap-1 mt-1 text-xs font-medium text-primary"><Users className="w-3 h-3" /> {c.member_count} members</div>
                           </div>
