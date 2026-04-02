@@ -21,6 +21,38 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
 export function useLaunchZone(latitude: number | null | undefined, longitude: number | null | undefined): LaunchZoneResult {
   const [result, setResult] = useState<LaunchZoneResult>({ isInLaunchZone: null, cityName: null, currentCount: 0, targetCount: 500, isLoading: true });
 
+  // Inside useLaunchZone.ts
+useEffect(() => {
+  const autoAssignPioneer = async () => {
+    // Only run if we have a user, a valid location, and they are in a zone
+    if (user?.id && latitude && longitude && result.cityName && result.isInLaunchZone === false) {
+      
+      const { data, error } = await supabase.rpc('increment_pioneer_count', {
+        target_city: result.cityName,
+        target_user: user.id
+      });
+
+      if (error) {
+        console.error("Pioneer assignment failed:", error);
+      } else if (data) {
+        // Asynchronously update the local state so the UI reflects the new count immediately
+        setResult(prev => ({
+          ...prev,
+          currentCount: prev.currentCount + 1,
+          // If this was the 500th person, you could even flip the unlock switch here
+          isInLaunchZone: (prev.currentCount + 1) >= prev.targetCount ? true : false
+        }));
+        
+        toast.success(`You are Pioneer #${data} in ${result.cityName}!`);
+      }
+    }
+  };
+
+  if (!result.isLoading) {
+    autoAssignPioneer();
+  }
+}, [user?.id, result.cityName, result.isLoading]);
+  
   useEffect(() => {
     if (!latitude || !longitude) {
       setResult({ isInLaunchZone: null, cityName: null, currentCount: 0, targetCount: 500, isLoading: false });
