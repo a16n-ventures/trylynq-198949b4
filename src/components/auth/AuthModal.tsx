@@ -253,7 +253,7 @@ const AuthModal = ({ open, onOpenChange, mode, onModeChange }: AuthModalProps) =
         ? await signUp(formData.email, formData.password, {
             full_name: formData.fullName.trim(),
             username: finalUsername,
-            phone: formData.phone.trim()
+            phone: formData.phone.trim().replace(/\D/g, '')
           })
         : await signIn(formData.email, formData.password);
 
