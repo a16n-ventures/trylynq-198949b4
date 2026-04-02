@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext'; // Added
+import { toast } from 'sonner'; // Added
 
 interface LaunchZoneResult {
   isInLaunchZone: boolean | null;
@@ -19,61 +21,46 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
 };
 
 export function useLaunchZone(latitude: number | null | undefined, longitude: number | null | undefined): LaunchZoneResult {
-  const [result, setResult] = useState<LaunchZoneResult>({ isInLaunchZone: null, cityName: null, currentCount: 0, targetCount: 500, isLoading: true });
+  const { user } = useAuth(); // Now we have the user
+  const [result, setResult] = useState<LaunchZoneResult>({ 
+    isInLaunchZone: null, 
+    cityName: null, 
+    currentCount: 0, 
+    targetCount: 500, 
+    isLoading: true 
+  });
 
-  // Inside useLaunchZone.ts
-useEffect(() => {
-  const autoAssignPioneer = async () => {
-    // Only run if we have a user, a valid location, and they are in a zone
-    if (user?.id && latitude && longitude && result.cityName && result.isInLaunchZone === false) {
-      
-      const { data, error } = await supabase.rpc('increment_pioneer_count', {
-        target_city: result.cityName,
-        target_user: user.id
-      });
-
-      if (error) {
-        console.error("Pioneer assignment failed:", error);
-      } else if (data) {
-        // Asynchronously update the local state so the UI reflects the new count immediately
-        setResult(prev => ({
-          ...prev,
-          currentCount: prev.currentCount + 1,
-          // If this was the 500th person, you could even flip the unlock switch here
-          isInLaunchZone: (prev.currentCount + 1) >= prev.targetCount ? true : false
-        }));
-        
-        toast.success(`You are Pioneer #${data} in ${result.cityName}!`);
-      }
-    }
-  };
-
-  if (!result.isLoading) {
-    autoAssignPioneer();
-  }
-}, [user?.id, result.cityName, result.isLoading]);
-  
+  // --- 1. GEOLOCATION CHECK ---
   useEffect(() => {
     if (!latitude || !longitude) {
-      setResult({ isInLaunchZone: null, cityName: null, currentCount: 0, targetCount: 500, isLoading: false });
+      setResult(prev => ({ ...prev, isLoading: false }));
       return;
     }
 
-    const check = async () => {
-      setResult(prev => ({ ...prev, isLoading: true }));
+    const checkZone = async () => {
       try {
         const { data: milestones } = await supabase
           .from('city_milestones')
-          .select('city_name, center_lat, center_long, radius_km, is_unlocked, current_count, target_count');
+          .select('*');
 
         if (!milestones || milestones.length === 0) {
-          setResult({ isInLaunchZone: true, cityName: null, currentCount: 0, targetCount: 500, isLoading: false });
+          setResult(prev => ({ ...prev, isInLaunchZone: true, isLoading: false }));
           return;
         }
+
+        let nearest = milestones[0];
+        let nearestDist = Infinity;
+        let foundZone = false;
 
         for (const m of milestones) {
           const dist = distanceKm(latitude, longitude, m.center_lat, m.center_long);
           const radius = m.radius_km || 50;
+          
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearest = m;
+          }
+
           if (dist <= radius) {
             setResult({
               isInLaunchZone: m.is_unlocked ?? true,
@@ -82,35 +69,69 @@ useEffect(() => {
               targetCount: m.target_count || 500,
               isLoading: false,
             });
-            return;
+            foundZone = true;
+            break;
           }
         }
 
-        // Not within any configured city — find nearest
-        let nearest = milestones[0];
-        let nearestDist = Infinity;
-        for (const m of milestones) {
-          const dist = distanceKm(latitude, longitude, m.center_lat, m.center_long);
-          if (dist < nearestDist) {
-            nearestDist = dist;
-            nearest = m;
-          }
+        if (!foundZone) {
+          setResult({
+            isInLaunchZone: false,
+            cityName: nearest.city_name,
+            currentCount: nearest.current_count || 0,
+            targetCount: nearest.target_count || 500,
+            isLoading: false,
+          });
         }
-
-        setResult({
-          isInLaunchZone: false,
-          cityName: nearest.city_name,
-          currentCount: nearest.current_count || 0,
-          targetCount: nearest.target_count || 500,
-          isLoading: false,
-        });
-      } catch {
-        setResult({ isInLaunchZone: null, cityName: null, currentCount: 0, targetCount: 500, isLoading: false });
+      } catch (err) {
+        setResult(prev => ({ ...prev, isLoading: false }));
       }
     };
 
-    check();
+    checkZone();
   }, [latitude, longitude]);
+
+  // --- 2. AUTOMATIC PIONEER ASSIGNMENT (The RPC) ---
+  useEffect(() => {
+    const autoAssign = async () => {
+      // Only assign if we are in a locked zone and have a user
+      if (user?.id && result.cityName && result.isInLaunchZone === false && !result.isLoading) {
+        const { data: pioneerNum, error } = await supabase.rpc('increment_pioneer_count', {
+          target_city: result.cityName,
+          target_user: user.id
+        });
+
+        if (!error && pioneerNum) {
+          toast.success(`You are Pioneer #${pioneerNum} in ${result.cityName}! 🚀`);
+        }
+      }
+    };
+
+    autoAssign();
+  }, [user?.id, result.cityName, result.isLoading, result.isInLaunchZone]);
+
+  // --- 3. REAL-TIME SUBSCRIPTION (Freshness) ---
+  useEffect(() => {
+    if (!result.cityName) return;
+
+    const channel = supabase
+      .channel('milestone-updates')
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'city_milestones',
+        filter: `city_name=eq.${result.cityName}` 
+      }, (payload) => {
+        setResult(prev => ({
+          ...prev,
+          currentCount: payload.new.current_count,
+          isInLaunchZone: payload.new.is_unlocked
+        }));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [result.cityName]);
 
   return result;
 }
