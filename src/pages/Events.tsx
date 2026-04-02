@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -604,11 +604,10 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
   
   const filteredAttendingEvents = filterEvents(attendingEvents);
 
-  const showCityUnavailable = !locationLoading === false;
-  const cityNotDetected = !locationLoading && !location; 
+  const cityNotDetected = !locationLoading && !launchZoneLoading && !location; 
+  const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
 
-    // Replace the existing if (showCityUnavailable || cityNotDetected) block
-  if (!locationLoading && !launchZoneLoading && (cityNotDetected || (milestone && !milestone.is_unlocked))) 
+  if (cityNotDetected || showCityUnavailable)
     {
     return (
       <div className="container-mobile py-4 pb-24 space-y-6">
@@ -630,25 +629,13 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                 <Rocket className="w-8 h-8 text-primary/60" />
               </div>
               <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
-                {milestone?.zone_name || locationName} IS LOADING...
+                Coming Soon 🚀
               </h2>
               <p className="text-sm text-muted-foreground px-4">
-                Event hosting unlocks once <span className="text-foreground font-bold">{milestone?.target || 500} Pioneers</span> join.
+                {launchCityName ? `Events in ${launchCityName} are coming soon!` : "We're expanding fast!"} Invite friends to help unlock your city.
               </p>
               
-              <div className="flex justify-between items-end px-1 pt-2">
-                <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground text-left">Pioneers<br/>Joined</p>
-                <p className="text-sm font-black text-primary">{milestone?.current || 0} / {milestone?.target || 500}</p>
-              </div>
-              
-              <div className="h-4 w-full bg-muted rounded-full overflow-hidden border p-[3px]">
-                <div 
-                  className="h-full bg-gradient-to-r from-[#6366f1] to-[#a855f7] rounded-full transition-all duration-1000" 
-                  style={{ width: `${Math.min(100, ((milestone?.current || 0) / (milestone?.target || 500)) * 100)}%` }}
-                />
-              </div>
-              
-              <Button className="w-full h-14 rounded-2xl font-bold uppercase gap-2 bg-gradient-to-r from-[#6366f1] to-[#a855f7] border-0 text-white" onClick={() => navigate('/app/friends')}>
+              <Button className="w-full h-14 rounded-2xl font-bold uppercase gap-2 gradient-primary border-0 text-white" onClick={() => navigate('/app/friends')}>
                 <UserPlus className="w-5 h-5" /> Invite Friends
               </Button>
             </div>

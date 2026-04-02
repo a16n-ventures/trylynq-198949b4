@@ -358,37 +358,30 @@ export default function Messages() {
   const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
   const cityNotDetected = !locationLoading && !launchZoneLoading && !location;
 
-  if (!locationLoading && !launchZoneLoading && (cityNotDetected || (milestone && !milestone.is_unlocked))) {
+  if (showCityUnavailable || cityNotDetected) {
     return (
       <div className="flex h-screen bg-background items-center justify-center p-6">
-        {!milestone?.is_unlocked && !cityNotDetected ? (
+        {showCityUnavailable ? (
           <div className="w-full max-w-md p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-xl text-center space-y-6">
              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
               <MessageSquare className="w-8 h-8 text-primary/60" />
             </div>
             <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
-              CHATS ARE IN STEALTH
+              Coming Soon 🚀
             </h2>
             <p className="text-sm text-muted-foreground">
-              Messaging in <span className="font-bold text-foreground">{milestone?.zone_name || locationName}</span> unlocks for pioneers at {milestone?.target || 500} members.
+              {launchCityName ? `Messaging in ${launchCityName} is coming soon!` : "We're expanding fast!"} Invite friends to help unlock your city.
             </p>
   
-            <div className="h-4 w-full bg-muted rounded-full overflow-hidden border p-[3px]">
-              <div 
-                className="h-full bg-gradient-to-r from-primary to-violet-500 rounded-full transition-all duration-1000" 
-                style={{ width: `${((milestone?.current || 0) / (milestone?.target || 500)) * 100}%` }}
-              />
-            </div>
-  
             <Button className="w-full h-14 rounded-2xl font-bold uppercase shadow-lg bg-primary text-white" onClick={() => navigate('/app/friends')}>
-              <UserPlus className="w-5 h-5 mr-2" /> Invite to {milestone?.zone_name}
+              <UserPlus className="w-5 h-5 mr-2" /> Invite Friends
             </Button>
           </div>
         ) : (
-          /* COMING SOON UI */
           <div className="text-center space-y-6">
             <Globe className="w-16 h-16 text-primary/20 mx-auto" />
-            <h2 className="text-xl font-bold uppercase italic tracking-tighter italic">Coming Soon</h2>
+            <h2 className="text-xl font-bold uppercase italic tracking-tighter">City Not Detected</h2>
+            <p className="text-sm text-muted-foreground">Enable location access to use messaging.</p>
             <Button variant="outline" onClick={() => navigate('/app/feed')}>Back to Home</Button>
           </div>
         )}
