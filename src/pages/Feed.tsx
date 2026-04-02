@@ -398,7 +398,7 @@ const Feed = () => {
                     </div>
                     <div className="flex justify-between items-end px-1 pt-4">
                       <div className="text-left">
-                        <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground leading-tight">{milestone?.zone_name || "DETECTING..."}</p>
+                        <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground leading-tight">{locationName || "DETECTING..."}</p>
                         <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground leading-tight">Pioneers</p>
                       </div>
                       <div className="text-right">
