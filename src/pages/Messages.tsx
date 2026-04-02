@@ -394,7 +394,7 @@ export default function Messages() {
     <div className="flex h-screen bg-background overflow-hidden">
       
       {/* LEFT SIDEBAR (Chat List) */}
-      <div className={`w-full md:w-80 lg:w-96 border-r flex flex-col bg-muted/10 ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`w-full md:w-80 lg:w-96 border-r flex flex-col bg-muted/10 ${selectedChat ? 'blur-lg pointer-events-none' : ''}`}>
         {/* Header */}
         <div className="p-4 border-b bg-background/50 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center justify-between mb-4">
@@ -603,7 +603,7 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
   }
 
   return (
-    <div className={`flex-1 flex flex-col bg-background h-full ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
+    <div className={`flex-1 flex flex-col bg-background h-full ${!selectedChat ? 'blur-lg pointer-events-none' : ''}`}>
       {/* CHAT HEADER */}
       <div className="h-16 border-b flex items-center justify-between px-4 bg-background/80 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center gap-3">

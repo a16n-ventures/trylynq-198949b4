@@ -346,7 +346,7 @@ const Feed = () => {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h1 className="text-xl font-bold flex items-center gap-2">
-                  Discover <span className="text-primary">{milestone?.zone_name || locationName}</span>
+                  Discover <span className="text-primary">{{milestone?.zone_name || locationName}</span>
                 </h1>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> {locationName}
@@ -413,12 +413,18 @@ const Feed = () => {
                     </Button>
                   </div>
                 </div>
-                <div className="px-4 opacity-30 grayscale blur-lg pointer-events-none select-none overflow-hidden h-[40vh]">
+                <div className="px-4 filter blur-md grayscale pointer-events-none select-none opacity-50">
                    <h3 className="font-bold mb-4 italic uppercase">Happening soon in {locationName}...</h3>
                    <div className="space-y-4">
-                     {displayEvents.length > 0 ? displayEvents.slice(0, 2).map((event) => (
-                       <Card key={event.id} className="overflow-hidden border-0 shadow-sm rounded-3xl"><div className="h-32 bg-muted w-full" /><CardContent className="p-4 h-20 bg-card" /></Card>
-                     )) : [1, 2].map((i) => <div key={i} className="h-48 bg-muted rounded-[2.5rem] mb-4 animate-pulse" />)}
+                     {displayEvents.length > 0 ? (
+                       displayEvents.slice(0, 4).map((event) => (
+                         <Card key={event.id} className="overflow-hidden border-0 shadow-sm rounded-3xl">
+                         </Card>
+                                     )) 
+                                     ) : (
+                       /* Loading Skeletons */
+                       [1, 2, 3].map((i) => <div key={i} className="h-48 bg-muted rounded-[2.5rem] mb-4 animate-pulse" />)
+                     )}
                    </div>
                 </div>
               </div>

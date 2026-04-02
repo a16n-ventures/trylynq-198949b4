@@ -28,7 +28,8 @@ import {
   Building2,
   CreditCard,
   Zap,
-  Hourglass
+  Hourglass,
+  Ticket
 } from "lucide-react"; 
 import { 
   Dialog, 
@@ -626,7 +627,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
           <div className="mx-1 p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-xl relative overflow-hidden bg-gradient-to-br from-background to-primary/5">
             <div className="relative z-10 text-center space-y-4">
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                <Rocket className="w-8 h-8 text-primary/60" />
+                <Ticket className="w-8 h-8 text-primary/60" />
               </div>
               <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
                 Coming Soon 🚀
