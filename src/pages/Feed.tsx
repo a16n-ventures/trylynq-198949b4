@@ -346,7 +346,7 @@ const Feed = () => {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h1 className="text-xl font-bold flex items-center gap-2">
-                  Discover <span className="text-primary">{milestone?.zone_name}</span>
+                  Discover <span className="text-primary">{milestone?.zone_name || locationName}</span>
                 </h1>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> City: {locationName}
