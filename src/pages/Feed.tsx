@@ -481,6 +481,7 @@ const Feed = () => {
                   )}
                 </TabsContent>
               </div>
+              </div>
             )}
         </Tabs>
       </div>
