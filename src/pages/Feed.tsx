@@ -101,7 +101,7 @@ const Feed = () => {
   const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
-  // Pioneer milestone derived from launch zone hook
+
   const milestone = useMemo(() => ({
     current: currentCount,
     target: targetCount,
@@ -119,7 +119,6 @@ const Feed = () => {
     enabled: !!user?.id,
   });
 
-  // Stabilize location to prevent flickering on every GPS update
   const lastFetchedLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const hasFetchedRef = useRef(false);
 
@@ -130,11 +129,9 @@ const Feed = () => {
     const lng = location?.longitude;
     const prev = lastFetchedLocationRef.current;
 
-    // Skip re-fetch if location barely moved (< 0.5km)
     if (prev && lat && lng) {
       const dLat = Math.abs(lat - prev.lat);
       const dLng = Math.abs(lng - prev.lng);
-      // ~0.005 degrees ≈ 0.5km
       if (dLat < 0.005 && dLng < 0.005 && hasFetchedRef.current) return;
     }
 
@@ -213,7 +210,6 @@ const Feed = () => {
           city = data.address.city || data.address.town || data.address.state || "Nearby";
           setLocationName(city);
         } catch (e) {
-          console.warn("Reverse geocoding failed", e);
           setLocationName("Global Mode");
         }
       }
@@ -225,7 +221,6 @@ const Feed = () => {
       if (error) throw error;
 
       if (response) {
-        // milestone is now derived from useLaunchZone hook
         const { data: myAttendance } = await supabase
           .from('event_attendees')
           .select('event_id')
@@ -290,8 +285,8 @@ const Feed = () => {
         
         if (targetEvent.ticket_price && targetEvent.ticket_price > 0) {
           const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
-          if (flwKey && window.FlutterwaveCheckout) {
-            window.FlutterwaveCheckout({
+          if (flwKey && (window as any).FlutterwaveCheckout) {
+            (window as any).FlutterwaveCheckout({
               public_key: flwKey,
               tx_ref: `event-${eventId}-${user.id}-${Date.now()}`,
               amount: targetEvent.ticket_price,
@@ -335,7 +330,6 @@ const Feed = () => {
   };
 
   const displayEvents = getFilteredEvents();
-  const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
   const cityNotDetected = !locationLoading && !launchZoneLoading && !location;
 
   return (
@@ -365,7 +359,8 @@ const Feed = () => {
                 <Input placeholder="Search events, vibes, people..." className="pl-9 bg-muted/50 border-0 rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
         </div>
-<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="w-full overflow-x-auto scrollbar-hide px-4 pb-3">
             <TabsList className="bg-transparent p-0 gap-2 h-auto flex justify-start">
               {['for_you', 'trending', 'communities', 'music', 'nightlife', 'tech', 'sports', 'food', 'art'].map(tab => (
@@ -375,7 +370,7 @@ const Feed = () => {
               ))}
             </TabsList>
           </div>
-        
+
           {cityNotDetected ? (
             <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
               <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center"><MapPin className="w-10 h-10 text-muted-foreground" /></div>
@@ -482,7 +477,8 @@ const Feed = () => {
               </div>
             </div>
           )}
-      </Tabs>
+        </Tabs>
+      </div>
 
       {/* EVENT MODAL */}
       {selectedEvent && (
