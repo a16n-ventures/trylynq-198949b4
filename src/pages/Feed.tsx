@@ -365,8 +365,7 @@ const Feed = () => {
                 <Input placeholder="Search events, vibes, people..." className="pl-9 bg-muted/50 border-0 rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
         </div>
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="w-full overflow-x-auto scrollbar-hide px-4 pb-3">
             <TabsList className="bg-transparent p-0 gap-2 h-auto flex justify-start">
               {['for_you', 'trending', 'communities', 'music', 'nightlife', 'tech', 'sports', 'food', 'art'].map(tab => (
@@ -395,7 +394,7 @@ const Feed = () => {
                         <Lock className="w-8 h-8 text-primary" />
                       </div>
                       <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
-                        {milestone?.zone_name} LOADING...
+                        {milestone?.zone_name || locationName} LOADING...
                       </h2>
                       <div className="space-y-1">
                         <p className="text-sm text-muted-foreground font-medium">
@@ -481,10 +480,9 @@ const Feed = () => {
                   )}
                 </TabsContent>
               </div>
-              </div>
-            )}
-        </Tabs>
-      </div>
+            </div>
+          )}
+      </Tabs>
 
       {/* EVENT MODAL */}
       {selectedEvent && (
