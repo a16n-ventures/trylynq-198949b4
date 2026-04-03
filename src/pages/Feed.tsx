@@ -397,11 +397,17 @@ const Feed = () => {
                         </p>
                         <p className="text-[11px] text-muted-foreground/60 italic">Social features are currently in "Stealth Mode."</p>
                       </div>
-                      <div className="h-3 w-full bg-muted rounded-full overflow-hidden border p-[2px] mt-4">
-                        <div 
-                          className="h-full bg-gradient-to-r from-primary to-purple-500 rounded-full transition-all duration-1000" 
-                          style={{ width: `${Math.min(100, ((milestone?.current || 0) / (milestone?.target || 500)) * 100)}%` }} 
-                        />
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          <span>Progress</span>
+                          <span>{currentCount} / {targetCount}</span>
+                        </div>
+                        <div className="h-4 w-full bg-muted rounded-full overflow-hidden border p-[3px]">
+                          <div 
+                            className="h-full bg-gradient-to-r from-[#6366f1] to-[#a855f7] rounded-full transition-all duration-1000" 
+                            style={{ width: `${(currentCount / targetCount) * 100}%` }} 
+                          />
+                        </div>
                       </div>
                       <Button className="w-full h-14 rounded-2xl font-bold uppercase gap-2 shadow-lg bg-primary text-white mt-4" onClick={() => navigate('/app/friends')}>
                         <UserPlus className="w-5 h-5" /> Invite to Speed Up
