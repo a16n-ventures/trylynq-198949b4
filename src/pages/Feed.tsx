@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { isPast, isToday, isFuture, addHours, differenceInMinutes } from "date-fns";
 import { useNavigate } from 'react-router-dom';
+import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 import { useGeolocation } from '@/contexts/LocationContext'; 
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { useLaunchZone } from '@/hooks/useLaunchZone';
@@ -86,6 +87,8 @@ const Feed = () => {
   // 2. DATA STATE
   const [events, setEvents] = useState<Event[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
+  const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
+  const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("for_you");
@@ -178,7 +181,24 @@ const Feed = () => {
     } catch (e: any) {
       toast.error(e.message || "Action failed");
     }
+  }; 
+  
+  const getFilteredEvents = () => {
+    let filtered = events;
+    if (searchQuery) filtered = filtered.filter(e => e.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    switch (activeTab) {
+        case 'trending': return filtered.filter(e => (e.attendee_count || 0) > 10 || (e.match_score && e.match_score > 80));
+        case 'music': return filtered.filter(e => e.category?.toLowerCase().includes('music') || e.description?.toLowerCase().includes('music'));
+        case 'nightlife': return filtered.filter(e => e.category?.toLowerCase().includes('nightlife') || e.category?.toLowerCase().includes('party'));
+        case 'tech': return filtered.filter(e => e.category?.toLowerCase().includes('tech'));
+        case 'sports': return filtered.filter(e => e.category?.toLowerCase().includes('sports'));
+        case 'food': return filtered.filter(e => e.category?.toLowerCase().includes('food'));
+        case 'art': return filtered.filter(e => e.category?.toLowerCase().includes('art'));
+        default: return filtered;
+    }
   };
+  
+  const displayEvents = getFilteredEvents();
 
   return (
     <LaunchZoneGuard {...launchData} locationDetected={!!location}>
