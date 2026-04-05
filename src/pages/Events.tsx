@@ -40,7 +40,8 @@ import { format, isPast, isFuture, isToday, addHours, differenceInMinutes } from
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useGeolocation } from '@/contexts/LocationContext';
-import { useLaunchZone } from '@/hooks/useLaunchZone';
+import { useLaunchZone } from '@/hooks/useLaunchZone'; 
+import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 
 // --- TYPES ---
 type EventWithStats = any & {
@@ -120,7 +121,8 @@ export default function Events() {
   // Determination logic for waiting room
   const cityNotDetected = !locationLoading && !launchZoneLoading && !location; 
   const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
-  const isLocked = cityNotDetected || showCityUnavailable;
+  const isLocked = cityNotDetected || showCityUnavailable; 
+  const launchData = useLaunchZone(location?.latitude, location?.longitude);
 
   // --- DATA FETCHING ---
   const { data: myEvents = [], isLoading: loadingMy } = useQuery({
@@ -174,6 +176,7 @@ export default function Events() {
   };
 
   return (
+    <LaunchZoneGuard {...launchData} locationDetected={!!location}>
     <div className="relative min-h-screen bg-background">
       {/* LAYER 1: CONTENT (Blurred if Locked) */}
       <div className={`container-mobile py-4 space-y-6 pb-24 transition-all duration-700 ${isLocked ? 'blur-md grayscale-[0.3] pointer-events-none opacity-60 select-none' : ''}`}>
@@ -213,35 +216,6 @@ export default function Events() {
         </Tabs>
       </div>
 
-      {/* LAYER 2: CENTERED WAITING UI */}
-      {isLocked && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/10 backdrop-blur-[2px]">
-          <div className="w-full max-w-md p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-2xl text-center space-y-6 animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-              {cityNotDetected ? <MapPin className="w-8 h-8 text-primary" /> : <Zap className="w-8 h-8 text-primary" />}
-            </div>
-            
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black uppercase italic tracking-tighter">
-                {cityNotDetected ? "GPS Required" : `${launchCityName || locationName} Loading...`}
-              </h2>
-              <p className="text-sm text-muted-foreground px-4">
-                {cityNotDetected 
-                  ? "We need your location to show local events." 
-                  : `Ahmia goes live once we hit our Pioneer goal in ${launchCityName}.`}
-              </p>
-            </div>
-
-            <Button 
-              className="w-full h-14 rounded-2xl font-bold uppercase shadow-lg bg-primary text-white" 
-              onClick={() => cityNotDetected ? window.location.reload() : navigate('/app/friends')}
-            >
-              {cityNotDetected ? "Retry Detection" : <><UserPlus className="w-5 h-5 mr-2" /> Invite Pioneers</>}
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* Payout Dialog */}
       <Dialog open={isPayoutModalOpen} onOpenChange={setIsPayoutModalOpen}>
         <DialogContent>
@@ -263,5 +237,6 @@ export default function Events() {
         </DialogContent>
       </Dialog>
     </div>
+    </LaunchZoneGuard>
   );
 }
