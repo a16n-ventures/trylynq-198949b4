@@ -23,6 +23,7 @@ import { Rocket, UserPlus, Globe } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
+import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 
 
 // Components
@@ -56,7 +57,7 @@ export default function Messages() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { location, isLoading: locationLoading } = useGeolocation();
-  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading } = useLaunchZone(location?.latitude, location?.longitude);
+  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading, currentCount, targetCount } = useLaunchZone(location?.latitude, location?.longitude);
 
   // State
   const [activeTab, setActiveTab] = useState<ChatType>('dm');
@@ -354,200 +355,175 @@ export default function Messages() {
     }
   };
 
-
-  const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
-  const cityNotDetected = !locationLoading && !launchZoneLoading && !location;
-
-  if (showCityUnavailable || cityNotDetected) {
-    return (
-      <div className="flex h-screen bg-background items-center justify-center p-6">
-        {showCityUnavailable ? (
-          <div className="w-full max-w-md p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-xl text-center space-y-6">
-             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-              <MessageSquare className="w-8 h-8 text-primary/60" />
-            </div>
-            <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
-              Coming Soon 🚀
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {launchCityName ? `Messaging in ${launchCityName} is coming soon!` : "We're expanding fast!"} Invite friends to help unlock your city.
-            </p>
-  
-            <Button className="w-full h-14 rounded-2xl font-bold uppercase shadow-lg bg-primary text-white" onClick={() => navigate('/app/friends')}>
-              <UserPlus className="w-5 h-5 mr-2" /> Invite Friends
-            </Button>
-          </div>
-        ) : (
-          <div className="text-center space-y-6">
-            <Globe className="w-16 h-16 text-primary/20 mx-auto" />
-            <h2 className="text-xl font-bold uppercase italic tracking-tighter">City Not Detected</h2>
-            <p className="text-sm text-muted-foreground">Enable location access to use messaging.</p>
-            <Button variant="outline" onClick={() => navigate('/app/feed')}>Back to Home</Button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   // --- RENDER ---
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      
-      {/* LEFT SIDEBAR (Chat List) */}
-      <div className={`w-full md:w-80 lg:w-96 border-r flex flex-col bg-muted/10 ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
-        {/* Header */}
-        <div className="p-4 border-b bg-background/50 backdrop-blur-sm sticky top-0 z-10">
-          <div className="flex items-center justify-between mb-4">
-             <h1 className="text-xl font-bold">Messages</h1>
-             <Button size="icon" variant="ghost" className="rounded-full bg-primary/10 text-primary hover:bg-primary/20" onClick={handleAddNew}>
-                <Plus className="w-5 h-5" />
-             </Button>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search..." 
-              className="pl-9 bg-muted/50 border-0 rounded-xl"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* TABS (The Clyx 3-Pillar Nav) */}
-        <div className="px-2 pt-2">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChatType)} className="w-full">
-            <TabsList className="w-full bg-muted/50 p-1 rounded-xl grid grid-cols-3">
-              <TabsTrigger value="dm" className="rounded-lg text-xs">Direct</TabsTrigger>
-              <TabsTrigger value="community" className="rounded-lg text-xs">Groups</TabsTrigger>
-              <TabsTrigger value="event" className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                 Vibe Checks
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {/* LIST */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {activeTab === 'dm' && dmList.map(chat => (
-            <ChatListItem key={chat.id} chat={chat} isSelected={selectedChat?.id === chat.id} onClick={() => setSelectedChat(chat)} />
-          ))}
-          
-          {activeTab === 'community' && commList.map(chat => (
-            <CommunityListItem 
-              key={chat.id} 
-              chat={chat} 
-              isSelected={selectedChat?.id === chat.id} 
-              onClick={async () => {
-                const meta = chat.meta as any;
-                if (!meta?.is_joined) {
-                  // Handle Premium community join — must pay first
-                  if (meta?.is_premium && meta?.join_fee > 0) {
-                    const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
-                    if (!flwKey || !window.FlutterwaveCheckout) {
-                      toast.error('Payment system not available');
-                      return;
-                    }
-                    window.FlutterwaveCheckout({
-                      public_key: flwKey,
-                      tx_ref: `community-${chat.id}-${user?.id}-${Date.now()}`,
-                      amount: meta.join_fee,
-                      currency: "NGN",
-                      payment_options: "card, banktransfer, ussd",
-                      customer: { email: user?.email || "user@app.com", name: user?.email || "User" },
-                      customizations: {
-                        title: "Premium Community",
-                        description: `Join "${chat.name}" — ₦${meta.join_fee.toLocaleString()}`,
-                        logo: "",
-                      },
-                      callback: async (response: any) => {
-                        try {
-                          await supabase.from('payments').insert({
-                            user_id: user?.id,
-                            amount: meta.join_fee,
-                            status: 'success',
-                            tx_ref: `community-${chat.id}-${user?.id}-${Date.now()}`,
-                            flw_ref: response.flw_ref || response.transaction_id?.toString(),
-                          });
-                          await supabase.from('community_members').insert({
-                            community_id: chat.id,
-                            user_id: user?.id,
-                            role: 'member'
-                          });
-                          toast.success(`Joined ${chat.name}! 🎉`);
-                          refetchCommunities();
-                          setSelectedChat(chat);
-                        } catch (err: any) {
-                          console.error('Community join error:', err);
-                          toast.error('Failed to join community');
-                        }
-                      },
-                      onclose: () => {
-                        toast.info('Payment cancelled');
-                      },
-                    });
-                    return; // Stop — don't auto-join
-                  }
-                  // Free community join
-                  await supabase.from('community_members').insert({
-                    community_id: chat.id,
-                    user_id: user?.id,
-                    role: 'member'
-                  });
-                  toast.success(`Joined ${chat.name}!`);
-                  refetchCommunities();
-                }
-                setSelectedChat(chat);
-              }}
-            />
-          ))}
-
-          {activeTab === 'event' && eventList.length > 0 ? (
-            eventList.map(chat => (
-               <ChatListItem key={chat.id} chat={chat} isSelected={selectedChat?.id === chat.id} onClick={() => setSelectedChat(chat)} />
-            ))
-          ) : activeTab === 'event' && (
-            <div className="p-8 text-center text-muted-foreground">
-               <Calendar className="w-12 h-12 mx-auto mb-3 opacity-20" />
-               <p className="text-sm">RSVP to events to join their Vibe Check chats!</p>
+    <LaunchZoneGuard
+      isLoading={locationLoading || launchZoneLoading}
+      locationDetected={!!location}
+      isWithinCity={isInLaunchZone !== null}
+      isInLaunchZone={isInLaunchZone}
+      cityName={launchCityName}
+      currentCount={currentCount || 0}
+      targetCount={targetCount || 500}
+    >
+      <div className="flex h-screen bg-background overflow-hidden">
+        
+        {/* LEFT SIDEBAR (Chat List) */}
+        <div className={`w-full md:w-80 lg:w-96 border-r flex flex-col bg-muted/10 ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
+          {/* Header */}
+          <div className="p-4 border-b bg-background/50 backdrop-blur-sm sticky top-0 z-10">
+            <div className="flex items-center justify-between mb-4">
+               <h1 className="text-xl font-bold">Messages</h1>
+               <Button size="icon" variant="ghost" className="rounded-full bg-primary/10 text-primary hover:bg-primary/20" onClick={handleAddNew}>
+                  <Plus className="w-5 h-5" />
+               </Button>
             </div>
-          )}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search..." 
+                className="pl-9 bg-muted/50 border-0 rounded-xl"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* TABS (The Clyx 3-Pillar Nav) */}
+          <div className="px-2 pt-2">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChatType)} className="w-full">
+              <TabsList className="w-full bg-muted/50 p-1 rounded-xl grid grid-cols-3">
+                <TabsTrigger value="dm" className="rounded-lg text-xs">Direct</TabsTrigger>
+                <TabsTrigger value="community" className="rounded-lg text-xs">Groups</TabsTrigger>
+                <TabsTrigger value="event" className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                   Vibe Checks
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {/* LIST */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {activeTab === 'dm' && dmList.map(chat => (
+              <ChatListItem key={chat.id} chat={chat} isSelected={selectedChat?.id === chat.id} onClick={() => setSelectedChat(chat)} />
+            ))}
+            
+            {activeTab === 'community' && commList.map(chat => (
+              <CommunityListItem 
+                key={chat.id} 
+                chat={chat} 
+                isSelected={selectedChat?.id === chat.id} 
+                onClick={async () => {
+                  const meta = chat.meta as any;
+                  if (!meta?.is_joined) {
+                    // Handle Premium community join — must pay first
+                    if (meta?.is_premium && meta?.join_fee > 0) {
+                      const flwKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
+                      if (!flwKey || !window.FlutterwaveCheckout) {
+                        toast.error('Payment system not available');
+                        return;
+                      }
+                      window.FlutterwaveCheckout({
+                        public_key: flwKey,
+                        tx_ref: `community-${chat.id}-${user?.id}-${Date.now()}`,
+                        amount: meta.join_fee,
+                        currency: "NGN",
+                        payment_options: "card, banktransfer, ussd",
+                        customer: { email: user?.email || "user@app.com", name: user?.email || "User" },
+                        customizations: {
+                          title: "Premium Community",
+                          description: `Join "${chat.name}" — ₦${meta.join_fee.toLocaleString()}`,
+                          logo: "",
+                        },
+                        callback: async (response: any) => {
+                          try {
+                            await supabase.from('payments').insert({
+                              user_id: user?.id,
+                              amount: meta.join_fee,
+                              status: 'success',
+                              tx_ref: `community-${chat.id}-${user?.id}-${Date.now()}`,
+                              flw_ref: response.flw_ref || response.transaction_id?.toString(),
+                            });
+                            await supabase.from('community_members').insert({
+                              community_id: chat.id,
+                              user_id: user?.id,
+                              role: 'member'
+                            });
+                            toast.success(`Joined ${chat.name}! 🎉`);
+                            refetchCommunities();
+                            setSelectedChat(chat);
+                          } catch (err: any) {
+                            console.error('Community join error:', err);
+                            toast.error('Failed to join community');
+                          }
+                        },
+                        onclose: () => {
+                          toast.info('Payment cancelled');
+                        },
+                      });
+                      return; // Stop — don't auto-join
+                    }
+                    // Free community join
+                    await supabase.from('community_members').insert({
+                      community_id: chat.id,
+                      user_id: user?.id,
+                      role: 'member'
+                    });
+                    toast.success(`Joined ${chat.name}!`);
+                    refetchCommunities();
+                  }
+                  setSelectedChat(chat);
+                }}
+              />
+            ))}
+
+            {activeTab === 'event' && eventList.length > 0 ? (
+              eventList.map(chat => (
+                 <ChatListItem key={chat.id} chat={chat} isSelected={selectedChat?.id === chat.id} onClick={() => setSelectedChat(chat)} />
+              ))
+            ) : activeTab === 'event' && (
+              <div className="p-8 text-center text-muted-foreground">
+                 <Calendar className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                 <p className="text-sm">RSVP to events to join their Vibe Check chats!</p>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* RIGHT SIDEBAR (Active Chat) */}
+        <ChatView 
+          selectedChat={selectedChat}
+          setSelectedChat={setSelectedChat}
+          messageInput={messageInput}
+          setMessageInput={setMessageInput}
+          sendMessage={sendMessage}
+          messages={messages}
+          scrollRef={scrollRef}
+          user={user}
+        />
+
+        {/* --- MODALS --- */}
+        
+        {/* 1. NEW DM MODAL */}
+        <NewChatModal open={showNewDmModal} onOpenChange={setShowNewDmModal} onSelect={(user) => {
+           setSelectedChat({
+              id: user.user_id,
+              type: 'dm',
+              name: user.display_name,
+              avatar: user.avatar_url,
+              partner_id: user.user_id
+           });
+           setShowNewDmModal(false);
+        }} />
+
+        {/* 2. NEW COMMUNITY MODAL */}
+        <NewCommunityModal open={showNewGroupModal} onOpenChange={setShowNewGroupModal} onSuccess={() => {
+           refetchCommunities();
+           setShowNewGroupModal(false);
+        }} />
+
       </div>
-
-      {/* RIGHT SIDEBAR (Active Chat) */}
-      <ChatView 
-        selectedChat={selectedChat}
-        setSelectedChat={setSelectedChat}
-        messageInput={messageInput}
-        setMessageInput={setMessageInput}
-        sendMessage={sendMessage}
-        messages={messages}
-        scrollRef={scrollRef}
-        user={user}
-      />
-
-      {/* --- MODALS --- */}
-      
-      {/* 1. NEW DM MODAL */}
-      <NewChatModal open={showNewDmModal} onOpenChange={setShowNewDmModal} onSelect={(user) => {
-         setSelectedChat({
-            id: user.user_id,
-            type: 'dm',
-            name: user.display_name,
-            avatar: user.avatar_url,
-            partner_id: user.user_id
-         });
-         setShowNewDmModal(false);
-      }} />
-
-      {/* 2. NEW COMMUNITY MODAL */}
-      <NewCommunityModal open={showNewGroupModal} onOpenChange={setShowNewGroupModal} onSuccess={() => {
-         refetchCommunities();
-         setShowNewGroupModal(false);
-      }} />
-
-    </div>
+    </LaunchZoneGuard>
   );
 }
 
