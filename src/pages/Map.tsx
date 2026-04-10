@@ -548,8 +548,15 @@ const MapPage = () => {
               <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
                 {activeView === 'friends' && (
                   <div className="flex-shrink-0 w-36 snap-start">
-                    <Button className="w-full h-12 rounded-2xl font-bold uppercase bg-primary text-white" onClick={() => navigate('/app/friends')}>
-                       <UserPlus className="w-4 h-4 mr-2" /> Invite Friends
+                    <Button 
+                      variant="outline" 
+                      className="w-full h-40 rounded-3xl border-dashed border-2 flex flex-col gap-2 hover:bg-accent/50"
+                      onClick={() => navigate('/app/friends')}
+                      >
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                        <UserPlus className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-medium">Invite Friends</span>
                     </Button>
                   </div>
                 )}
