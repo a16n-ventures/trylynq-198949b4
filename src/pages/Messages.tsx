@@ -115,7 +115,7 @@ export default function Messages() {
     <div className="relative h-screen w-full bg-background overflow-hidden flex">
       
       {/* LAYER 1: CHAT CONTENT (Blurred if Locked) */}
-      <div className={`flex flex-1 transition-all duration-700 ${isLocked ? 'blur-xl grayscale pointer-events-none opacity-40 select-none' : ''}`}>
+      <div className={`flex flex-1 transition-all duration-700 ${isLocked ? 'blur-md grayscale-[0.3] pointer-events-none opacity-60 select-none' : ''}`}>
         
         {/* LEFT SIDEBAR */}
         <div className={`w-full md:w-80 lg:w-96 border-r flex flex-col bg-muted/5 ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
@@ -197,7 +197,7 @@ export default function Messages() {
 
       {/* LAYER 2: CENTERED WAITING UI */}
       {isLocked && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/20 backdrop-blur-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/10 backdrop-blur-[2px]">
           <div className="w-full max-w-md p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-2xl text-center space-y-6 animate-in zoom-in-95 duration-300">
             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
               {cityNotDetected ? <Globe className="w-8 h-8 text-primary" /> : <MessageSquare className="w-8 h-8 text-primary" />}
