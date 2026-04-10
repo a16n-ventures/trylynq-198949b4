@@ -22,37 +22,7 @@ import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview'
 import { useGeolocation } from '@/contexts/LocationContext'; 
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { useLaunchZone } from '@/hooks/useLaunchZone';
-
-// --- TYPES ---
-interface Event { 
-  id: string; 
-  title: string;
-  start_date: string;
-  end_date?: string;
-  location: string | null; 
-  image_url?: string; 
-  match_score?: number;
-  description?: string;
-  ticket_price?: number;
-  attendee_count?: number;
-  is_attending?: boolean;
-  is_sponsored?: boolean;
-  recurrence_rule?: string;
-  category?: string;
-  friend_images?: string[]; 
-}
-
-interface Community { 
-  id: string; 
-  name: string; 
-  member_count: number | null; 
-  description: string | null; 
-  avatar_url: string | null;
-  cover_url?: string | null;
-  is_member?: boolean;
-  is_premium?: boolean;
-  join_fee?: number;
-}
+import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 
 // --- HELPER: Calendar Sync ---
 const addToCalendar = (event: Event) => {
@@ -225,7 +195,6 @@ const Feed = () => {
       if (error) throw error;
 
       if (response) {
-        // milestone is now derived from useLaunchZone hook
         const { data: myAttendance } = await supabase
           .from('event_attendees')
           .select('event_id')
@@ -335,107 +304,55 @@ const Feed = () => {
   };
 
   const displayEvents = getFilteredEvents();
-  const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
-  const cityNotDetected = !locationLoading && !launchZoneLoading && !location;
 
   return (
-    <div className="min-h-screen bg-background pb-24">
-      {/* HEADER */}
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b pb-0">
-        <div className="px-4 py-3">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h1 className="text-xl font-bold flex items-center gap-2">
-                  Discover <span className="text-primary">{milestone?.zone_name}</span>
-                </h1>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <MapPin className="w-3 h-3" /> City: {locationName}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {isPremium && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 font-bold tracking-tight px-2 py-0.5 rounded-full"><Sparkles className="w-3 h-3 mr-1" /> PREMIUM</Badge>}
-                <Button size="icon" variant="ghost" className="rounded-full relative" onClick={() => navigate('/app/notifications')}>
-                  <Bell className="w-5 h-5" />
-                  {unreadCount > 0 && <span className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unreadCount > 99 ? '99+' : unreadCount}</span>}
-                </Button>
-              </div>
-            </div>
-            <div className="relative mb-2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input placeholder="Search events, vibes, people..." className="pl-9 bg-muted/50 border-0 rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-            </div>
-        </div>
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="w-full overflow-x-auto scrollbar-hide px-4 pb-3">
-                <TabsList className="bg-transparent p-0 gap-2 h-auto flex justify-start">
-                    {['for_you', 'trending', 'communities', 'music', 'nightlife', 'tech', 'sports', 'food', 'art'].map(tab => (
-                      <TabsTrigger key={tab} value={tab} className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all capitalize">
-                        {tab.replace('_', ' ')}
-                      </TabsTrigger>
-                    ))}
-                </TabsList>
-            </div>
-
-            {cityNotDetected ? (
-              <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
-                <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center"><MapPin className="w-10 h-10 text-muted-foreground" /></div>
-                <h2 className="text-xl font-bold italic uppercase tracking-tighter">Location Required</h2>
-                <p className="text-sm text-muted-foreground max-w-xs">Please enable location access to discover events in {locationName}.</p>
-                <Button variant="outline" className="rounded-2xl px-8" onClick={() => window.location.reload()}>Retry Detection</Button>
-              </div>
-            ) : !milestone?.is_unlocked ? (
-              <div className="space-y-6">
-                <div className="mx-4 mt-4 p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-xl relative overflow-hidden bg-gradient-to-br from-background to-primary/5">
-                  <div className="relative z-10 text-center space-y-4">
-                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2"><Lock className="w-8 h-8 text-primary/60" /></div>
-                    <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
-                      {milestone?.zone_name} IS LOADING...
-                    </h2>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground font-medium">Ahmia goes live once <span className="text-foreground font-bold">{milestone?.target || 500} Pioneers</span> join.</p>
-                      <p className="text-[11px] text-muted-foreground/60 italic leading-none">Social features are currently in "Stealth Mode."</p>
-                    </div>
-                    <div className="flex justify-between items-end px-1 pt-4">
-                      <div className="text-left">
-                        <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground leading-tight">{milestone?.zone_name || "DETECTING..."}</p>
-                        <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground leading-tight">Pioneers</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-black text-primary">{milestone?.current || 0} / {milestone?.target || 500}</p>
-                      </div>
-                    </div>
-                    <div className="h-4 w-full bg-muted rounded-full overflow-hidden border p-[3px]">
-                      <div className="h-full bg-gradient-to-r from-[#6366f1] to-[#a855f7] rounded-full transition-all duration-1000 shadow-sm" style={{ width: `${Math.min(100, ((milestone?.current || 0) / (milestone?.target || 500)) * 100)}%` }} />
-                    </div>
-                    <Button className="w-full h-14 rounded-2xl font-bold uppercase gap-2 shadow-lg bg-gradient-to-r from-[#6366f1] to-[#a855f7] border-0 mt-4 text-white" onClick={() => navigate('/app/friends')}>
-                      <UserPlus className="w-5 h-5" /> Invite Friends to Speed Up
-                    </Button>
-                  </div>
+    <LaunchZoneGuard
+      isLoading={locationLoading || launchZoneLoading}
+      locationDetected={!!location}
+      isWithinCity={isInLaunchZone !== null}
+      isInLaunchZone={isInLaunchZone}
+      cityName={launchCityName}
+      currentCount={currentCount || 0}
+      targetCount={targetCount || 500}
+    >
+      <div className="min-h-screen bg-background pb-24">
+        {/* HEADER */}
+        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-xl border-b pb-0">
+          <div className="px-4 py-3">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h1 className="text-xl font-bold flex items-center gap-2">
+                    Discover <span className="text-primary">{milestone?.zone_name}</span>
+                  </h1>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> City: {locationName}
+                  </p>
                 </div>
-                <div className="px-4 filter blur-md grayscale pointer-events-none select-none opacity-50">
-                   <h3 className="font-bold mb-4 italic uppercase">Happening soon in {locationName}...</h3>
-                   <div className="space-y-4">
-                     {displayEvents.length > 0 ? (
-                       displayEvents.slice(0, 4).map((event) => (
-                         <Card key={event.id} className="overflow-hidden border-0 shadow-sm rounded-3xl">
-                         </Card>
-                                     )) 
-                                     ) : (
-                       /* Loading Skeletons */
-                       [1, 2, 3].map((i) => <div key={i} className="h-48 bg-muted rounded-[2.5rem] mb-4 animate-pulse" />)
-                     )}
-                   </div>
+                <div className="flex items-center gap-2">
+                  {isPremium && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 font-bold tracking-tight px-2 py-0.5 rounded-full"><Sparkles className="w-3 h-3 mr-1" /> PREMIUM</Badge>}
+                  <Button size="icon" variant="ghost" className="rounded-full relative" onClick={() => navigate('/app/notifications')}>
+                    <Bell className="w-5 h-5" />
+                    {unreadCount > 0 && <span className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+                  </Button>
                 </div>
               </div>
-            ) : showCityUnavailable ? (
-              <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
-                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center"><Globe className="w-10 h-10 text-primary" /></div>
-                <h2 className="text-xl font-bold uppercase italic tracking-tighter">Coming Soon</h2>
-                <p className="text-sm text-muted-foreground max-w-xs mx-auto">Ahmia hasn't landed in {locationName} yet, but we're expanding fast!</p>
-                <Button className="gap-2 rounded-2xl px-8" variant="outline" onClick={() => navigate('/app/friends')}><Megaphone className="w-4 h-4" /> Nominate {locationName}</Button>
+              <div className="relative mb-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input placeholder="Search events, vibes, people..." className="pl-9 bg-muted/50 border-0 rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
               </div>
-            ) : (
+          </div>
+
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <div className="w-full overflow-x-auto scrollbar-hide px-4 pb-3">
+                  <TabsList className="bg-transparent p-0 gap-2 h-auto flex justify-start">
+                      {['for_you', 'trending', 'communities', 'music', 'nightlife', 'tech', 'sports', 'food', 'art'].map(tab => (
+                        <TabsTrigger key={tab} value={tab} className="rounded-full border border-border px-4 py-2 text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:border-primary transition-all capitalize">
+                          {tab.replace('_', ' ')}
+                        </TabsTrigger>
+                      ))}
+                  </TabsList>
+              </div>
+
               <div className="container-mobile py-2 space-y-6">
                 <TabsContent value={activeTab} className="mt-0 space-y-5 px-4 min-h-[50vh]">
                   {activeTab === 'communities' ? (
@@ -499,67 +416,67 @@ const Feed = () => {
                   )}
                 </TabsContent>
               </div>
-            )}
-        </Tabs>
+          </Tabs>
+        </div>
+
+        {/* EVENT MODAL */}
+        {selectedEvent && (
+          <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
+            <DialogContent className="p-0 overflow-hidden sm:max-w-[420px] border-0">
+              <div className="relative h-64 w-full">
+                <img src={selectedEvent.image_url || '/placeholder.jpg'} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+                <Button variant="ghost" size="icon" className="absolute top-2 right-2 text-white rounded-full" onClick={() => setSelectedEvent(null)}><ArrowRight className="w-6 h-6 rotate-180" /></Button>
+                <div className="absolute bottom-0 left-0 p-5 text-white w-full">
+                  <Badge className="bg-white/20 mb-2 border-0 backdrop-blur-md italic font-bold">EVENT</Badge>
+                  <h2 className="text-2xl font-black leading-tight mb-1 italic uppercase tracking-tighter">{selectedEvent.title}</h2>
+                  <div className="flex items-center gap-2 text-white/80 text-sm font-medium"><Calendar className="w-4 h-4" /> {new Date(selectedEvent.start_date).toLocaleDateString()} in {locationName}</div>
+                </div>
+              </div>
+              <div className="p-5 space-y-6">
+                <div className="flex items-center justify-between bg-muted/30 p-3 rounded-xl border">
+                   <div className="flex items-center -space-x-2">
+                      {selectedEvent.friend_images?.slice(0, 3).map((img, i) => <Avatar key={i} className="border-2 border-background w-8 h-8"><AvatarImage src={img} /><AvatarFallback>👤</AvatarFallback></Avatar>)}
+                      {(selectedEvent.attendee_count || 0) > 3 && <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-bold">+{(selectedEvent.attendee_count || 0) - 3}</div>}
+                   </div>
+                   <p className="text-xs text-muted-foreground font-medium">{selectedEvent.friend_images?.length ? <span className="font-bold text-primary">{selectedEvent.friend_images.length} friends are going</span> : <span>{selectedEvent.attendee_count || 0} attending</span>}</p>
+                </div>
+                <Button variant="outline" className="w-full gap-2 border-dashed border-primary/40 text-primary h-12 rounded-2xl font-bold uppercase" onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}><MessageCircle className="w-5 h-5" /> Join Vibe Check Chat</Button>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Time</p><p className="font-black italic">{new Date(selectedEvent.start_date).toLocaleTimeString([], {timeStyle: 'short'})}</p></div>
+                  <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Price</p><p className="font-black italic">{selectedEvent.ticket_price ? `₦${selectedEvent.ticket_price.toLocaleString()}` : 'Free'}</p></div>
+                </div>
+                <div className="text-sm text-muted-foreground leading-relaxed italic">{selectedEvent.description}</div>
+              </div>
+              <DialogFooter className="p-4 border-t sticky bottom-0 bg-background grid grid-cols-2 gap-3">
+                <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> Calendar</Button>
+                <Button onClick={() => handleRSVP(selectedEvent.id)} className={`h-12 rounded-xl font-bold uppercase ${selectedEvent.is_attending ? "bg-green-600" : "bg-primary"}`}>{selectedEvent.is_attending ? "Going" : "RSVP Now"}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* COMMUNITY MODAL */}
+        {selectedCommunity && (
+          <Dialog open={!!selectedCommunity} onOpenChange={() => setSelectedCommunity(null)}>
+            <DialogContent className="p-0 overflow-hidden sm:max-w-[420px] border-0">
+              <div className="relative h-40 w-full bg-primary/10">
+                {selectedCommunity.avatar_url && <img src={selectedCommunity.avatar_url} className="w-full h-full object-cover" />}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                <div className="absolute bottom-0 left-0 p-5 text-white w-full"><h2 className="text-xl font-black italic uppercase tracking-tighter">{selectedCommunity.name}</h2></div>
+              </div>
+              <div className="p-5 space-y-4">
+                <p className="text-sm text-muted-foreground leading-relaxed italic">{selectedCommunity.description}</p>
+                <div className="bg-muted/30 p-4 rounded-xl border flex justify-between items-center"><span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Members</span><span className="font-black italic">{selectedCommunity.member_count || 0}</span></div>
+              </div>
+              <DialogFooter className="p-4 border-t"><Button className="w-full h-12 rounded-xl font-bold uppercase" onClick={() => { setSelectedCommunity(null); navigate(`/app/messages?type=community&id=${selectedCommunity.id}`); }}>Join Community</Button></DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        <FriendProfilePreview profile={previewProfile} open={!!previewProfile} onClose={() => setPreviewProfile(null)} />
       </div>
-
-      {/* EVENT MODAL */}
-      {selectedEvent && (
-        <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-          <DialogContent className="p-0 overflow-hidden sm:max-w-[420px] border-0">
-            <div className="relative h-64 w-full">
-              <img src={selectedEvent.image_url || '/placeholder.jpg'} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
-              <Button variant="ghost" size="icon" className="absolute top-2 right-2 text-white rounded-full" onClick={() => setSelectedEvent(null)}><ArrowRight className="w-6 h-6 rotate-180" /></Button>
-              <div className="absolute bottom-0 left-0 p-5 text-white w-full">
-                <Badge className="bg-white/20 mb-2 border-0 backdrop-blur-md italic font-bold">EVENT</Badge>
-                <h2 className="text-2xl font-black leading-tight mb-1 italic uppercase tracking-tighter">{selectedEvent.title}</h2>
-                <div className="flex items-center gap-2 text-white/80 text-sm font-medium"><Calendar className="w-4 h-4" /> {new Date(selectedEvent.start_date).toLocaleDateString()} in {locationName}</div>
-              </div>
-            </div>
-            <div className="p-5 space-y-6">
-              <div className="flex items-center justify-between bg-muted/30 p-3 rounded-xl border">
-                 <div className="flex items-center -space-x-2">
-                    {selectedEvent.friend_images?.slice(0, 3).map((img, i) => <Avatar key={i} className="border-2 border-background w-8 h-8"><AvatarImage src={img} /><AvatarFallback>👤</AvatarFallback></Avatar>)}
-                    {(selectedEvent.attendee_count || 0) > 3 && <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-bold">+{(selectedEvent.attendee_count || 0) - 3}</div>}
-                 </div>
-                 <p className="text-xs text-muted-foreground font-medium">{selectedEvent.friend_images?.length ? <span className="font-bold text-primary">{selectedEvent.friend_images.length} friends are going</span> : <span>{selectedEvent.attendee_count || 0} attending</span>}</p>
-              </div>
-              <Button variant="outline" className="w-full gap-2 border-dashed border-primary/40 text-primary h-12 rounded-2xl font-bold uppercase" onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}><MessageCircle className="w-5 h-5" /> Join Vibe Check Chat</Button>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Time</p><p className="font-black italic">{new Date(selectedEvent.start_date).toLocaleTimeString([], {timeStyle: 'short'})}</p></div>
-                <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Price</p><p className="font-black italic">{selectedEvent.ticket_price ? `₦${selectedEvent.ticket_price.toLocaleString()}` : 'Free'}</p></div>
-              </div>
-              <div className="text-sm text-muted-foreground leading-relaxed italic">{selectedEvent.description}</div>
-            </div>
-            <DialogFooter className="p-4 border-t sticky bottom-0 bg-background grid grid-cols-2 gap-3">
-              <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> Calendar</Button>
-              <Button onClick={() => handleRSVP(selectedEvent.id)} className={`h-12 rounded-xl font-bold uppercase ${selectedEvent.is_attending ? "bg-green-600" : "bg-primary"}`}>{selectedEvent.is_attending ? "Going" : "RSVP Now"}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* COMMUNITY MODAL */}
-      {selectedCommunity && (
-        <Dialog open={!!selectedCommunity} onOpenChange={() => setSelectedCommunity(null)}>
-          <DialogContent className="p-0 overflow-hidden sm:max-w-[420px] border-0">
-            <div className="relative h-40 w-full bg-primary/10">
-              {selectedCommunity.avatar_url && <img src={selectedCommunity.avatar_url} className="w-full h-full object-cover" />}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-              <div className="absolute bottom-0 left-0 p-5 text-white w-full"><h2 className="text-xl font-black italic uppercase tracking-tighter">{selectedCommunity.name}</h2></div>
-            </div>
-            <div className="p-5 space-y-4">
-              <p className="text-sm text-muted-foreground leading-relaxed italic">{selectedCommunity.description}</p>
-              <div className="bg-muted/30 p-4 rounded-xl border flex justify-between items-center"><span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Members</span><span className="font-black italic">{selectedCommunity.member_count || 0}</span></div>
-            </div>
-            <DialogFooter className="p-4 border-t"><Button className="w-full h-12 rounded-xl font-bold uppercase" onClick={() => { setSelectedCommunity(null); navigate(`/app/messages?type=community&id=${selectedCommunity.id}`); }}>Join Community</Button></DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      <FriendProfilePreview profile={previewProfile} open={!!previewProfile} onClose={() => setPreviewProfile(null)} />
-    </div>
+    </LaunchZoneGuard>
   );
 };
 
