@@ -28,8 +28,7 @@ import {
   Building2,
   CreditCard,
   Zap,
-  Hourglass,
-  Ticket
+  Hourglass
 } from "lucide-react"; 
 import { 
   Dialog, 
@@ -49,6 +48,7 @@ import { useLaunchZone } from '@/hooks/useLaunchZone';
 import { Rocket, UserPlus, Globe } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; 
 import { z } from 'zod';
+import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 
 // --- TYPES ---
 type PremiumFeature = {
@@ -167,7 +167,7 @@ export default function Events() {
   const userId = user?.id;
   const queryClient = useQueryClient();
   const { location, isLoading: locationLoading } = useGeolocation();
-  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading } = useLaunchZone(location?.latitude, location?.longitude); 
+  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading, currentCount, targetCount } = useLaunchZone(location?.latitude, location?.longitude); 
   
   const [milestone, setMilestone] = useState<{ current: number; target: number; is_unlocked: boolean; zone_name?: string } | null>(null);
   const [locationName, setLocationName] = useState("Detecting..."); 
@@ -605,364 +605,333 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
   
   const filteredAttendingEvents = filterEvents(attendingEvents);
 
-  const cityNotDetected = !locationLoading && !launchZoneLoading && !location; 
-  const showCityUnavailable = !locationLoading && !launchZoneLoading && isInLaunchZone === false;
-
-  if (cityNotDetected || showCityUnavailable)
-    {
-    return (
-      <div className="container-mobile py-4 pb-24 space-y-6">
-        <h1 className="text-2xl font-bold tracking-tight px-1">Events</h1>
-        
-        {cityNotDetected ? (
-          <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-6">
-            <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
-              <MapPin className="w-10 h-10 text-muted-foreground" />
-            </div>
-            <h2 className="text-xl font-bold italic uppercase tracking-tighter">Location Required</h2>
-            <Button variant="outline" className="rounded-2xl" onClick={() => window.location.reload()}>Retry Detection</Button>
-          </div>
-        ) : (
-          /* THE ROCKET / PIONEER CARD */
-          <div className="mx-1 p-8 bg-card rounded-[2.5rem] border border-dashed border-primary/30 shadow-xl relative overflow-hidden bg-gradient-to-br from-background to-primary/5">
-            <div className="relative z-10 text-center space-y-4">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-                <Ticket className="w-8 h-8 text-primary/60" />
-              </div>
-              <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
-                Coming Soon 🚀
-              </h2>
-              <p className="text-sm text-muted-foreground px-4">
-                {launchCityName ? `Events in ${launchCityName} are coming soon!` : "We're expanding fast!"} Invite friends to help unlock your city.
-              </p>
-              
-              <Button className="w-full h-14 rounded-2xl font-bold uppercase gap-2 gradient-primary border-0 text-white" onClick={() => navigate('/app/friends')}>
-                <UserPlus className="w-5 h-5" /> Invite Friends
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="container-mobile py-4 space-y-6 pb-24">
-      <div className="flex items-center justify-between px-1">
-        <h1 className="text-2xl font-bold tracking-tight">Events</h1>
-      </div>
+    <LaunchZoneGuard
+      isLoading={locationLoading || launchZoneLoading}
+      locationDetected={!!location}
+      isWithinCity={isInLaunchZone !== null}
+      isInLaunchZone={isInLaunchZone}
+      cityName={launchCityName}
+      currentCount={currentCount || 0}
+      targetCount={targetCount || 500}
+    >
+      <div className="container-mobile py-4 space-y-6 pb-24">
+        <div className="flex items-center justify-between px-1">
+          <h1 className="text-2xl font-bold tracking-tight">Events</h1>
+        </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Search events, locations, categories..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10 bg-background/50 backdrop-blur-sm"
-        />
-      </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search events, locations, categories..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 bg-background/50 backdrop-blur-sm"
+          />
+        </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
-          <TabsTrigger value="my" className="rounded-lg text-xs">Hosted</TabsTrigger>
-          <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
-        </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
+            <TabsTrigger value="my" className="rounded-lg text-xs">Hosted</TabsTrigger>
+            <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
+            <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="my" className="space-y-3 mt-6 animate-in fade-in-50">
-          
-           {/* Center Toggle */}
-          <div className="flex items-center gap-2 mb-4 bg-muted/30 p-1 rounded-lg w-fit mx-auto">
-            <button
-              onClick={() => setHostedFilter('active')}
-              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${hostedFilter === 'active' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
-            >
-              Active ({myActiveEvents.length})
-            </button>
-            <button
-               onClick={() => setHostedFilter('past')}
-               className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${hostedFilter === 'past' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
-            >
-              Past ({myPastEvents.length})
-            </button>
-          </div>
-
-          {loadingMy ? (
-            <EventSkeleton />
-          ) : hostedFilter === 'active' ? (
-             // Active Events List
-            myActiveEvents.length === 0 ? (
-                <EmptyState
-                title="No Active Events"
-                description={searchQuery 
-                    ? "No active events match your search." 
-                    : "You don't have any upcoming events. Create one now!"
-                }
-                action={() => navigate('/create-event')}
-                actionLabel="Create Event"
-                />
-            ) : (
-                <div className="space-y-3">
-                {myActiveEvents.map(e => renderEventCard(e, 'mine'))}
-                </div>
-            )
-          ) : (
-             // Past Events List
-             myPastEvents.length === 0 ? (
-                <EmptyState
-                title="No Past Events"
-                description="You haven't hosted any events that have ended yet."
-                />
-            ) : (
-                <div className="space-y-3">
-                {myPastEvents.map(e => renderEventCard(e, 'mine'))}
-                </div>
-            )
-          )}
-        </TabsContent>
-
-        <TabsContent value="attending" className="space-y-3 mt-6 animate-in fade-in-50">
-          {loadingAttending ? (
-            <EventSkeleton />
-          ) : filteredAttendingEvents.length === 0 ? (
-            <EmptyState
-              title="No Events Found"
-              description={searchQuery
-                ? "No events match your search."
-                : "You haven't joined any events yet. Discover exciting events happening around you!"
-              }
-              action={() => setActiveTab('discover')}
-              actionLabel="Discover Events"
-            />
-          ) : (
-            <div className="space-y-3">
-              {filteredAttendingEvents.map(e => renderEventCard(e, 'attending'))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="analytics" className="space-y-5 mt-6 animate-in fade-in-50">
-          
-          {/* Hero Stats Row */}
-          <div className="grid grid-cols-2 gap-3">
-            <Card className="border-0 shadow-md bg-gradient-to-br from-primary/10 via-primary/5 to-transparent overflow-hidden relative">
-              <div className="absolute -right-6 -top-6 w-20 h-20 bg-primary/10 rounded-full blur-2xl" />
-              <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
-                <div className="bg-primary/15 p-2.5 rounded-xl mb-2">
-                  <Calendar className="w-5 h-5 text-primary" />
-                </div>
-                <span className="text-3xl font-extrabold tracking-tight">{stats?.totalHosted || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
-                  Events Hosted
-                </span>
-              </CardContent>
-            </Card>
-
-            <Card className="border-0 shadow-md bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent overflow-hidden relative">
-              <div className="absolute -right-6 -top-6 w-20 h-20 bg-blue-500/10 rounded-full blur-2xl" />
-              <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
-                <div className="bg-blue-100 dark:bg-blue-900/30 p-2.5 rounded-xl mb-2">
-                  <Users className="w-5 h-5 text-blue-600" />
-                </div>
-                <span className="text-3xl font-extrabold tracking-tight">{stats?.totalAttendees || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
-                  Total Attendees
-                </span>
-              </CardContent>
-            </Card>
-
-            <Card className="border-0 shadow-md bg-gradient-to-br from-green-500/10 via-green-500/5 to-transparent overflow-hidden relative">
-              <div className="absolute -right-6 -top-6 w-20 h-20 bg-green-500/10 rounded-full blur-2xl" />
-              <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
-                <div className="bg-green-100 dark:bg-green-900/30 p-2.5 rounded-xl mb-2">
-                  <TrendingUp className="w-5 h-5 text-green-600" />
-                </div>
-                <span className="text-3xl font-extrabold tracking-tight">{stats?.upcomingEvents || 0}</span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
-                  Upcoming
-                </span>
-              </CardContent>
-            </Card>
-
-            <Card className="border-0 shadow-md bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent overflow-hidden relative">
-              <div className="absolute -right-6 -top-6 w-20 h-20 bg-amber-500/10 rounded-full blur-2xl" />
-              <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
-                <div className="bg-amber-100 dark:bg-amber-900/30 p-2.5 rounded-xl mb-2">
-                  <Ticket className="w-5 h-5 text-amber-600" />
-                </div>
-                <span className="text-3xl font-extrabold tracking-tight">
-                  ₦{(stats?.netRevenue || 0).toLocaleString()}
-                </span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
-                  Net Earnings
-                </span>
-              </CardContent>
-            </Card>
-          </div>
-          
-          {/* PAYOUT WALLET CARD */}
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-lg overflow-hidden relative">
-            <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+          <TabsContent value="my" className="space-y-3 mt-6 animate-in fade-in-50">
             
-            <CardContent className="p-5 relative z-10">
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-3">
-                  <div className="bg-primary/20 p-2.5 rounded-xl"><Wallet className="w-5 h-5 text-primary" /></div>
-                  <div>
-                    <h3 className="font-bold text-foreground">Earnings Wallet</h3>
-                    <p className="text-xs text-muted-foreground">Available for withdrawal</p>
-                  </div>
-                </div>
-                <Badge variant="outline" className="bg-background/50 backdrop-blur-sm text-[10px]">Daily Payouts</Badge>
-              </div>
-              
-              <div className="bg-background/60 backdrop-blur-sm rounded-xl p-4 mb-4 border border-border/50">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Withdrawable Balance</p>
-                <span className="text-4xl font-black text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}<span className="text-xl">.00</span></span>
-              </div>
-
-              <Button 
-                onClick={() => setIsPayoutModalOpen(true)} 
-                disabled={isPayoutLoading || !stats?.walletBalance || stats?.walletBalance < 1000} 
-                className="w-full gradient-primary text-white shadow-md h-12 text-base font-semibold"
+             {/* Center Toggle */}
+            <div className="flex items-center gap-2 mb-4 bg-muted/30 p-1 rounded-lg w-fit mx-auto">
+              <button
+                onClick={() => setHostedFilter('active')}
+                className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${hostedFilter === 'active' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
               >
-                {isPayoutLoading ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing</>
-                ) : (
-                  <><ArrowUpRight className="w-4 h-4 mr-2" /> Request Payout</>
-                )}
-              </Button>
+                Active ({myActiveEvents.length})
+              </button>
+              <button
+                 onClick={() => setHostedFilter('past')}
+                 className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${hostedFilter === 'past' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}
+              >
+                Past ({myPastEvents.length})
+              </button>
+            </div>
 
-              {stats?.walletBalance && stats.walletBalance < 1000 && stats.walletBalance > 0 && (
-                <p className="text-xs text-muted-foreground text-center mt-3 flex items-center justify-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  Minimum withdrawal: ₦1,000
-                </p>
-              )}
-              
-              {stats?.walletBalance && stats.walletBalance >= 1000 && (
-                <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg">
-                  <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5" />
-                    Ready for payout — funds will be sent to your bank.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Growth Insights Card */}
-          <Card className="border-muted/50 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-blue-600" />
-                Growth Insights
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Past Events</span>
-                <span className="font-bold">{stats?.pastEvents || 0}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Avg Attendees/Event</span>
-                <span className="font-bold">
-                  {stats?.totalHosted && stats.totalHosted > 0
-                    ? Math.round((stats.totalAttendees || 0) / stats.totalHosted)
-                    : 0}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Platform Fee</span>
-                <span className="font-bold text-muted-foreground">2%</span>
-              </div>
-              <div className="flex justify-between text-sm pt-2 border-t border-border">
-                <span className="text-muted-foreground">Lifetime Revenue</span>
-                <span className="font-bold text-green-600">₦{(stats?.netRevenue || 0).toLocaleString()}</span>
-              </div>
-              <p className="text-xs text-muted-foreground pt-3 border-t border-border">
-                💡 Hosting events consistently helps grow your community 3x faster!
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* --- PAYOUT MODAL --- */}
-      <Dialog open={isPayoutModalOpen} onOpenChange={setIsPayoutModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{savedBankDetails ? 'Confirm Payout' : 'Add Bank Details'}</DialogTitle>
-            <DialogDescription>
-              {savedBankDetails ? 'Review your payout destination below.' : 'Where should we send your earnings?'}
-            </DialogDescription>
-          </DialogHeader>
-
-          {savedBankDetails ? (
-            <div className="space-y-4 py-2">
-               <div className="bg-muted/50 p-4 rounded-lg flex items-start gap-3 border border-border">
-                  <Building2 className="w-5 h-5 text-primary mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-sm">{savedBankDetails.bank_name}</p>
-                    <p className="text-xs text-muted-foreground">{savedBankDetails.account_name}</p>
-                    <p className="text-sm font-mono mt-1 tracking-wider">{savedBankDetails.account_number}</p>
+            {loadingMy ? (
+              <EventSkeleton />
+            ) : hostedFilter === 'active' ? (
+               // Active Events List
+              myActiveEvents.length === 0 ? (
+                  <EmptyState
+                  title="No Active Events"
+                  description={searchQuery 
+                      ? "No active events match your search." 
+                      : "You don't have any upcoming events. Create one now!"
+                  }
+                  action={() => navigate('/create-event')}
+                  actionLabel="Create Event"
+                  />
+              ) : (
+                  <div className="space-y-3">
+                  {myActiveEvents.map(e => renderEventCard(e, 'mine'))}
                   </div>
-               </div>
-               
-               <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md text-xs text-yellow-800 dark:text-yellow-200 flex gap-2">
-                 <Info className="w-4 h-4 shrink-0" />
-                 <span>Payouts are processed daily. You will receive <b>₦{(stats?.walletBalance || 0).toLocaleString()}</b>.</span>
-               </div>
-            </div>
-          ) : (
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="bank">Bank Name</Label>
-                <Input 
-                  id="bank" 
-                  placeholder="e.g. GTBank, Zenith Bank" 
-                  value={bankForm.bank_name}
-                  onChange={e => setBankForm({...bankForm, bank_name: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="acc_num">Account Number</Label>
-                <Input 
-                  id="acc_num" 
-                  placeholder="0123456789" 
-                  maxLength={10}
-                  value={bankForm.account_number}
-                  onChange={e => setBankForm({...bankForm, account_number: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="acc_name">Account Name</Label>
-                <Input 
-                  id="acc_name" 
-                  placeholder="Name on account" 
-                  value={bankForm.account_name}
-                  onChange={e => setBankForm({...bankForm, account_name: e.target.value})}
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            {!savedBankDetails ? (
-              <Button onClick={saveBankDetails} className="w-full">Save Bank Details</Button>
+              )
             ) : (
-              <div className="flex gap-2 w-full">
-                <Button variant="outline" className="flex-1" onClick={() => navigate('/settings?tab=bank')}>Change Bank</Button>
-                <Button onClick={processPayout} disabled={isPayoutLoading} className="flex-1 gradient-primary text-white">
-                  {isPayoutLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Withdraw'}
-                </Button>
+               // Past Events List
+               myPastEvents.length === 0 ? (
+                  <EmptyState
+                  title="No Past Events"
+                  description="You haven't hosted any events that have ended yet."
+                  />
+              ) : (
+                  <div className="space-y-3">
+                  {myPastEvents.map(e => renderEventCard(e, 'mine'))}
+                  </div>
+              )
+            )}
+          </TabsContent>
+
+          <TabsContent value="attending" className="space-y-3 mt-6 animate-in fade-in-50">
+            {loadingAttending ? (
+              <EventSkeleton />
+            ) : filteredAttendingEvents.length === 0 ? (
+              <EmptyState
+                title="No Events Found"
+                description={searchQuery
+                  ? "No events match your search."
+                  : "You haven't joined any events yet. Discover exciting events happening around you!"
+                }
+                action={() => setActiveTab('discover')}
+                actionLabel="Discover Events"
+              />
+            ) : (
+              <div className="space-y-3">
+                {filteredAttendingEvents.map(e => renderEventCard(e, 'attending'))}
               </div>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-    </div>
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-5 mt-6 animate-in fade-in-50">
+            
+            {/* Hero Stats Row */}
+            <div className="grid grid-cols-2 gap-3">
+              <Card className="border-0 shadow-md bg-gradient-to-br from-primary/10 via-primary/5 to-transparent overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-20 h-20 bg-primary/10 rounded-full blur-2xl" />
+                <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
+                  <div className="bg-primary/15 p-2.5 rounded-xl mb-2">
+                    <Calendar className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="text-3xl font-extrabold tracking-tight">{stats?.totalHosted || 0}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
+                    Events Hosted
+                  </span>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-md bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-20 h-20 bg-blue-500/10 rounded-full blur-2xl" />
+                <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
+                  <div className="bg-blue-100 dark:bg-blue-900/30 p-2.5 rounded-xl mb-2">
+                    <Users className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <span className="text-3xl font-extrabold tracking-tight">{stats?.totalAttendees || 0}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
+                    Total Attendees
+                  </span>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-md bg-gradient-to-br from-green-500/10 via-green-500/5 to-transparent overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-20 h-20 bg-green-500/10 rounded-full blur-2xl" />
+                <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
+                  <div className="bg-green-100 dark:bg-green-900/30 p-2.5 rounded-xl mb-2">
+                    <TrendingUp className="w-5 h-5 text-green-600" />
+                  </div>
+                  <span className="text-3xl font-extrabold tracking-tight">{stats?.upcomingEvents || 0}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
+                    Upcoming
+                  </span>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-md bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-20 h-20 bg-amber-500/10 rounded-full blur-2xl" />
+                <CardContent className="p-5 flex flex-col items-center justify-center text-center h-32 relative z-10">
+                  <div className="bg-amber-100 dark:bg-amber-900/30 p-2.5 rounded-xl mb-2">
+                    <Ticket className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <span className="text-3xl font-extrabold tracking-tight">
+                    ₦{(stats?.netRevenue || 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">
+                    Net Earnings
+                  </span>
+                </CardContent>
+              </Card>
+            </div>
+            
+            {/* PAYOUT WALLET CARD */}
+            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-lg overflow-hidden relative">
+              <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+              
+              <CardContent className="p-5 relative z-10">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-primary/20 p-2.5 rounded-xl"><Wallet className="w-5 h-5 text-primary" /></div>
+                    <div>
+                      <h3 className="font-bold text-foreground">Earnings Wallet</h3>
+                      <p className="text-xs text-muted-foreground">Available for withdrawal</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="bg-background/50 backdrop-blur-sm text-[10px]">Daily Payouts</Badge>
+                </div>
+                
+                <div className="bg-background/60 backdrop-blur-sm rounded-xl p-4 mb-4 border border-border/50">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Withdrawable Balance</p>
+                  <span className="text-4xl font-black text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}<span className="text-xl">.00</span></span>
+                </div>
+
+                <Button 
+                  onClick={() => setIsPayoutModalOpen(true)} 
+                  disabled={isPayoutLoading || !stats?.walletBalance || stats?.walletBalance < 1000} 
+                  className="w-full gradient-primary text-white shadow-md h-12 text-base font-semibold"
+                >
+                  {isPayoutLoading ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing</>
+                  ) : (
+                    <><ArrowUpRight className="w-4 h-4 mr-2" /> Request Payout</>
+                  )}
+                </Button>
+
+                {stats?.walletBalance && stats.walletBalance < 1000 && stats.walletBalance > 0 && (
+                  <p className="text-xs text-muted-foreground text-center mt-3 flex items-center justify-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Minimum withdrawal: ₦1,000
+                  </p>
+                )}
+                
+                {stats?.walletBalance && stats.walletBalance >= 1000 && (
+                  <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-lg">
+                    <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5" />
+                      Ready for payout — funds will be sent to your bank.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Growth Insights Card */}
+            <Card className="border-muted/50 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                  Growth Insights
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Past Events</span>
+                  <span className="font-bold">{stats?.pastEvents || 0}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Avg Attendees/Event</span>
+                  <span className="font-bold">
+                    {stats?.totalHosted && stats.totalHosted > 0
+                      ? Math.round((stats.totalAttendees || 0) / stats.totalHosted)
+                      : 0}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Platform Fee</span>
+                  <span className="font-bold text-muted-foreground">2%</span>
+                </div>
+                <div className="flex justify-between text-sm pt-2 border-t border-border">
+                  <span className="text-muted-foreground">Lifetime Revenue</span>
+                  <span className="font-bold text-green-600">₦{(stats?.netRevenue || 0).toLocaleString()}</span>
+                </div>
+                <p className="text-xs text-muted-foreground pt-3 border-t border-border">
+                  💡 Hosting events consistently helps grow your community 3x faster!
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* --- PAYOUT MODAL --- */}
+        <Dialog open={isPayoutModalOpen} onOpenChange={setIsPayoutModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{savedBankDetails ? 'Confirm Payout' : 'Add Bank Details'}</DialogTitle>
+              <DialogDescription>
+                {savedBankDetails ? 'Review your payout destination below.' : 'Where should we send your earnings?'}
+              </DialogDescription>
+            </DialogHeader>
+
+            {savedBankDetails ? (
+              <div className="space-y-4 py-2">
+                 <div className="bg-muted/50 p-4 rounded-lg flex items-start gap-3 border border-border">
+                    <Building2 className="w-5 h-5 text-primary mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-sm">{savedBankDetails.bank_name}</p>
+                      <p className="text-xs text-muted-foreground">{savedBankDetails.account_name}</p>
+                      <p className="text-sm font-mono mt-1 tracking-wider">{savedBankDetails.account_number}</p>
+                    </div>
+                 </div>
+                 
+                 <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md text-xs text-yellow-800 dark:text-yellow-200 flex gap-2">
+                   <Info className="w-4 h-4 shrink-0" />
+                   <span>Payouts are processed daily. You will receive <b>₦{(stats?.walletBalance || 0).toLocaleString()}</b>.</span>
+                 </div>
+              </div>
+            ) : (
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="bank">Bank Name</Label>
+                  <Input 
+                    id="bank" 
+                    placeholder="e.g. GTBank, Zenith Bank" 
+                    value={bankForm.bank_name}
+                    onChange={e => setBankForm({...bankForm, bank_name: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="acc_num">Account Number</Label>
+                  <Input 
+                    id="acc_num" 
+                    placeholder="0123456789" 
+                    maxLength={10}
+                    value={bankForm.account_number}
+                    onChange={e => setBankForm({...bankForm, account_number: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="acc_name">Account Name</Label>
+                  <Input 
+                    id="acc_name" 
+                    placeholder="Name on account" 
+                    value={bankForm.account_name}
+                    onChange={e => setBankForm({...bankForm, account_name: e.target.value})}
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              {!savedBankDetails ? (
+                <Button onClick={saveBankDetails} className="w-full">Save Bank Details</Button>
+              ) : (
+                <div className="flex gap-2 w-full">
+                  <Button variant="outline" className="flex-1" onClick={() => navigate('/settings?tab=bank')}>Change Bank</Button>
+                  <Button onClick={processPayout} disabled={isPayoutLoading} className="flex-1 gradient-primary text-white">
+                    {isPayoutLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Withdraw'}
+                  </Button>
+                </div>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        
+      </div>
+    </LaunchZoneGuard>
   );
 }
