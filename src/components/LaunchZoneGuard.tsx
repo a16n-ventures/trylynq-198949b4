@@ -38,7 +38,7 @@ export function LaunchZoneGuard({
             </div>
 
             <div className="space-y-1">
-              <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">
+              <h2 className="text-2xl font-black uppercase tracking-tighter leading-none">
                 {noGps ? "Location Required" : waitingRoom ? `${cityName?.toUpperCase() || 'CITY'} LOADING...` : "COMING SOON"}
               </h2>
               <p className="text-[11px] uppercase tracking-wider">We are gathering pioneers! Help us reach our pioneer goal to unlock the app.</p> 
