@@ -55,7 +55,7 @@ export function useLaunchZone(latitude: number | null | undefined, longitude: nu
         setResult({ 
           isInLaunchZone: false, 
           isWithinCity: false, 
-          cityName: "Global", 
+          cityName: null, 
           currentCount: 0, 
           targetCount: 0, 
           isLoading: false 
