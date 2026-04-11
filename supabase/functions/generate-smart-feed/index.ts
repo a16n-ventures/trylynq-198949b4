@@ -54,11 +54,11 @@ serve(async (req) => {
       success: true,
       events: isUnlocked ? (await supabase.from('events').select('*').limit(10)).data : [],
       milestone: {
-        current: pioneerCount || 0,
-        target: activeZone?.target_count || 500,
+        current: activeZone ? (pioneerCount || 0) : 0,
+        target: activeZone?.target_count || 0,
         is_unlocked: isUnlocked,
         is_launch_zone: !!activeZone,
-        zone_name: finalCityName
+        zone_name: activeZone ? finalCityName : null
       }
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
