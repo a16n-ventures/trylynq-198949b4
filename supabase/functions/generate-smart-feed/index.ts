@@ -48,7 +48,7 @@ serve(async (req) => {
       .select('*', { count: 'exact', head: true })
       .ilike('location', `%${finalCityName}%`);
 
-    const isUnlocked = activeZone?.is_unlocked ?? (activeZone ? pioneerCount >= (activeZone.target_count || 500) : true);
+    const isUnlocked = activeZone?.is_unlocked ?? (activeZone ? pioneerCount >= (activeZone.target_count || 0) : true);
 
     return new Response(JSON.stringify({
       success: true,
