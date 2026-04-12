@@ -16,7 +16,7 @@ export function useLaunchZone(latitude: number | null | undefined, longitude: nu
     isWithinCity: false,
     cityName: null,
     currentCount: 0,
-    targetCount: 500,
+    targetCount: 0,
     isLoading: true,
   });
 
@@ -35,15 +35,21 @@ export function useLaunchZone(latitude: number | null | undefined, longitude: nu
 
       let found = false;
       for (const m of milestones) {
-        // Simple distance check (simplified for performance)
-        const dist = Math.sqrt(Math.pow(latitude - m.center_lat, 2) + Math.pow(longitude - m.center_long, 2)) * 111;
+        // Accurate Haversine Distance
+        const R = 6371; 
+        const dLat = (m.center_lat - latitude) * Math.PI / 180;
+        const dLon = (m.center_long - longitude) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(latitude * Math.PI / 180) * Math.cos(m.center_lat * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const dist = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
         if (dist <= (m.radius_km || 25)) {
           setResult({
             isInLaunchZone: m.is_unlocked ?? false,
             isWithinCity: true,
             cityName: m.city_name,
             currentCount: m.current_count || 0,
-            targetCount: m.target_count || 500,
+            targetCount: m.target_count || 0,
             isLoading: false,
           });
           found = true;
