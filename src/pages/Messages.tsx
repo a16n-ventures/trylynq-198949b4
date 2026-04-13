@@ -360,11 +360,11 @@ export default function Messages() {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={isInLaunchZone !== null}
+      isWithinCity={launchCityName}
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
-      targetCount={targetCount || 500}
+      targetCount={targetCount || 0}
     >
       <div className="flex h-screen bg-background overflow-hidden">
         
