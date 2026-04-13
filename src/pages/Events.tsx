@@ -609,11 +609,11 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={!!launchCityName}
+      isWithinCity={launchCityName}
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
-      targetCount={targetCount || 500}
+      targetCount={targetCount || 0}
     >
       <div className="container-mobile py-4 space-y-6 pb-24">
         <div className="flex items-center justify-between px-1">
