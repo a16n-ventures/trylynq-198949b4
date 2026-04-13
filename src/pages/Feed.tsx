@@ -309,7 +309,7 @@ const Feed = () => {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={launchCityName}
+      isWithinCity={!!launchCityName}
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
@@ -329,7 +329,7 @@ const Feed = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isPremium && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 font-bold tracking-tight px-2 py-0.5 rounded-full"><Sparkles className="w-3 h-3 mr-1" /> PREMIUM</Badge>}
+                  {isPremium && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 font-bold tracking-tight px-2 py-0.5 rounded-full"><Sparkles className="w-3 h-3 mr-1" /> PRO</Badge>}
                   <Button size="icon" variant="ghost" className="rounded-full relative" onClick={() => navigate('/app/notifications')}>
                     <Bell className="w-5 h-5" />
                     {unreadCount > 0 && <span className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unreadCount > 99 ? '99+' : unreadCount}</span>}
