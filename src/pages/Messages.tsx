@@ -360,7 +360,7 @@ export default function Messages() {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={launchCityName}
+      isWithinCity={!!launchCityName}
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
