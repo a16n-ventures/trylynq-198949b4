@@ -1,6 +1,38 @@
 import { Button } from '@/components/ui/button';
 import { Lock, MapPin, Globe, UserPlus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useGeolocation } from '@/contexts/LocationContext';
+
+// Reverse-geocodes coords → real city name, fully self-contained
+function useResolvedCityName(): string {
+  const { location } = useGeolocation();
+  const [resolvedCity, setResolvedCity] = useState('');
+
+  useEffect(() => {
+    if (!location?.latitude || !location?.longitude) return;
+    let cancelled = false;
+    fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.latitude}&lon=${location.longitude}`,
+      { headers: { 'User-Agent': 'Ahmia-App-Production' } }
+    )
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        setResolvedCity(
+          data?.address?.city ||
+          data?.address?.town  ||
+          data?.address?.county ||
+          data?.address?.state  ||
+          ''
+        );
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [location?.latitude, location?.longitude]);
+
+  return resolvedCity;
+}
 
 interface LaunchZoneGuardProps {
   isLoading: boolean;
@@ -59,10 +91,14 @@ export function LaunchZoneGuard({
   children,
 }: LaunchZoneGuardProps) {
   const navigate = useNavigate();
+  const resolvedCityName = useResolvedCityName();
   const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone);
 
   // Transparent pass-through states
   if (state === 'PASS_THROUGH' || state === 'LOADING') return <>{children}</>;
+
+  // DB milestone name takes priority, then live geocode, then generic fallback
+  const bestCityName = (cityName || resolvedCityName || 'YOUR CITY').toUpperCase();
 
   // ── Overlay content per state ──────────────────────────────────────────────
   const icon = {
@@ -73,8 +109,8 @@ export function LaunchZoneGuard({
 
   const title = {
     NO_GPS:       'Location Required',
-    WAITING_ROOM: `${cityName?.toUpperCase() ?? 'YOUR CITY'} LOADING...`,
-    COMING_SOON:  'Coming Soon',
+    WAITING_ROOM: `${bestCityName} LOADING...`,
+    COMING_SOON:  `${bestCityName} — COMING SOON`,
   }[state];
 
   const subtitle = {
