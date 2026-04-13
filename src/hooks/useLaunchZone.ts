@@ -73,7 +73,7 @@ export function useLaunchZone(
 
           if (dist <= radius) {
             // User is physically inside this zone.
-            const unlocked = m.is_unlocked === true; // explicit true only
+            const unlocked = m.is_unlocked === true ?? false; // explicit true only
             setResult({
               isInLaunchZone: unlocked,
               isWithinCity: true,
