@@ -309,11 +309,11 @@ const Feed = () => {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={isInLaunchZone !== null}
+      isWithinCity={launchCityName}
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
-      targetCount={targetCount || 500}
+      targetCount={targetCount || 0}
     >
       <div className="min-h-screen bg-background pb-24">
         {/* HEADER */}
