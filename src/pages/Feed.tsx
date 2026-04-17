@@ -207,11 +207,25 @@ const Feed = () => {
         const attendingIds = new Set(myAttendance?.map(a => a.event_id) || []);
 
         if (response.events) {
+          // --- FIXED: Fetch creator verification status since the RPC doesn't return it ---
+          const creatorIds = [...new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))];
+          
+          const { data: creatorProfiles } = await supabase
+            .from('profiles')
+            .select('user_id, verification_status')
+            .in('user_id', creatorIds);
+            
+          const verifiedCreators = new Set(
+            creatorProfiles?.filter(p => p.verification_status === 'verified').map(p => p.user_id) || []
+          );
+
           setEvents(response.events.map((e: any) => ({
             ...e,
             attendee_count: e.attendee_count || 0,
             is_attending: attendingIds.has(e.id),
-            friend_images: e.friend_images || []
+            friend_images: e.friend_images || [],
+            // --- INJECT VERIFIED STATUS HERE ---
+            is_verified: verifiedCreators.has(e.creator_id)
           })));
         }
         
