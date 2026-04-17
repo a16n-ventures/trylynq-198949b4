@@ -406,7 +406,7 @@ const Feed = () => {
                   {activeTab === 'communities' ? (
                     <div className="space-y-3">
                       {loading ? <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div> : 
-                      communities.length === 0 ? <div className="text-center py-16 flex flex-col items-center gap-4"><div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center"><Users className="w-8 h-8 text-muted-foreground/40" /></div><div><p className="font-semibold">No communities yet in {milestone?.zone_name}</p></div><Button className="rounded-full px-6 gap-2 shadow-md" onClick={() => navigate('/app/messages?type=communities')}><Plus className="w-4 h-4" /> Create Community</Button></div> :
+                      communities.length === 0 ? <div className="text-center py-16 flex flex-col items-center gap-4"><div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center"><Users className="w-8 h-8 text-muted-foreground/40" /></div><div><p className="font-semibold">No communities yet in {milestone?.zone_name}</p></div><Button className="rounded-full px-6 gap-2 shadow-md" onClick={() => navigate('/app/messages')}><Plus className="w-4 h-4" /> Create Community</Button></div> :
                       communities.map(c => (
                         <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50" onClick={() => setSelectedCommunity(c)}>
                           <Avatar className="h-14 w-14 rounded-xl border"><AvatarImage src={c.avatar_url || undefined} className="object-cover" /><AvatarFallback>{c.name[0]}</AvatarFallback></Avatar>
