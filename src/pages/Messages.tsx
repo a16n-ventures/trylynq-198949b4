@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { 
@@ -49,6 +49,8 @@ interface ChatItem {
   badge?: string | number; // Unread count
   meta?: any; // Extra data (event date, role, etc)
   partner_id?: string; // For DMs
+  is_verified?: boolean; 
+  user_type?: 'personal' | 'vendor';
 }
 
 export default function Messages() {
@@ -101,6 +103,8 @@ export default function Messages() {
       return data ? {
         id: data.id, type: 'event', name: data.title, avatar: data.image_url,
         meta: { date: data.start_date, location: data.location }
+        is_verified: data.verification_status === 'verified',
+        user_type: data.user_type
       } : null;
     } else if (type === 'community') {
       const { data } = await supabase.from('communities').select('*').eq('id', id).single();
@@ -152,7 +156,7 @@ export default function Messages() {
       const partnerIds = Array.from(partnerMap.keys());
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url')
+        .select('user_id, display_name, avatar_url, user_type, verification_status') // Add these two
         .in('user_id', partnerIds);
       
       const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
@@ -167,6 +171,8 @@ export default function Messages() {
           subtitle: p.last_message,
           partner_id: p.partner_id,
           badge: p.unread_count > 0 ? p.unread_count : undefined
+          is_verified: profile?.verification_status === 'verified',
+          user_type: profile?.user_type
         };
       });
     },
@@ -592,6 +598,21 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
           </Avatar>
           <div>
             <h2 className="font-bold text-sm">{selectedChat.name}</h2>
+            {/* Find the header area and insert this below the title/status info */}
+            {selectedChat.type === 'dm' && selectedChat.user_type === 'vendor' && selectedChat.is_verified && (
+              <div className="bg-primary/5 border-t border-primary/10 px-4 py-2 flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-primary fill-primary/10" />
+                  <p className="text-[10px] text-primary/80 font-bold leading-none uppercase">
+                    Ahmia-Verified Vendor • Payments Protected by Escrow
+                  </p>
+                </div>
+                <Button size="sm" variant="ghost" className="h-6 text-[9px] font-black uppercase tracking-tighter" onClick={() => navigate('/app/#')}>
+                  Learn More
+                </Button>
+              </div>
+            )}
+
             {selectedChat.type === 'event' ? (
                <p className="text-xs text-primary flex items-center gap-1">
                   <Calendar className="w-3 h-3" /> Vibe Check Chat
@@ -800,6 +821,14 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
            <AvatarImage src={chat.avatar} className="object-cover" />
            <AvatarFallback>{chat.name[0]}</AvatarFallback>
         </Avatar>
+        {/* --- INSERT THIS BLOCK --- */}
+        {chat.is_verified && (
+           <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5">
+              <div className="bg-primary rounded-full p-0.5 text-white">
+                <ShieldCheck className="w-3 h-3" />
+              </div>
+           </div>
+        )}
         {chat.type === 'event' && (
            <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5">
               <div className="bg-orange-500 rounded-full p-1 text-white">
