@@ -96,15 +96,13 @@ export default function Messages() {
       });
     }
   }, [searchParams, user]);
-
+  
   const fetchChatDetails = async (type: ChatType, id: string): Promise<ChatItem | null> => {
     if (type === 'event') {
       const { data } = await supabase.from('events').select('*').eq('id', id).single();
       return data ? {
         id: data.id, type: 'event', name: data.title, avatar: data.image_url,
         meta: { date: data.start_date, location: data.location }
-        is_verified: data.verification_status === 'verified',
-        user_type: data.user_type
       } : null;
     } else if (type === 'community') {
       const { data } = await supabase.from('communities').select('*').eq('id', id).single();
@@ -114,7 +112,9 @@ export default function Messages() {
     } else {
       const { data } = await supabase.from('profiles').select('*').eq('user_id', id).single();
       return data ? {
-        id: id, type: 'dm', name: data.display_name, avatar: data.avatar_url, partner_id: id
+        id: id, type: 'dm', name: data.display_name, avatar: data.avatar_url, partner_id: id,
+        is_verified: data.verification_status === 'verified',
+        user_type: data.user_type
       } : null;
     }
   };
