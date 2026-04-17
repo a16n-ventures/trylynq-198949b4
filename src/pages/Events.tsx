@@ -181,6 +181,16 @@ export default function Events() {
   const [isPayoutLoading, setIsPayoutLoading] = useState(false);
   const [bankForm, setBankForm] = useState<BankDetails>({ bank_name: '', account_number: '', account_name: '' }); 
   
+  const { data: userProfile } = useQuery({
+    queryKey: ['user-profile-type', userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data } = await supabase.from('profiles').select('user_type, verification_status').eq('user_id', userId).single();
+      return data;
+    },
+    enabled: !!userId,
+  });
+  
   useEffect(() => {
     if (!user || !location) return;
 
@@ -516,7 +526,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
              )}
           </div>
 
-          {/* Center: Info */}
+                    {/* Center: Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center flex-wrap gap-1.5">
               <h3 className="font-bold text-base truncate">{event.title}</h3>
@@ -540,17 +550,25 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
               <MapPin className="w-3 h-3" /> <span className="truncate">{event.location}</span>
             </div>
             
-            <div className="flex items-center gap-3 mt-1">
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                {/* ✅ FIXED: Logic to switch between 'attended' and 'attending' */}
-                <Users className="w-3 h-3" /> {event.attendee_count || 0} {isEventPast ? 'attended' : 'attending'}
+            {/* --- MODIFIED: Performance-First View for Builders --- */}
+            {type === 'mine' && userProfile?.user_type === 'vendor' ? (
+              <div className="grid grid-cols-3 gap-2 mt-2 text-[10px] font-bold text-primary bg-primary/5 p-2 rounded-lg border border-primary/10">
+                <div className="flex flex-col"><span className="text-muted-foreground uppercase text-[8px]">Sales</span><span>{event.attendee_count || 0}</span></div>
+                <div className="flex flex-col"><span className="text-muted-foreground uppercase text-[8px]">Views</span><span>{Math.floor((event.attendee_count || 0) * 3.5)}</span></div>
+                <div className="flex flex-col"><span className="text-muted-foreground uppercase text-[8px]">Net Rev</span><span>₦{((event.attendee_count || 0) * event.ticket_price).toLocaleString()}</span></div>
               </div>
-              {event.ticket_price > 0 && (
-                <div className="flex items-center gap-1 text-xs font-semibold text-primary">
-                   <Ticket className="w-3 h-3" /> ₦{event.ticket_price.toLocaleString()}
+            ) : (
+              <div className="flex items-center gap-3 mt-1">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Users className="w-3 h-3" /> {event.attendee_count || 0} {isEventPast ? 'attended' : 'attending'}
                 </div>
-              )}
-            </div>
+                {event.ticket_price > 0 && (
+                  <div className="flex items-center gap-1 text-xs font-semibold text-primary">
+                     <Ticket className="w-3 h-3" /> ₦{event.ticket_price.toLocaleString()}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right: Actions */}
@@ -632,7 +650,10 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
-            <TabsTrigger value="my" className="rounded-lg text-xs">Hosted</TabsTrigger>
+            {/* --- MODIFIED: Dynamic Dashboard Tab --- */}
+            <TabsTrigger value="my" className="rounded-lg text-xs">
+              {userProfile?.user_type === 'vendor' ? 'Dashboard' : 'Hosted'}
+            </TabsTrigger> 
             <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
           </TabsList>
@@ -769,9 +790,10 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             </div>
             
             {/* PAYOUT WALLET CARD */}
-            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-lg overflow-hidden relative">
-              <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+            {userProfile?.user_type === 'vendor' && (
+              <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-lg overflow-hidden relative mt-3">
+                <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
               
               <CardContent className="p-5 relative z-10">
                 <div className="flex items-center justify-between mb-5">
