@@ -104,23 +104,22 @@ const MapPage = () => {
     refetchInterval: 30000, 
   }); 
   
-  const { data: premiumStatus = {} } = useQuery({
-    queryKey: ['premium-status', friendIds],
+  // --- FIXED: Fetch all necessary profile meta for friends (Premium & Trust) ---
+  const { data: friendMeta = {} } = useQuery({
+    queryKey: ['friend-meta', friendIds],
     queryFn: async () => {
       if (friendIds.length === 0) return {};
       const { data } = await supabase
         .from('profiles')
-        .select('user_id, is_premium')
+        .select('user_id, is_premium, user_type, verification_status') 
         .in('user_id', friendIds);
       
-      const statusMap: Record<string, boolean> = {};
-      data?.forEach(p => {
-        statusMap[p.user_id] = p.is_premium || false;
-      });
-      return statusMap;
+      const metaMap: Record<string, any> = {};
+      data?.forEach(p => { metaMap[p.user_id] = p; });
+      return metaMap;
     },
     enabled: friendIds.length > 0,
-  });
+  }); 
 
   // --- 2. Process Friends (Discovery Logic) ---
   const { data: userProfile } = useQuery({
@@ -187,7 +186,9 @@ const MapPage = () => {
           distanceKm: Number(dist.toFixed(1)),
           latitude: loc.latitude,
           longitude: loc.longitude,
-          is_premium: premiumStatus[loc.user_id] || false,
+          is_premium: friendMeta[loc.user_id]?.is_premium || false,
+          user_type: friendMeta[loc.user_id]?.user_type || 'personal',
+          is_verified: friendMeta[loc.user_id]?.verification_status === 'verified',
           profiles: loc.profiles
         };
       })
@@ -201,10 +202,12 @@ const MapPage = () => {
     queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
       if (!location) return [];
-      const { data } = await supabase.from('events')
-        .select('*, event_attendees(user_id, profiles(avatar_url))')
+        const { data } = await supabase.from('events')
+        // --- FIXED: Join profiles to fetch creator's trust status ---
+        .select('*, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url))')
         .gt('start_date', new Date().toISOString())
         .eq('is_public', true);
+
       if (!data) return [];
 
       return (data.map((e: any) => {
@@ -227,7 +230,8 @@ const MapPage = () => {
           distanceKm: Number(dist.toFixed(1)),
           friend_images: friendImages,
           attendee_count: e.event_attendees?.length || 0 
-          is_vibe: (e.event_attendees?.length || 0) >= 10
+          is_vibe: (e.event_attendees?.length || 0) >= 10 
+          is_verified: e.creator?.verification_status === 'verified'
         };
       }).filter(Boolean))
       .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
@@ -448,6 +452,7 @@ const MapPage = () => {
                       <div>
                         <h3 className="font-bold text-xl flex items-center gap-2">
                           {selectedFriend.name}
+                          {selectedFriend.is_verified && <ShieldCheck className="w-5 h-5 text-primary" />}
                           {selectedFriend.is_premium && <PremiumBadge />}
                         </h3>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
@@ -588,7 +593,7 @@ const MapPage = () => {
                       )}
                     </div>
                     <div className="w-full px-1">
-                      <h4 className="font-bold text-sm truncate">{item.name || item.title}</h4>
+                      <h4 className="font-bold text-sm truncate">{item.name || item.title} {item.is_verified && <ShieldCheck className="w-3 h-3 text-primary" />}</h4>
                       <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
                         <MapPin className="w-3 h-3" /> {item.distanceKm}km
                       </p>
