@@ -229,8 +229,8 @@ const MapPage = () => {
           longitude: eLng,
           distanceKm: Number(dist.toFixed(1)),
           friend_images: friendImages,
-          attendee_count: e.event_attendees?.length || 0 
-          is_vibe: (e.event_attendees?.length || 0) >= 10 
+          attendee_count: e.event_attendees?.length || 0,
+          is_vibe: (e.event_attendees?.length || 0) >= 10,
           is_verified: e.creator?.verification_status === 'verified'
         };
       }).filter(Boolean))
