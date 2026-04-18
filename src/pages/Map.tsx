@@ -136,7 +136,8 @@ const MapPage = () => {
 
   const discoveryRadiusKm = useMemo(() => {
     const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
-    return (prefs?.discovery_radius ?? 20000) / 1000; // Default 20km for Map (wider than feed)
+    const km = (prefs?.discovery_radius ?? 25000) / 1000; // Default 25km
+    return Math.min(25, Math.max(5, km)); // Clamp between 5km and 25km
   }, [userProfile]);
 
   // --- 3. Process & Sort Friends ---
@@ -213,10 +214,12 @@ const MapPage = () => {
       if (!data) return [];
 
       return (data.map((e: any) => {
-        const eLat = e.latitude || 6.5244; 
-        const eLng = e.longitude || 3.3792;
+        // Skip events without coordinates rather than defaulting to Lagos
+        if (e.latitude == null || e.longitude == null) return null;
+        const eLat = e.latitude;
+        const eLng = e.longitude;
         const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
-        
+
         if (dist > discoveryRadiusKm) return null;
 
         const friendImages = e.event_attendees?.map((a: any) => a.profiles?.avatar_url).filter(Boolean).slice(0, 3) || [];
