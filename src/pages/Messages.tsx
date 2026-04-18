@@ -170,7 +170,7 @@ export default function Messages() {
           avatar: profile?.avatar_url,
           subtitle: p.last_message,
           partner_id: p.partner_id,
-          badge: p.unread_count > 0 ? p.unread_count : undefined
+          badge: p.unread_count > 0 ? p.unread_count : undefined,
           is_verified: profile?.verification_status === 'verified',
           user_type: profile?.user_type
         };
