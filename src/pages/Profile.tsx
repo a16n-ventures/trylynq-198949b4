@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Settings, MapPin, Calendar, Grid, Ticket,
   LogOut, Sparkles, QrCode, Share2,
-  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield
+  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield, ShieldCheck
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -280,11 +280,6 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
           </div>
           {!isPremium && (
             <Badge className="bg-amber-100 text-amber-800 border-0 text-[9px]">PRO</Badge>
-          )}
-          {profile.user_type === 'vendor' && profile.verification_status === 'verified' && (
-            <div className="bg-primary/10 p-1 rounded-full border border-primary/20" title="Ahmia-Verified Vendor">
-              <ShieldCheck className="w-4 h-4 text-primary fill-primary/20" />
-            </div>
           )}
         </div>
       ))}
