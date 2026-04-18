@@ -353,7 +353,8 @@ const Profile = () => {
     // Only sync if profile is loaded
     if (profile) {
       if (profile.preferences?.discovery_radius) {
-        setLocalRadius(profile.preferences.discovery_radius / 1000); // Convert meters to km
+        const km = profile.preferences.discovery_radius / 1000;
+        setLocalRadius(Math.min(25, Math.max(5, km))); // Clamp 5-25km
       }
 
       // Always sync form data when profile is loaded
@@ -790,9 +791,9 @@ const Profile = () => {
                     </div>
                     <Slider
                       value={[localRadius]}
-                      max={75} // 75km max
-                      min={25}
-                      step={10}
+                      max={25} // 25km max
+                      min={5}  // 5km min
+                      step={1}
                       // 1. Update visual state immediately
                       onValueChange={(val) => setLocalRadius(val[0])}
                       // 2. Commit to DB only when user stops dragging
