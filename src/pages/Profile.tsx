@@ -353,7 +353,8 @@ const Profile = () => {
     // Only sync if profile is loaded
     if (profile) {
       if (profile.preferences?.discovery_radius) {
-        setLocalRadius(profile.preferences.discovery_radius / 1000); // Convert meters to km
+        const km = profile.preferences.discovery_radius / 1000;
+        setLocalRadius(Math.min(25, Math.max(5, km))); // Clamp 5-25km
       }
 
       // Always sync form data when profile is loaded
