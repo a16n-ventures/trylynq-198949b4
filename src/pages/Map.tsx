@@ -36,7 +36,8 @@ type FriendOnMap = {
   distanceKm?: number | null;
   latitude?: number | null;
   longitude?: number | null;
-  is_premium?: boolean;
+  is_verified?: boolean;
+  user_type?: string;
   profiles?: { display_name?: string | null; avatar_url?: string | null } | null;
 };
 
