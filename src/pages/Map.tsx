@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
   MessageCircle, Calendar, Users, Loader2, X, 
-  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Rocket, Flame
+  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Rocket, Flame, ShieldCheck
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -37,6 +37,8 @@ type FriendOnMap = {
   latitude?: number | null;
   longitude?: number | null;
   is_premium?: boolean;
+  is_verified?: boolean;
+  user_type?: string;
   profiles?: { display_name?: string | null; avatar_url?: string | null } | null;
 };
 
@@ -195,7 +197,7 @@ const MapPage = () => {
       .filter(Boolean) as FriendOnMap[])
       // ✅ SORTING: NEAREST FIRST
       .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-  }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm, premiumStatus]);
+  }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm]);
 
   // --- 4. Events (With Clyx "Decide" Data) ---
  const { data: events = [], isLoading: eventsLoading } = useQuery({
