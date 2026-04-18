@@ -12,7 +12,7 @@ import {
   Search, Send, ArrowLeft, Plus, Users, 
   MessageSquare, X, Loader2, Info, 
   Image as ImageIcon, Calendar, MapPin, Ticket,
-  Check, Crown, Lock
+  Check, Crown, Lock, ShieldCheck
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
