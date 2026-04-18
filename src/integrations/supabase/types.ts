@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_notifications: {
+        Row: {
+          body: string | null
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          meta: Json | null
+          title: string | null
+          type: string | null
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          meta?: Json | null
+          title?: string | null
+          type?: string | null
+        }
+        Update: {
+          body?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          meta?: Json | null
+          title?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
       advertisements: {
         Row: {
           created_at: string | null
@@ -214,6 +244,27 @@ export type Database = {
           is_unlocked?: boolean | null
           radius_km?: number | null
           target_count?: number | null
+        }
+        Relationships: []
+      }
+      city_pioneers: {
+        Row: {
+          city_name: string
+          id: string
+          joined_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          city_name: string
+          id?: string
+          joined_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          city_name?: string
+          id?: string
+          joined_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -1499,16 +1550,19 @@ export type Database = {
           location: string | null
           location_updated_at: string | null
           longitude: number | null
-          phone: number | null
+          phone: string | null
           pioneer_number: number | null
           preferences: Json | null
           premium_tier: string | null
           profile_views_30d: number | null
           referral_code: string | null
           travel_propensity: number | null
+          trust_score: number | null
           updated_at: string
           user_id: string
+          user_type: Database["public"]["Enums"]["account_type"]
           username: string | null
+          verification_status: Database["public"]["Enums"]["verification_status"]
         }
         Insert: {
           avatar_url?: string | null
@@ -1527,16 +1581,19 @@ export type Database = {
           location?: string | null
           location_updated_at?: string | null
           longitude?: number | null
-          phone?: number | null
+          phone?: string | null
           pioneer_number?: number | null
           preferences?: Json | null
           premium_tier?: string | null
           profile_views_30d?: number | null
           referral_code?: string | null
           travel_propensity?: number | null
+          trust_score?: number | null
           updated_at?: string
           user_id: string
+          user_type?: Database["public"]["Enums"]["account_type"]
           username?: string | null
+          verification_status?: Database["public"]["Enums"]["verification_status"]
         }
         Update: {
           avatar_url?: string | null
@@ -1555,16 +1612,19 @@ export type Database = {
           location?: string | null
           location_updated_at?: string | null
           longitude?: number | null
-          phone?: number | null
+          phone?: string | null
           pioneer_number?: number | null
           preferences?: Json | null
           premium_tier?: string | null
           profile_views_30d?: number | null
           referral_code?: string | null
           travel_propensity?: number | null
+          trust_score?: number | null
           updated_at?: string
           user_id?: string
+          user_type?: Database["public"]["Enums"]["account_type"]
           username?: string | null
+          verification_status?: Database["public"]["Enums"]["verification_status"]
         }
         Relationships: []
       }
@@ -2303,6 +2363,39 @@ export type Database = {
           },
         ]
       }
+      waitlist: {
+        Row: {
+          city: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          joined_at: string | null
+          latitude: number | null
+          longitude: number | null
+          user_id: string | null
+        }
+        Insert: {
+          city?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          joined_at?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          city?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          joined_at?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       wallet_transactions: {
         Row: {
           amount: number
@@ -2607,6 +2700,10 @@ export type Database = {
             }
             Returns: undefined
           }
+      calculate_distance: {
+        Args: { lat1: number; lat2: number; lon1: number; lon2: number }
+        Returns: number
+      }
       cleanup_expired_location_shares: { Args: never; Returns: undefined }
       cleanup_old_notifications: { Args: never; Returns: undefined }
       credit_wallet: {
@@ -2666,6 +2763,15 @@ export type Database = {
       enablelongtransactions: { Args: never; Returns: string }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
       expire_premium_features: { Args: never; Returns: undefined }
+      generate_smart_feed: {
+        Args: {
+          p_city?: string
+          p_user_id: string
+          p_user_lat?: number
+          p_user_long?: number
+        }
+        Returns: Json
+      }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
         Args: { geom1: unknown; geom2: unknown }
@@ -2868,6 +2974,12 @@ export type Database = {
       increment_event_attendees: {
         Args: { event_id: string }
         Returns: undefined
+      }
+      increment_pioneer_count: {
+        Args: { target_city: string; target_user: string }
+        Returns: {
+          pioneer_number: number
+        }[]
       }
       increment_post_comments: { Args: { post_id: string }; Returns: undefined }
       increment_post_likes: { Args: { post_id: string }; Returns: undefined }
@@ -3614,6 +3726,7 @@ export type Database = {
       }
     }
     Enums: {
+      account_type: "personal" | "vendor"
       app_role: "user" | "moderator" | "admin" | "super_admin"
       "Event Boost": "event_boost"
       "Full Package": "full_package"
@@ -3627,6 +3740,7 @@ export type Database = {
       "Profile Boost": "profile_boost"
       transaction_category: "ticket_sale" | "payout" | "platform_fee"
       transaction_type: "credit" | "debit"
+      verification_status: "unverified" | "pending" | "verified"
     }
     CompositeTypes: {
       geometry_dump: {
@@ -3762,6 +3876,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      account_type: ["personal", "vendor"],
       app_role: ["user", "moderator", "admin", "super_admin"],
       "Event Boost": ["event_boost"],
       "Full Package": ["full_package"],
@@ -3776,6 +3891,7 @@ export const Constants = {
       "Profile Boost": ["profile_boost"],
       transaction_category: ["ticket_sale", "payout", "platform_fee"],
       transaction_type: ["credit", "debit"],
+      verification_status: ["unverified", "pending", "verified"],
     },
   },
 } as const
