@@ -64,11 +64,11 @@ function useWaitlist(cityName: string) {
       // Auto-capture name from profile — no form needed
       const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, username')
+        .select('display_name, username')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      const displayName = profile?.full_name || profile?.username || user.email || 'Unknown';
+      const displayName = profile?.display_name || profile?.username || user.email || 'Unknown';
 
       const payload = {
         user_id:   user.id,
