@@ -841,6 +841,8 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                 )}
               </CardContent>
             </Card>
+            )}
+
 
             {/* Growth Insights Card */}
             <Card className="border-muted/50 shadow-sm">
