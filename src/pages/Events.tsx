@@ -196,7 +196,7 @@ export default function Events() {
 
     const getMilestoneData = async () => {
       try {
-        const { data: response } = await supabase.functions.invoke('generate-smart-feed', {
+        const { data: response } = await supabase.rpc('generate-smart-feed', {
           body: { 
             user_id: user.id, 
             user_lat: location.latitude, 
