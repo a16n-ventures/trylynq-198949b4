@@ -547,7 +547,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             </div>
             
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-              <MapPin className="w-3 h-3" /> <span className="truncate">{zone_name}</span>
+              <MapPin className="w-3 h-3" /> <span className="truncate">{event.location}</span>
             </div>
             
             {/* --- MODIFIED: Performance-First View for Builders --- */}
