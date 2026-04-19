@@ -547,17 +547,11 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             </div>
             
             <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-              <MapPin className="w-3 h-3" /> <span className="truncate">{milestone.zone_name}</span>
+              <MapPin className="w-3 h-3" /> <span className="truncate">{response.milestone.zone_name}</span>
             </div>
             
             {/* --- MODIFIED: Performance-First View for Builders --- */}
             {type === 'mine' && userProfile?.user_type === 'vendor' ? (
-              <div className="grid grid-cols-3 gap-2 mt-2 text-[10px] font-bold text-primary bg-primary/5 p-2 rounded-lg border border-primary/10">
-                <div className="flex flex-col"><span className="text-muted-foreground uppercase text-[8px]">Sales</span><span>{event.attendee_count || 0}</span></div>
-                <div className="flex flex-col"><span className="text-muted-foreground uppercase text-[8px]">Views</span><span>{Math.floor((event.attendee_count || 0) * 3.5)}</span></div>
-                <div className="flex flex-col"><span className="text-muted-foreground uppercase text-[8px]">Net Rev</span><span>₦{((event.attendee_count || 0) * event.ticket_price).toLocaleString()}</span></div>
-              </div>
-            ) : (
               <div className="flex items-center gap-3 mt-1">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Users className="w-3 h-3" /> {event.attendee_count || 0} {isEventPast ? 'attended' : 'attending'}
