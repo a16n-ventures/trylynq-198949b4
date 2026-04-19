@@ -196,17 +196,20 @@ export default function Events() {
 
     const getMilestoneData = async () => {
       try {
-        const { data: response } = await supabase.rpc('generate-smart-feed', {
-          body: { 
-            user_id: user.id, 
-            user_lat: location.latitude, 
-            user_long: location.longitude 
-          }
-        });
-        if (response?.milestone) {
-          setMilestone(response.milestone);
-          // Ensure locationName matches the zone returned by the engine
-          setLocationName(response.milestone.zone_name || "Nearby"); 
+        const { data, error } = await supabase.rpc('generate-smart-feed', {
+            body: { 
+              user_id: user.id, 
+              user_lat: location.latitude, 
+              user_long: location.longitude 
+            }
+          });
+        if (error) {
+          console.error("RPC Error:", error);
+          return;
+        }
+        if (data?.milestone) {
+          setMilestone(data.milestone);
+          setLocationName(data.milestone.zone_name || "Nearby");
         }
       } catch (e) {
         console.error("Failed to fetch zone milestone", e);
