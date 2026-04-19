@@ -190,7 +190,7 @@ const Feed = () => {
         }
       }
 
-      const { data: response, error } = await supabase.rpc('match_events_smart', {
+      const { data: response, error } = await supabase.rpc('generate_smart_feed', {
         p_user_id: user?.id,
         p_user_lat: currentLat,
         p_user_long: currentLong,
