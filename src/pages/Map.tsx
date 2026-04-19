@@ -137,7 +137,7 @@ const MapPage = () => {
   const discoveryRadiusKm = useMemo(() => {
     const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
     const km = (prefs?.discovery_radius ?? 25000) / 1000; // Default 25km
-    return Math.min(25, Math.max(5, km)); // Clamp between 5km and 25km
+    return Math.min(5, Math.max(25, km)); // Clamp between 5km and 25km
   }, [userProfile]);
 
   // --- 3. Process & Sort Friends ---
