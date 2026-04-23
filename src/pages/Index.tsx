@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { 
   MapPin, Users, MessageCircle, Sparkles, Globe, 
-  Smartphone, Play, Apple, Twitter, Instagram, Linkedin,
-  Copyright
+  Smartphone, Lock, ChevronRight, Share2,
+  Twitter, Instagram, Linkedin, Copyright
 } from 'lucide-react';
-// import heroImage from '@/assets/hero-image.jpg'; // Keep this commented if unused
 import AuthModal from '@/components/auth/AuthModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,253 +13,167 @@ import { useAuth } from '@/contexts/AuthContext';
 const Index = () => {
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
+  const [referralName, setReferralName] = useState<string | null>(null);
   
   const { user, loading } = useAuth(); 
   const navigate = useNavigate();
-  const currentYear = new Date().getFullYear(); 
+  const currentYear = new Date().getFullYear();
 
-  // Handle referral code from URL
+  // "City Unlock" Mock Data - In a real app, fetch this based on user IP/Location
+  const unlockProgress = 65; 
+  const targetDate = new Date('2026-06-01T00:00:00');
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const refCode = params.get('ref');
     if (refCode) {
-      // Store referral code for after signup
       localStorage.setItem('pending_referral_code', refCode);
-      setAuthMode('signup');
-      setShowAuth(true);
+      // Logic to capitalize and clean name for UI
+      setReferralName(refCode.charAt(0).toUpperCase() + refCode.slice(1));
     }
   }, []);
 
   useEffect(() => {
-    if (loading) return;
-    if (user) {
-      navigate("/app", { replace: true });
-    }
+    if (!loading && user) navigate("/app", { replace: true });
   }, [user, loading, navigate]);
-  
-  // --- FIX END ---
 
   if (loading || user) {
-     return (
-       <div className="min-h-screen flex items-center justify-center bg-background">
-         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-       </div>
-     );
-   }
-
-  const handleAuth = (mode: 'login' | 'signup') => {
-    setAuthMode(mode);
-    setShowAuth(true);
-  };
-
-  const features = [
-    { icon: <Users className="w-6 h-6" />, title: "Social Discovery", desc: "Find friends nearby instantly." },
-    { icon: <MapPin className="w-6 h-6" />, title: "Privacy Mode", desc: "Share location on your terms." },
-    { icon: <MessageCircle className="w-6 h-6" />, title: "Live Chat", desc: "Seamless real-time messaging." },
-    { icon: <Sparkles className="w-6 h-6" />, title: "Events", desc: "Host parties & sell tickets." },
-  ];
-
-  const footerLinks = {
-    company: [
-      { label: "About Us", href: "#" },
-      { label: "Careers", href: "#" },
-      { label: "Investors", href: "#" },
-      { label: "Status", href: "#" },
-    ],
-    legal: [
-      { label: "Privacy Policy", href: "#" },
-      { label: "Terms of Use", href: "#" },
-      { label: "Cookie Policy", href: "#" },
-    ],
-    support: [
-      { label: "Help Center", href: "#" },
-      { label: "Safety Center", href: "#" },
-      { label: "Contact Us", href: "https://chat.whatsapp.com/Fe2gkrxSOtZHuwMQXJltKR?mode=wwt" },
-    ]
-  };
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#050505]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col font-sans">
+    <div className="min-h-screen bg-[#050505] text-white flex flex-col font-sans selection:bg-blue-500/30">
       
+      {/* EXCLUSIVE TOP BAR */}
+      <div className="w-full bg-blue-600 py-2 px-4 text-center text-xs font-bold uppercase tracking-widest">
+        🚀 Launching June 1st: The movement starts in {Math.ceil((targetDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days
+      </div>
+
       {/* HERO SECTION */}
-      <section className="relative min-h-[85vh] flex items-center justify-center overflow-hidden">
-        
-        {/* Background Image with Gradient Overlay */}
-        <div className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-background z-10" />
-        </div>
+      <section className="relative pt-20 pb-32 flex items-center justify-center overflow-hidden">
+        <div className="container-mobile relative z-20 text-center px-4">
+          
+          {/* Referral Badge */}
+          {referralName && (
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 mb-8 animate-bounce">
+              <Sparkles className="w-4 h-4 text-blue-400" />
+              <span className="text-sm font-medium">You've been invited by {referralName}</span>
+            </div>
+          )}
 
-        {/* Content */}
-        <div className="relative z-20 container-mobile text-center text-white px-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <Globe className="w-3 h-3 text-blue-400" />
-            <span className="text-xs font-medium tracking-wide">Connecting 10,000+ Users</span>
-          </div>
-
-          <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-6 leading-tight animate-in fade-in slide-in-from-bottom-8 duration-1000">
-            Your World, <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Connected.</span>
+          <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-6 leading-[0.9]">
+            STOP SCROLLING. <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">START LIVING.</span>
           </h1>
           
-          <p className="text-lg md:text-xl text-white/80 max-w-xl mx-auto mb-10 leading-relaxed animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200">
-            The social map that lets you see who's nearby, plan spontaneous hangouts, and discover local events securely.
+          <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+            Ahmia is a location-based social platform designed to turn "people nearby" into "plans tonight." Join the exclusive waitlist to unlock your city.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-300">
-            <Button 
-              size="lg" 
-              className="min-w-[200px] h-14 text-lg font-semibold rounded-full gradient-primary text-white shadow-[0_0_20px_rgba(37,99,235,0.5)] hover:shadow-[0_0_30px_rgba(37,99,235,0.7)] transition-all hover:scale-105"
-              onClick={() => handleAuth('signup')}
-            >
-              Join Now - It's Free
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline"
-              className="min-w-[200px] h-14 text-lg font-semibold rounded-full bg-white/5 border-white/20 text-white hover:bg-white/10 backdrop-blur-sm"
-              onClick={() => handleAuth('login')}
-            >
-              Sign In
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURES GRID */}
-      <section className="py-24 px-4 bg-background">
-        <div className="container-mobile">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Everything you need</h2>
-            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">Built for real-life connections, keeping privacy and ease-of-use in mind.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((f, i) => (
-              <Card key={i} className="border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg group bg-card/50 backdrop-blur-sm">
-                <CardContent className="p-6 flex flex-col items-center text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    {f.icon}
-                  </div>
-                  <h3 className="font-semibold text-lg mb-2">{f.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{f.desc}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* DOWNLOAD APP SECTION */}
-      <section className="py-20 bg-muted/30 border-y border-border relative overflow-hidden">
-        <div className="container-mobile relative z-10">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-12">
-            
-            <div className="flex-1 text-center lg:text-left space-y-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold uppercase tracking-wider">
-                <Smartphone className="w-3 h-3" /> Mobile App
+          {/* UNLOCK PROGRESS CARD */}
+          <Card className="max-w-md mx-auto bg-white/5 border-white/10 backdrop-blur-xl mb-12 overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex justify-between items-end mb-4">
+                <div className="text-left">
+                  <p className="text-xs font-bold uppercase text-blue-400 tracking-wider">Current Status</p>
+                  <h3 className="text-xl font-bold">Lagos is {unlockProgress}% Unlocked</h3>
+                </div>
+                <Lock className="w-5 h-5 text-gray-500 mb-1" />
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Take Ahmia with you everywhere.</h2>
-              <p className="text-lg text-muted-foreground max-w-md mx-auto lg:mx-0">
-                Get the full experience on your phone. Real-time location sharing, instant notifications, and smoother chatting.
-              </p>
               
-              <div className="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start pt-2">
-                <Button variant="outline" disabled className="h-14 px-6 rounded-xl bg-black text-white hover:bg-gray-800 transition-all flex items-center gap-3 cursor-not-allowed shadow-lg">
-                   <Play className="w-6 h-6 fill-current" />
-                   <div className="text-left">
-                     <div className="text-[10px] uppercase font-medium opacity-80">Coming Soon to</div>
-                     <div className="text-base font-bold leading-none">Google Play</div>
-                   </div>
-                </Button>
-
-                <Button variant="outline" disabled className="h-14 px-6 rounded-xl border-2 border-dashed border-muted-foreground/30 bg-transparent text-muted-foreground flex items-center gap-3 cursor-not-allowed opacity-70">
-                   <Apple className="w-6 h-6 pb-1" />
-                   <div className="text-left">
-                     <div className="text-[10px] uppercase font-medium">Coming Soon to</div>
-                     <div className="text-base font-bold leading-none">App Store</div>
-                   </div>
-                </Button>
+              {/* Progress Bar */}
+              <div className="w-full h-4 bg-white/10 rounded-full mb-4 p-1">
+                <div 
+                  className="h-full gradient-primary rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(37,99,235,0.6)]"
+                  style={{ width: `${unlockProgress}%` }}
+                />
               </div>
-            </div>
+              <p className="text-sm text-gray-400">We need 172 more sign-ups to activate Day 1 events.</p>
+            </CardContent>
+          </Card>
 
-            <div className="flex-1 relative w-full max-w-sm lg:max-w-md mx-auto">
-               <div className="relative aspect-[9/18] rounded-[2.5rem] border-8 border-gray-900 bg-gray-800 shadow-2xl overflow-hidden">
-                  <div className="absolute inset-0 bg-background flex flex-col">
-                    <div className="flex-1 bg-muted/20 relative p-4">
-                       <div className="absolute top-1/4 left-1/4 w-8 h-8 bg-blue-500 rounded-full border-4 border-white shadow-lg animate-bounce" />
-                       <div className="absolute top-1/2 right-1/3 w-8 h-8 bg-purple-500 rounded-full border-4 border-white shadow-lg" />
-                       <div className="absolute bottom-1/3 left-1/2 w-8 h-8 bg-green-500 rounded-full border-4 border-white shadow-lg" />
-                    </div>
-                    <div className="h-16 bg-white border-t flex justify-around items-center px-4">
-                      <div className="w-8 h-8 rounded-full bg-gray-100" />
-                      <div className="w-8 h-8 rounded-full bg-blue-100" />
-                      <div className="w-8 h-8 rounded-full bg-gray-100" />
-                    </div>
-                  </div>
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-6 bg-gray-900 rounded-b-2xl" />
-               </div>
-               
-               <div className="absolute -z-10 top-10 -right-10 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl" />
-               <div className="absolute -z-10 bottom-10 -left-10 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl" />
-            </div>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <Button 
+              size="lg" 
+              className="group min-w-[240px] h-16 text-lg font-bold rounded-2xl bg-blue-600 hover:bg-blue-500 transition-all"
+              onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
+            >
+              Secure My Spot
+              <ChevronRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </Button>
+          </div>
+        </div>
 
+        {/* Ambient background glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] -z-10" />
+      </section>
+
+      {/* HOW IT WORKS - THREE STEPS */}
+      <section className="py-24 bg-[#0a0a0a] border-y border-white/5">
+        <div className="container-mobile px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
+            <div className="space-y-4">
+              <div className="w-16 h-16 bg-blue-600/10 rounded-3xl flex items-center justify-center mx-auto text-blue-500 border border-blue-500/20">
+                <Users className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold">1. Join the Squad</h3>
+              <p className="text-gray-400">Sign up and verify your local neighborhood or campus.</p>
+            </div>
+            <div className="space-y-4">
+              <div className="w-16 h-16 bg-indigo-600/10 rounded-3xl flex items-center justify-center mx-auto text-indigo-500 border border-indigo-500/20">
+                <Share2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold">2. Unlock Your Area</h3>
+              <p className="text-gray-400">Share with friends. Once your zone hits the goal, the map goes live.</p>
+            </div>
+            <div className="space-y-4">
+              <div className="w-16 h-16 bg-purple-600/10 rounded-3xl flex items-center justify-center mx-auto text-purple-500 border border-purple-500/20">
+                <MapPin className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold">3. Meet Up</h3>
+              <p className="text-gray-400">Host activities, join events, and foster real-world connections.</p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer className="bg-background border-t border-border pt-16 pb-8">
-        <div className="container-mobile px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
-            
-            <div className="col-span-2 md:col-span-1">
-              <h3 className="font-bold text-xl mb-4 tracking-tight gradient-primary bg-clip-text text-transparent inline-block">Ahmia</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-                Connecting friends, communities, and events in the real world.
-              </p>
-              <div className="flex gap-4">
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><Twitter className="w-5 h-5" /></a>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><Instagram className="w-5 h-5" /></a>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors"><Linkedin className="w-5 h-5" /></a>
-              </div>
-            </div>
+      {/* CATALYST CTA */}
+      <section className="py-20 px-4">
+        <div className="container-mobile max-w-4xl bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[3rem] p-12 text-center relative overflow-hidden shadow-2xl">
+          <div className="relative z-10">
+            <h2 className="text-3xl md:text-5xl font-black mb-6">Are you a natural leader?</h2>
+            <p className="text-white/80 text-lg mb-8 max-w-xl mx-auto">
+              We're looking for Campus Catalysts to lead the Ahmia movement. Get paid to build community.
+            </p>
+            <Button size="lg" variant="secondary" className="rounded-full font-bold px-8 h-14 bg-white text-blue-600 hover:bg-gray-100">
+              Apply to the Catalyst Program
+            </Button>
+          </div>
+          {/* Decorative shapes */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl" />
+        </div>
+      </section>
 
-            <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                {footerLinks.company.map((link, i) => (
-                  <li key={i}><a href={link.href} className="hover:text-foreground transition-colors">{link.label}</a></li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                {footerLinks.legal.map((link, i) => (
-                  <li key={i}><a href={link.href} className="hover:text-foreground transition-colors">{link.label}</a></li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                 {footerLinks.support.map((link, i) => (
-                  <li key={i}><a href="https://chat.whatsapp.com/Fe2gkrxSOtZHuwMQXJltKR?mode=wwt" className="hover:text-foreground transition-colors">{link.label}</a></li>
-                ))}
-              </ul>
-            </div>
+      {/* FOOTER - Minimalist */}
+      <footer className="py-12 border-t border-white/5">
+        <div className="container-mobile px-4 flex flex-col md:flex-row justify-between items-center gap-8">
+          <div className="text-center md:text-left">
+            <h3 className="text-2xl font-black tracking-tighter mb-2">AHMIA</h3>
+            <p className="text-gray-500 text-sm">Real world. Real friends. Real fast.</p>
+          </div>
+          
+          <div className="flex gap-6">
+            <a href="#" className="text-gray-400 hover:text-white transition-colors"><Twitter /></a>
+            <a href="#" className="text-gray-400 hover:text-white transition-colors"><Instagram /></a>
+            <a href="#" className="text-gray-400 hover:text-white transition-colors"><Linkedin /></a>
           </div>
 
-          <div className="border-t border-border pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <Copyright className="w-3 h-3" /> 
-              <span>{currentYear} Ahmia. All rights reserved.</span>
-            </div>
-            <div className="flex items-center gap-6">
-               <span>Made with ❤️ for connection</span>
-            </div>
+          <div className="text-gray-500 text-xs">
+            <Copyright className="inline w-3 h-3 mr-1" /> {currentYear} Ahmia. Built with ❤️ for Nigeria.
           </div>
         </div>
       </footer>
