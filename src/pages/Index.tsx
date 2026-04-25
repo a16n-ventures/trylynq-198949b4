@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { 
   MapPin, Users, MessageCircle, Sparkles, Globe, 
   Smartphone, Lock, ChevronRight, Share2,
-  Crunchbase, Instagram, Linkedin, Copyright
+  Twitter, Instagram, Linkedin, Copyright
 } from 'lucide-react';
 import AuthModal from '@/components/auth/AuthModal';
 import { Card, CardContent } from '@/components/ui/card';
@@ -166,8 +166,8 @@ const Index = () => {
             <p className="text-gray-500 text-sm">Real world. Real friends. Real fast.</p>
           </div>
           
-          <div className="flex gap-6">
-            <a href="https://crunchbase.com/company/ahmia" className="text-gray-400 hover:text-white transition-colors"><Crunchbase /></a>
+          <div className="flex gap-4">
+            {/* <a href="https://crunchbase.com/company/ahmia" className="text-gray-400 hover:text-white transition-colors"><Twitter /></a> */}
             <a href="https://instagram.com/@ahmiahq" className="text-gray-400 hover:text-white transition-colors"><Instagram /></a>
             <a href="https://linkedin.com/company/ahmiahq" className="text-gray-400 hover:text-white transition-colors"><Linkedin /></a>
           </div>
