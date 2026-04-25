@@ -149,8 +149,14 @@ const Index = () => {
             <p className="text-white/80 text-lg mb-8 max-w-xl mx-auto">
               We're looking for Campus Catalysts to lead the Ahmia movement. Get paid to build community.
             </p>
-            <Button size="lg" variant="secondary" className="rounded-full font-bold px-8 h-14 bg-white text-blue-600 hover:bg-gray-100" onClick={() => navigate('https://forms.gle/EprHKfnSRjDHDVDY6')} target="__blank">
-              Apply to the Catalyst Program
+            <Button asChild size="lg" variant="secondary" className="rounded-full font-bold px-8 h-14 bg-white text-blue-600 hover:bg-gray-100">
+              <a 
+                href="https://forms.gle/EprHKfnSRjDHDVDY6" 
+                target="_blank" 
+                rel="noopener noreferrer"
+              >
+                Apply to the Catalyst Program
+              </a>
             </Button>
           </div>
           {/* Decorative shapes */}
@@ -163,7 +169,7 @@ const Index = () => {
         <div className="container-mobile px-4 flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="text-center md:text-left">
             <h3 className="text-2xl font-black tracking-tighter mb-2">AHMIA</h3>
-            <p className="text-gray-500 text-sm">Real world. Real friends. Real fast.</p>
+            <p className="text-gray-500 text-sm">Real world. Real friends. Real-time.</p>
           </div>
           
           <div className="flex gap-4">
@@ -173,7 +179,7 @@ const Index = () => {
           </div>
 
           <div className="text-gray-500 text-xs">
-            <Copyright className="inline w-3 h-3 mr-1" /> {currentYear} Ahmia Nigeria. Built with ❤️ by Corridor.
+            <Copyright className="inline w-3 h-3 mr-1" /> {currentYear} Ahmia Nigeria Ltd. Built with ❤️ with Corridor.
           </div>
         </div>
       </footer>
