@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { 
   MapPin, Users, MessageCircle, Sparkles, Globe, 
   Smartphone, Lock, ChevronRight, Share2,
-  Twitter, Instagram, Linkedin, Copyright
+  Crunchbase, Instagram, Linkedin, Copyright
 } from 'lucide-react';
 import AuthModal from '@/components/auth/AuthModal';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,7 +20,7 @@ const Index = () => {
   const currentYear = new Date().getFullYear();
 
   // "City Unlock" Mock Data - In a real app, fetch this based on user IP/Location
-  const unlockProgress = 65; 
+  const unlockProgress = 45; 
   const targetDate = new Date('2026-06-01T00:00:00');
 
   useEffect(() => {
@@ -50,7 +50,7 @@ const Index = () => {
       
       {/* EXCLUSIVE TOP BAR */}
       <div className="w-full bg-blue-600 py-2 px-4 text-center text-xs font-bold uppercase tracking-widest">
-        🚀 Launching June 1st: The movement starts in {Math.ceil((targetDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days
+        Ahmia goes LIVE on June 1st: The movement starts in {Math.ceil((targetDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days
       </div>
 
       {/* HERO SECTION */}
@@ -71,7 +71,7 @@ const Index = () => {
           </h1>
           
           <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Ahmia is a location-based social platform designed to turn "people nearby" into "plans tonight." Join the exclusive waitlist to unlock your city.
+            Ahmia is a location-based social discovery platform designed to turn "people nearby" into "plans tonight." Join the exclusive waitlist to unlock your city.
           </p>
 
           {/* UNLOCK PROGRESS CARD */}
@@ -80,7 +80,7 @@ const Index = () => {
               <div className="flex justify-between items-end mb-4">
                 <div className="text-left">
                   <p className="text-xs font-bold uppercase text-blue-400 tracking-wider">Current Status</p>
-                  <h3 className="text-xl font-bold">Lagos is {unlockProgress}% Unlocked</h3>
+                  <h3 className="text-xl text-white font-bold">Zaria is {unlockProgress}% Unlocked</h3>
                 </div>
                 <Lock className="w-5 h-5 text-gray-500 mb-1" />
               </div>
@@ -92,7 +92,7 @@ const Index = () => {
                   style={{ width: `${unlockProgress}%` }}
                 />
               </div>
-              <p className="text-sm text-gray-400">We need 172 more sign-ups to activate Day 1 events.</p>
+              <p className="text-sm text-gray-400">We need 275 more sign-ups to activate Day 1 events.</p>
             </CardContent>
           </Card>
 
@@ -149,7 +149,7 @@ const Index = () => {
             <p className="text-white/80 text-lg mb-8 max-w-xl mx-auto">
               We're looking for Campus Catalysts to lead the Ahmia movement. Get paid to build community.
             </p>
-            <Button size="lg" variant="secondary" className="rounded-full font-bold px-8 h-14 bg-white text-blue-600 hover:bg-gray-100">
+            <Button size="lg" variant="secondary" className="rounded-full font-bold px-8 h-14 bg-white text-blue-600 hover:bg-gray-100" onClick={() => navigate('https://forms.gle/EprHKfnSRjDHDVDY6')} target="__blank">
               Apply to the Catalyst Program
             </Button>
           </div>
@@ -167,13 +167,13 @@ const Index = () => {
           </div>
           
           <div className="flex gap-6">
-            <a href="#" className="text-gray-400 hover:text-white transition-colors"><Twitter /></a>
-            <a href="#" className="text-gray-400 hover:text-white transition-colors"><Instagram /></a>
-            <a href="#" className="text-gray-400 hover:text-white transition-colors"><Linkedin /></a>
+            <a href="https://crunchbase.com/company/ahmia" className="text-gray-400 hover:text-white transition-colors"><Crunchbase /></a>
+            <a href="https://instagram.com/@ahmiahq" className="text-gray-400 hover:text-white transition-colors"><Instagram /></a>
+            <a href="https://linkedin.com/company/ahmiahq" className="text-gray-400 hover:text-white transition-colors"><Linkedin /></a>
           </div>
 
           <div className="text-gray-500 text-xs">
-            <Copyright className="inline w-3 h-3 mr-1" /> {currentYear} Ahmia. Built with ❤️ for Nigeria.
+            <Copyright className="inline w-3 h-3 mr-1" /> {currentYear} Ahmia Nigeria. Built with ❤️ by Corridor.
           </div>
         </div>
       </footer>
