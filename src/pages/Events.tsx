@@ -565,7 +565,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* Right: Actions */}
