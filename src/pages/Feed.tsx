@@ -104,8 +104,8 @@ const Feed = () => {
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
-  const [selectedEvent, setSelectedEvent] = useState<FeedFeedEvent | null>(null);
-  const [selectedCommunity, setSelectedCommunity] = useState<FeedFeedCommunity | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<FeedEvent | null>(null);
+  const [selectedCommunity, setSelectedCommunity] = useState<FeedCommunity | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
   // Pioneer milestone derived from launch zone hook
