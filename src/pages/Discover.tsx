@@ -928,10 +928,13 @@ export default function Discover() {
       async (position) => {
         const { latitude, longitude } = position.coords;
         try {
-          const { data: ai, error } = await supabase.functions.invoke('generate-smart-feed', {
-            body: { user_id: user?.id, user_lat: latitude, user_long: longitude },
+          const { data: aiRaw, error } = await supabase.rpc('generate_smart_feed', {
+            p_user_id: user?.id,
+            p_user_lat: latitude,
+            p_user_long: longitude,
           });
           if (error) throw error;
+          const ai = aiRaw as { events?: any[]; communities?: any[] } | null;
           
           if (ai) {
             // Process Events
