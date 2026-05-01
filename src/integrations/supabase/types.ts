@@ -847,9 +847,6 @@ export type Database = {
           is_locked: boolean | null
           is_official: boolean | null
           is_public: boolean | null
-          latitude: number | null
-          location: string | null
-          longitude: number | null
           match_score: number | null
           max_attendees: number | null
           meeting_link: string | null
@@ -877,9 +874,6 @@ export type Database = {
           is_locked?: boolean | null
           is_official?: boolean | null
           is_public?: boolean | null
-          latitude?: number | null
-          location?: string | null
-          longitude?: number | null
           match_score?: number | null
           max_attendees?: number | null
           meeting_link?: string | null
@@ -907,9 +901,6 @@ export type Database = {
           is_locked?: boolean | null
           is_official?: boolean | null
           is_public?: boolean | null
-          latitude?: number | null
-          location?: string | null
-          longitude?: number | null
           match_score?: number | null
           max_attendees?: number | null
           meeting_link?: string | null
@@ -1546,10 +1537,6 @@ export type Database = {
           is_pioneer: boolean | null
           is_premium: boolean
           is_verified: boolean | null
-          latitude: number | null
-          location: string | null
-          location_updated_at: string | null
-          longitude: number | null
           phone: string | null
           pioneer_number: number | null
           preferences: Json | null
@@ -1577,10 +1564,6 @@ export type Database = {
           is_pioneer?: boolean | null
           is_premium?: boolean
           is_verified?: boolean | null
-          latitude?: number | null
-          location?: string | null
-          location_updated_at?: string | null
-          longitude?: number | null
           phone?: string | null
           pioneer_number?: number | null
           preferences?: Json | null
@@ -1608,10 +1591,6 @@ export type Database = {
           is_pioneer?: boolean | null
           is_premium?: boolean
           is_verified?: boolean | null
-          latitude?: number | null
-          location?: string | null
-          location_updated_at?: string | null
-          longitude?: number | null
           phone?: string | null
           pioneer_number?: number | null
           preferences?: Json | null
@@ -2990,69 +2969,42 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       longtransactionsenabled: { Args: never; Returns: boolean }
       make_user_admin: { Args: { target_user_id: string }; Returns: undefined }
-      match_content_smart: {
-        Args: {
-          match_threshold: number
-          query_embedding: string
-          travel_radius_km: number
-          user_lat?: number
-          user_long?: number
-        }
-        Returns: {
-          boost_multiplier: number | null
-          category: string | null
-          created_at: string
-          creator_id: string
-          description: string | null
-          embedding: string | null
-          end_date: string | null
-          event_type: string | null
-          event_views_30d: number | null
-          id: string
-          image_url: string | null
-          is_boosted: boolean | null
-          is_locked: boolean | null
-          is_official: boolean | null
-          is_public: boolean | null
-          latitude: number | null
-          location: string | null
-          longitude: number | null
-          match_score: number | null
-          max_attendees: number | null
-          meeting_link: string | null
-          meeting_status: string | null
-          recurrence_rule: string | null
-          requires_approval: boolean
-          start_date: string
-          ticket_price: number | null
-          title: string
-          updated_at: string
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "events"
-          isOneToOne: false
-          isSetofReturn: true
-        }
-      }
-      match_events_smart: {
-        Args: {
-          match_count: number
-          match_threshold: number
-          query_embedding: string
-          travel_propensity: number
-          user_lat: number
-          user_long: number
-        }
-        Returns: {
-          distance_km: number
-          final_score: number
-          id: string
-          is_boosted: boolean
-          similarity: number
-          title: string
-        }[]
-      }
+      match_events_smart:
+        | {
+            Args: {
+              match_count: number
+              match_threshold: number
+              p_user_id: string
+              query_embedding: string
+              travel_propensity: number
+            }
+            Returns: {
+              distance_km: number
+              final_score: number
+              id: string
+              is_boosted: boolean
+              similarity: number
+              title: string
+            }[]
+          }
+        | {
+            Args: {
+              match_count: number
+              match_threshold: number
+              query_embedding: string
+              travel_propensity: number
+              user_lat: number
+              user_long: number
+            }
+            Returns: {
+              distance_km: number
+              final_score: number
+              id: string
+              is_boosted: boolean
+              similarity: number
+              title: string
+            }[]
+          }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
