@@ -225,7 +225,7 @@ const Feed = () => {
         }
       }
 
-      const { data: response, error } = await supabase.rpc('generate_smart_feed', {
+      const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
         p_user_id: user?.id,
         p_user_lat: currentLat,
         p_user_long: currentLong,
@@ -234,6 +234,7 @@ const Feed = () => {
 
       if (error) throw error;
 
+      const response = rawResponse as { events?: any[]; communities?: any[]; milestone?: any } | null;
       if (response) {
         const { data: myAttendance } = await supabase
           .from('event_attendees')
@@ -243,7 +244,7 @@ const Feed = () => {
 
         if (response.events) {
           // --- FIXED: Fetch creator verification status since the RPC doesn't return it ---
-          const creatorIds = [...new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))];
+          const creatorIds = Array.from(new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))) as string[];
           
           const { data: creatorProfiles } = await supabase
             .from('profiles')
