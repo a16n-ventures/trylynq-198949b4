@@ -4,23 +4,40 @@ import { Button } from '@/components/ui/button';
 import { 
   MapPin, Users, MessageCircle, Sparkles, Globe, 
   Smartphone, Lock, ChevronRight, Share2,
-  Twitter, Instagram, Linkedin, Copyright
+  Twitter, Instagram, Linkedin, Copyright, Loader2
 } from 'lucide-react';
 import AuthModal from '@/components/auth/AuthModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+
+// Haversine distance (km)
+function distKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+type ZoneStatus = {
+  city: string;
+  current: number;
+  target: number;
+  unlocked: boolean;
+  inZone: boolean;
+} | null;
 
 const Index = () => {
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [referralName, setReferralName] = useState<string | null>(null);
-  
+  const [zone, setZone] = useState<ZoneStatus>(null);
+  const [zoneLoading, setZoneLoading] = useState(true);
+
   const { user, loading } = useAuth(); 
   const navigate = useNavigate();
   const currentYear = new Date().getFullYear();
-
-  // "City Unlock" Mock Data - In a real app, fetch this based on user IP/Location
-  const unlockProgress = 45; 
   const targetDate = new Date('2026-06-01T00:00:00');
 
   useEffect(() => {
