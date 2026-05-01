@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { 
   Calendar, MapPin, DollarSign, ArrowLeft, Image as ImageIcon, 
-  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check, Repeat
+  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check, Repeat, Sparkles
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';

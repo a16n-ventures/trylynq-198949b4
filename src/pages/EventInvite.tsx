@@ -61,17 +61,24 @@ const EventInvitePage = () => {
   const [copied, setCopied] = useState(false);
 
   // Fetch event details
-  const { data: event, isPending: loadingEvent } = useQuery<Event>({
+  const { data: event, isPending: loadingEvent } = useQuery<Event | null>({
     queryKey: ['event', eventId],
-    queryFn: async () => {
+    queryFn: async (): Promise<Event | null> => {
+      if (!eventId) return null;
       const { data, error } = await supabase
         .from('events')
-        .select('id, title, description, start_date, location, image_url')
+        .select('id, title, description, start_date, image_url')
         .eq('id', eventId)
         .single();
-      
+
       if (error) throw error;
-      return data;
+      const { data: loc } = await supabase
+        .from('event_locations')
+        .select('location_name')
+        .eq('event_id', eventId)
+        .maybeSingle();
+
+      return { ...data, location: loc?.location_name || '' } as Event;
     },
     enabled: !!eventId,
   });

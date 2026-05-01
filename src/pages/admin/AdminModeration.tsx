@@ -47,9 +47,10 @@ const ContentPreview = ({ type, id }: { type: 'user' | 'event', id: string }) =>
         if (!data) return null;
         return { ...data, _kind: 'user' as const, role: null };
       } else {
-        const { data } = await supabase.from('events').select('title, location, description, image_url').eq('id', id).maybeSingle();
-        if (!data) return null;
-        return { ...data, _kind: 'event' as const };
+        const { data: eventData } = await supabase.from('events').select('title, description, image_url').eq('id', id).maybeSingle();
+        if (!eventData) return null;
+        const { data: locData } = await supabase.from('event_locations').select('location_name').eq('event_id', id).maybeSingle();
+        return { ...eventData, location: locData?.location_name || null, _kind: 'event' as const };
       }
     }
   });

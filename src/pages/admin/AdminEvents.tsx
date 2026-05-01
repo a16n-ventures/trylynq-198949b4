@@ -71,7 +71,7 @@ export default function AdminEvents() {
         toast.error("Failed to load events");
         throw error;
       }
-      return (data || []) as EventRow[];
+      return ((data || []) as unknown) as EventRow[];
     },
     placeholderData: keepPreviousData
   });
