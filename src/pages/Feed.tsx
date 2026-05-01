@@ -24,8 +24,43 @@ import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { useLaunchZone } from '@/hooks/useLaunchZone';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 
+// --- TYPES (local — avoids collision with DOM Event) ---
+type FeedEvent = {
+  id: string;
+  title: string;
+  description?: string | null;
+  start_date: string;
+  end_date?: string | null;
+  location?: string | null;
+  image_url?: string | null;
+  category?: string | null;
+  creator_id?: string | null;
+  ticket_price?: number | null;
+  match_score?: number;
+  raw_score?: number;
+  attendee_count?: number;
+  is_attending?: boolean;
+  is_sponsored?: boolean;
+  is_verified?: boolean;
+  friend_images?: string[];
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+type FeedCommunity = {
+  id: string;
+  name: string;
+  description?: string | null;
+  cover_url?: string | null;
+  avatar_url?: string | null;
+  member_count?: number;
+  is_premium?: boolean;
+  join_fee?: number;
+  is_member?: boolean;
+};
+
 // --- HELPER: Calendar Sync ---
-const addToCalendar = (event: Event) => {
+const addToCalendar = (event: FeedEvent) => {
   const start = new Date(event.start_date).toISOString().replace(/-|:|\.\d\d\d/g, "");
   const end = event.end_date 
     ? new Date(event.end_date).toISOString().replace(/-|:|\.\d\d\d/g, "") 
