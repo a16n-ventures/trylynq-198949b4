@@ -269,7 +269,7 @@ const Index = () => {
           </div>
 
           <div className="text-gray-500 text-xs">
-            <Copyright className="inline w-3 h-3 mr-1" /> {currentYear} Ahmia Nigeria Ltd. Built with ❤️ with Corridor.
+            <Copyright className="inline w-3 h-3 mr-1" /> {currentYear} Ahmia Nigeria Ltd. Built with ❤️ by Corridor.
           </div>
         </div>
       </footer>
