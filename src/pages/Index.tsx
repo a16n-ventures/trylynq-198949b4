@@ -4,23 +4,40 @@ import { Button } from '@/components/ui/button';
 import { 
   MapPin, Users, MessageCircle, Sparkles, Globe, 
   Smartphone, Lock, ChevronRight, Share2,
-  Twitter, Instagram, Linkedin, Copyright
+  Twitter, Instagram, Linkedin, Copyright, Loader2
 } from 'lucide-react';
 import AuthModal from '@/components/auth/AuthModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+
+// Haversine distance (km)
+function distKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+type ZoneStatus = {
+  city: string;
+  current: number;
+  target: number;
+  unlocked: boolean;
+  inZone: boolean;
+} | null;
 
 const Index = () => {
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [referralName, setReferralName] = useState<string | null>(null);
-  
+  const [zone, setZone] = useState<ZoneStatus>(null);
+  const [zoneLoading, setZoneLoading] = useState(true);
+
   const { user, loading } = useAuth(); 
   const navigate = useNavigate();
   const currentYear = new Date().getFullYear();
-
-  // "City Unlock" Mock Data - In a real app, fetch this based on user IP/Location
-  const unlockProgress = 45; 
   const targetDate = new Date('2026-06-01T00:00:00');
 
   useEffect(() => {
@@ -31,6 +48,58 @@ const Index = () => {
       // Logic to capitalize and clean name for UI
       setReferralName(refCode.charAt(0).toUpperCase() + refCode.slice(1));
     }
+  }, []);
+
+  // Detect user location → match nearest city_milestone
+  useEffect(() => {
+    let cancelled = false;
+    const findZone = async () => {
+      const { data: milestones } = await supabase.from('city_milestones').select('*');
+      if (cancelled || !milestones || milestones.length === 0) {
+        setZoneLoading(false);
+        return;
+      }
+
+      const matchTo = (lat: number, lng: number) => {
+        let best: any = null;
+        let bestDist = Infinity;
+        for (const m of milestones) {
+          const d = distKm(lat, lng, m.center_lat, m.center_long);
+          if (d < bestDist) { bestDist = d; best = m; }
+        }
+        const inZone = best && bestDist <= (best.radius_km ?? 25);
+        if (best) {
+          setZone({
+            city: best.city_name,
+            current: best.current_count ?? 0,
+            target: best.target_count ?? 0,
+            unlocked: best.is_unlocked === true,
+            inZone: !!inZone,
+          });
+        }
+        setZoneLoading(false);
+      };
+
+      if (!navigator.geolocation) {
+        // No GPS — show first/largest zone as a teaser
+        const m = milestones[0];
+        setZone({ city: m.city_name, current: m.current_count ?? 0, target: m.target_count ?? 0, unlocked: m.is_unlocked === true, inZone: false });
+        setZoneLoading(false);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => !cancelled && matchTo(pos.coords.latitude, pos.coords.longitude),
+        () => {
+          if (cancelled) return;
+          const m = milestones[0];
+          setZone({ city: m.city_name, current: m.current_count ?? 0, target: m.target_count ?? 0, unlocked: m.is_unlocked === true, inZone: false });
+          setZoneLoading(false);
+        },
+        { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
+      );
+    };
+    findZone();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -74,25 +143,46 @@ const Index = () => {
             Ahmia is a location-based social discovery platform designed to turn "people nearby" into "plans tonight." Join the exclusive waitlist to unlock your city.
           </p>
 
-          {/* UNLOCK PROGRESS CARD */}
+          {/* UNLOCK PROGRESS CARD — dynamic based on detected zone */}
           <Card className="max-w-md mx-auto bg-white/5 border-white/10 backdrop-blur-xl mb-12 overflow-hidden">
             <CardContent className="p-6">
-              <div className="flex justify-between items-end mb-4">
-                <div className="text-left">
-                  <p className="text-xs font-bold uppercase text-blue-400 tracking-wider">Current Status</p>
-                  <h3 className="text-xl text-white font-bold">Zaria is {unlockProgress}% Unlocked</h3>
+              {zoneLoading || !zone ? (
+                <div className="flex items-center justify-center py-6 text-gray-400 gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Detecting your city…
                 </div>
-                <Lock className="w-5 h-5 text-gray-500 mb-1" />
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="w-full h-4 bg-white/10 rounded-full mb-4 p-1">
-                <div 
-                  className="h-full gradient-primary rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(37,99,235,0.6)]"
-                  style={{ width: `${unlockProgress}%` }}
-                />
-              </div>
-              <p className="text-sm text-gray-400">We need 275 more sign-ups to activate Day 1 events.</p>
+              ) : (
+                <>
+                  <div className="flex justify-between items-end mb-4">
+                    <div className="text-left">
+                      <p className="text-xs font-bold uppercase text-blue-400 tracking-wider">
+                        {zone.inZone ? 'You\'re in a launch zone' : 'Nearest launch zone'}
+                      </p>
+                      <h3 className="text-xl text-white font-bold">
+                        {zone.target > 0
+                          ? `${zone.city} is ${Math.min(100, Math.round((zone.current / zone.target) * 100))}% Unlocked`
+                          : `${zone.city} ${zone.unlocked ? 'is LIVE' : 'coming soon'}`}
+                      </h3>
+                    </div>
+                    {zone.unlocked
+                      ? <Sparkles className="w-5 h-5 text-blue-400 mb-1" />
+                      : <Lock className="w-5 h-5 text-gray-500 mb-1" />}
+                  </div>
+
+                  <div className="w-full h-4 bg-white/10 rounded-full mb-4 p-1">
+                    <div 
+                      className="h-full gradient-primary rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(37,99,235,0.6)]"
+                      style={{ width: `${zone.target > 0 ? Math.min(100, (zone.current / zone.target) * 100) : (zone.unlocked ? 100 : 5)}%` }}
+                    />
+                  </div>
+                  <p className="text-sm text-gray-400">
+                    {zone.unlocked
+                      ? `${zone.city} is live — sign up to start meeting people nearby.`
+                      : zone.target > 0
+                        ? `We need ${Math.max(0, zone.target - zone.current)} more sign-ups to activate Day 1 events.`
+                        : `Be the first to claim ${zone.city}.`}
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
 

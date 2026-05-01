@@ -100,10 +100,12 @@ export default function Messages() {
   const fetchChatDetails = async (type: ChatType, id: string): Promise<ChatItem | null> => {
     if (type === 'event') {
       const { data } = await supabase.from('events').select('*').eq('id', id).single();
-      return data ? {
+      if (!data) return null;
+      const { data: loc } = await supabase.from('event_locations').select('location_name').eq('event_id', id).maybeSingle();
+      return {
         id: data.id, type: 'event', name: data.title, avatar: data.image_url,
-        meta: { date: data.start_date, location: data.location }
-      } : null;
+        meta: { date: data.start_date, location: loc?.location_name || null }
+      };
     } else if (type === 'community') {
       const { data } = await supabase.from('communities').select('*').eq('id', id).single();
       return data ? {

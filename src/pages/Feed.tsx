@@ -24,8 +24,43 @@ import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { useLaunchZone } from '@/hooks/useLaunchZone';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 
+// --- TYPES (local — avoids collision with DOM Event) ---
+type FeedEvent = {
+  id: string;
+  title: string;
+  description?: string | null;
+  start_date: string;
+  end_date?: string | null;
+  location?: string | null;
+  image_url?: string | null;
+  category?: string | null;
+  creator_id?: string | null;
+  ticket_price?: number | null;
+  match_score?: number;
+  raw_score?: number;
+  attendee_count?: number;
+  is_attending?: boolean;
+  is_sponsored?: boolean;
+  is_verified?: boolean;
+  friend_images?: string[];
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+type FeedCommunity = {
+  id: string;
+  name: string;
+  description?: string | null;
+  cover_url?: string | null;
+  avatar_url?: string | null;
+  member_count?: number;
+  is_premium?: boolean;
+  join_fee?: number;
+  is_member?: boolean;
+};
+
 // --- HELPER: Calendar Sync ---
-const addToCalendar = (event: Event) => {
+const addToCalendar = (event: FeedEvent) => {
   const start = new Date(event.start_date).toISOString().replace(/-|:|\.\d\d\d/g, "");
   const end = event.end_date 
     ? new Date(event.end_date).toISOString().replace(/-|:|\.\d\d\d/g, "") 
@@ -57,8 +92,8 @@ const Feed = () => {
   const { unreadCount } = useRealtimeNotifications(user?.id);
   
   // Data State
-  const [events, setEvents] = useState<Event[]>([]);
-  const [communities, setCommunities] = useState<Community[]>([]);
+  const [events, setEvents] = useState<FeedEvent[]>([]);
+  const [communities, setCommunities] = useState<FeedCommunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   // --- NEW: Explorer UX State ---
@@ -69,8 +104,8 @@ const Feed = () => {
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<FeedEvent | null>(null);
+  const [selectedCommunity, setSelectedCommunity] = useState<FeedCommunity | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
   // Pioneer milestone derived from launch zone hook
@@ -190,7 +225,7 @@ const Feed = () => {
         }
       }
 
-      const { data: response, error } = await supabase.rpc('generate_smart_feed', {
+      const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
         p_user_id: user?.id,
         p_user_lat: currentLat,
         p_user_long: currentLong,
@@ -199,6 +234,7 @@ const Feed = () => {
 
       if (error) throw error;
 
+      const response = rawResponse as { events?: any[]; communities?: any[]; milestone?: any } | null;
       if (response) {
         const { data: myAttendance } = await supabase
           .from('event_attendees')
@@ -208,7 +244,7 @@ const Feed = () => {
 
         if (response.events) {
           // --- FIXED: Fetch creator verification status since the RPC doesn't return it ---
-          const creatorIds = [...new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))];
+          const creatorIds = Array.from(new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))) as string[];
           
           const { data: creatorProfiles } = await supabase
             .from('profiles')
@@ -261,7 +297,7 @@ const Feed = () => {
     const newStatus = !isCurrentlyAttending;
     const modifier = newStatus ? 1 : -1;
   
-    const updateState = (e: Event): Event => ({
+    const updateState = (e: FeedEvent): FeedEvent => ({
       ...e,
       is_attending: newStatus,
       attendee_count: Math.max(0, (e.attendee_count || 0) + modifier)

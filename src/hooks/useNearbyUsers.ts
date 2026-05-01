@@ -87,33 +87,46 @@ export function useNearbyUsers(userId: string | undefined, enabled: boolean = tr
       });
 
       if (error) {
-        // Fallback: Get users with location manually
-        const { data: fallbackUsers } = await supabase
-          .from('profiles')
-          .select('user_id, display_name, avatar_url, latitude, longitude')
+        // Fallback: Get users with location from user_locations (profiles no longer holds coordinates)
+        const { data: fallbackLocs } = await supabase
+          .from('user_locations')
+          .select('user_id, latitude, longitude')
+          .eq('is_sharing_location', true)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null)
-          .limit(50);
-        
-        if (!fallbackUsers) return [];
+          .limit(100);
 
-        return fallbackUsers
-          .filter(u => !excludeIds.has(u.user_id) && u.latitude && u.longitude)
+        if (!fallbackLocs || fallbackLocs.length === 0) return [];
+
+        const candidateIds = fallbackLocs
+          .filter(u => !excludeIds.has(u.user_id))
+          .map(u => u.user_id);
+        if (candidateIds.length === 0) return [];
+
+        const { data: profileRows } = await supabase
+          .from('profiles')
+          .select('user_id, display_name, avatar_url')
+          .in('user_id', candidateIds);
+        const profMap = new Map(profileRows?.map(p => [p.user_id, p]) || []);
+
+        return fallbackLocs
+          .filter(u => !excludeIds.has(u.user_id) && u.latitude != null && u.longitude != null)
           .map(u => {
             const distance = calculateDistance(
               userLocation.lat, userLocation.lng,
-              u.latitude!, u.longitude!
+              Number(u.latitude), Number(u.longitude)
             );
+            const prof = profMap.get(u.user_id);
             return {
               user_id: u.user_id,
-              display_name: u.display_name,
-              avatar_url: u.avatar_url,
-              latitude: u.latitude,
-              longitude: u.longitude,
+              display_name: prof?.display_name ?? null,
+              avatar_url: prof?.avatar_url ?? null,
+              latitude: Number(u.latitude),
+              longitude: Number(u.longitude),
               distance_km: distance
-            };
+            } as NearbyProfile;
           })
-          .filter(u => u.distance_km <= NEARBY_RADIUS_KM)
+          .filter(u => (u.distance_km ?? Infinity) <= NEARBY_RADIUS_KM)
           .sort((a, b) => (a.distance_km || 0) - (b.distance_km || 0));
       }
 

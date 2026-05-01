@@ -21,7 +21,7 @@ const VoiceCall = ({ contact, onEndCall, isIncoming = false }: VoiceCallProps) =
   const [callDuration, setCallDuration] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   
-  const callTimer = useRef<NodeJS.Timeout>();
+  const callTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
 

@@ -148,7 +148,7 @@ const EventDetail = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -216,12 +216,20 @@ const EventDetail = () => {
              };
         }
       }
-      
+
+      // Fetch location from event_locations (events table no longer holds location)
+      const { data: locRow } = await supabase
+        .from('event_locations')
+        .select('location_name')
+        .eq('event_id', eventId)
+        .maybeSingle();
+
       return {
         ...eventData,
+        location: locRow?.location_name || '',
         event_type: (eventData.event_type as 'physical' | 'virtual') || 'physical',
         creator: creatorProfile
-      } as Event;
+      } as unknown as Event;
     },
     enabled: !!eventId,
   });
