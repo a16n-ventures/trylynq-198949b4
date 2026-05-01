@@ -92,8 +92,8 @@ const Feed = () => {
   const { unreadCount } = useRealtimeNotifications(user?.id);
   
   // Data State
-  const [events, setEvents] = useState<Event[]>([]);
-  const [communities, setCommunities] = useState<Community[]>([]);
+  const [events, setEvents] = useState<FeedEvent[]>([]);
+  const [communities, setCommunities] = useState<FeedCommunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   // --- NEW: Explorer UX State ---
@@ -104,8 +104,8 @@ const Feed = () => {
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [selectedCommunity, setSelectedCommunity] = useState<Community | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<FeedFeedEvent | null>(null);
+  const [selectedCommunity, setSelectedCommunity] = useState<FeedFeedCommunity | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
   // Pioneer milestone derived from launch zone hook
@@ -296,7 +296,7 @@ const Feed = () => {
     const newStatus = !isCurrentlyAttending;
     const modifier = newStatus ? 1 : -1;
   
-    const updateState = (e: Event): Event => ({
+    const updateState = (e: FeedEvent): FeedEvent => ({
       ...e,
       is_attending: newStatus,
       attendee_count: Math.max(0, (e.attendee_count || 0) + modifier)
