@@ -221,8 +221,8 @@ const Feed = () => {
   const fetchSmartFeed = async () => {
     setLoading(true);
     try {
-      let currentLat = location?.latitude;
-      let currentLong = location?.longitude;
+      const currentLat = location?.latitude;
+      const currentLong = location?.longitude;
       let city = 'Detecting...';
 
       if (currentLat && currentLong) {
