@@ -23,6 +23,13 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 
+type CityMilestone = {
+  city_name: string;
+  center_lat: number;
+  center_long: number;
+  radius_km: number | null;
+};
+
 // --- Types ---
 type FriendOnMap = {
   id: string;
@@ -50,6 +57,11 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const formatTicketPrice = (price?: number | null) => {
+  if (!price || price <= 0) return 'Free';
+  return `₦${Number(price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 };
  
 const PremiumBadge = () => (
@@ -134,6 +146,22 @@ const MapPage = () => {
     enabled: !!user?.id
   });
 
+  const { data: cityMilestone } = useQuery({
+    queryKey: ['map-city-milestone', location?.latitude, location?.longitude],
+    queryFn: async (): Promise<CityMilestone | null> => {
+      if (!location) return null;
+      const { data, error } = await supabase
+        .from('city_milestones')
+        .select('city_name, center_lat, center_long, radius_km');
+      if (error || !data) return null;
+      return data
+        .map((m) => ({ ...m, dist: distanceKm(location.latitude, location.longitude, m.center_lat, m.center_long) }))
+        .filter((m) => m.dist <= (m.radius_km ?? 25))
+        .sort((a, b) => a.dist - b.dist)[0] || null;
+    },
+    enabled: !!location,
+  });
+
   const discoveryRadiusKm = useMemo(() => {
     const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
     const km = (prefs?.discovery_radius ?? 25000) / 1000; // Default 25km
@@ -202,14 +230,21 @@ const MapPage = () => {
 
   // --- 4. Events (With Clyx "Decide" Data) ---
  const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm],
+    queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm, cityMilestone?.city_name],
     queryFn: async () => {
-      if (!location) return [];
-        const { data } = await supabase.from('events')
-        .select('*, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url)), event_locations(location_name, latitude, longitude)')
+      const origin = cityMilestone
+        ? { latitude: cityMilestone.center_lat, longitude: cityMilestone.center_long }
+        : location;
+      if (!origin) return [];
+      const { data, error } = await supabase.from('events')
+        .select('id, title, description, start_date, ticket_price, image_url, category, creator_id, max_attendees, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url)), event_locations(location_name, latitude, longitude)')
         .gt('start_date', new Date().toISOString())
         .eq('is_public', true);
 
+      if (error) {
+        console.error('[Map] Event load failed:', error);
+        return [];
+      }
       if (!data) return [];
 
       return (data.map((e: any) => {
@@ -218,7 +253,7 @@ const MapPage = () => {
         if (!loc || loc.latitude == null || loc.longitude == null) return null;
         const eLat = Number(loc.latitude);
         const eLng = Number(loc.longitude);
-        const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
+        const dist = distanceKm(origin.latitude, origin.longitude, eLat, eLng);
 
         if (dist > discoveryRadiusKm) return null;
 
@@ -227,8 +262,12 @@ const MapPage = () => {
         return {
           id: e.id,
           title: e.title,
+          description: e.description,
           location: loc.location_name,
           start_date: e.start_date,
+          ticket_price: e.ticket_price,
+          category: e.category,
+          max_attendees: e.max_attendees,
           image_url: e.image_url,
           latitude: eLat,
           longitude: eLng,
@@ -241,7 +280,7 @@ const MapPage = () => {
       }).filter(Boolean))
       .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
     },
-    enabled: !!location,
+    enabled: !!location || !!cityMilestone,
   });
 
   const nearbyEventsForMap = useMemo(() => {
@@ -249,11 +288,28 @@ const MapPage = () => {
       user_id: e.id, 
       latitude: e.latitude,
       longitude: e.longitude,
+      markerType: 'event' as const,
       is_sharing: true, 
       updated_at: new Date().toISOString(),
       profiles: { display_name: e.title, avatar_url: e.image_url }
     }));
   }, [events]);
+
+  const handleMarkerSelect = (id: string, markerType?: 'friend' | 'event') => {
+    if (markerType === 'event' || activeView === 'events') {
+      const event = events.find((e: any) => e.id === id);
+      if (event) {
+        setSelectedFriend(null);
+        setSelectedEvent(event);
+      }
+      return;
+    }
+    const friend = friendsMapped.find((f) => f.id === id || f.user_id === id);
+    if (friend) {
+      setSelectedEvent(null);
+      setSelectedFriend(friend);
+    }
+  };
 
   // --- 5. Ghost Mode ---
   useEffect(() => {
@@ -332,10 +388,11 @@ const MapPage = () => {
           <LeafletMap
             ref={mapRef}
             userLocation={location}
-            friendsLocations={activeView === 'friends' ? friendsMapped : []}
-            loading={locationLoading}
+            friendsLocations={activeView === 'friends' ? friendsMapped : nearbyEventsForMap}
+            loading={locationLoading || (activeView === 'events' && eventsLoading)}
             error={locationError}
             mapStyle={mapStyle} 
+            onMarkerSelect={handleMarkerSelect}
             routeCoordinates={routeCoordinates}
           />
         </div>
@@ -524,6 +581,21 @@ const MapPage = () => {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">From city</p>
+                      <p className="text-sm font-black">{selectedEvent.distanceKm}km</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ticket</p>
+                      <p className="text-sm font-black">{formatTicketPrice(selectedEvent.ticket_price)}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Going</p>
+                      <p className="text-sm font-black">{selectedEvent.attendee_count || 0}</p>
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
                     <div className="flex items-center -space-x-3">
                       {selectedEvent.friend_images.length > 0 ? (
@@ -554,9 +626,9 @@ const MapPage = () => {
                     </Button>
                     <Button 
                       className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white"
-                      onClick={() => navigate(`/app/feed?event=${selectedEvent.id}`)}
+                      onClick={() => navigate(`/app/events/${selectedEvent.id}`)}
                     >
-                      <Calendar className="w-4 h-4 mr-2" /> RSVP
+                      <Calendar className="w-4 h-4 mr-2" /> Details
                     </Button>
                   </div>
                 </CardContent>
@@ -599,9 +671,12 @@ const MapPage = () => {
                     </div>
                     <div className="w-full px-1">
                       <h4 className="font-bold text-sm truncate">{item.name || item.title} {item.is_verified && <ShieldCheck className="w-3 h-3 text-primary" />}</h4>
-                      <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
-                        <MapPin className="w-3 h-3" /> {item.distanceKm}km
+                      <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1 truncate">
+                        <MapPin className="w-3 h-3" /> {activeView === 'events' ? item.location : `${item.distanceKm}km`}
                       </p>
+                      {activeView === 'events' && (
+                        <p className="text-[10px] font-bold text-primary">{item.distanceKm}km • {formatTicketPrice(item.ticket_price)}</p>
+                      )}
                     </div>
                   </div>
                 ))}

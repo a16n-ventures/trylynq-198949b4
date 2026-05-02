@@ -45,6 +45,7 @@ type FeedEvent = {
   friend_images?: string[];
   latitude?: number | null;
   longitude?: number | null;
+  distanceKm?: number | null;
 };
 
 type FeedCommunity = {
@@ -85,6 +86,17 @@ const getEventStatus = (startDate: string) => {
   }
   return { label: 'Past', color: 'bg-muted' };
 };
+
+const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const formatTicketPrice = (price?: number | null) => price && price > 0 ? `₦${price.toLocaleString()}` : 'Free';
 
 const Feed = () => {
   const { user } = useAuth();
@@ -209,8 +221,8 @@ const Feed = () => {
   const fetchSmartFeed = async () => {
     setLoading(true);
     try {
-      let currentLat = location?.latitude;
-      let currentLong = location?.longitude;
+      const currentLat = location?.latitude;
+      const currentLong = location?.longitude;
       let city = 'Detecting...';
 
       if (currentLat && currentLong) {
@@ -245,11 +257,12 @@ const Feed = () => {
         if (response.events) {
           // --- FIXED: Fetch creator verification status since the RPC doesn't return it ---
           const creatorIds = Array.from(new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))) as string[];
-          
-          const { data: creatorProfiles } = await supabase
-            .from('profiles')
-            .select('user_id, verification_status')
-            .in('user_id', creatorIds);
+          const { data: creatorProfiles } = creatorIds.length > 0
+            ? await supabase
+                .from('profiles')
+                .select('user_id, verification_status')
+                .in('user_id', creatorIds)
+            : { data: [] as Array<{ user_id: string; verification_status: string | null }> };
             
           const verifiedCreators = new Set(
             creatorProfiles?.filter(p => p.verification_status === 'verified').map(p => p.user_id) || []
@@ -260,6 +273,9 @@ const Feed = () => {
             attendee_count: e.attendee_count || 0,
             is_attending: attendingIds.has(e.id),
             friend_images: e.friend_images || [],
+            distanceKm: currentLat && currentLong && e.latitude && e.longitude
+              ? Number(calculateDistanceKm(currentLat, currentLong, Number(e.latitude), Number(e.longitude)).toFixed(1))
+              : null,
             // --- INJECT VERIFIED STATUS HERE ---
             is_verified: verifiedCreators.has(e.creator_id)
           })));
@@ -465,6 +481,7 @@ const Feed = () => {
                         <Card key={event.id} className="overflow-hidden border-0 shadow-md group cursor-pointer active:scale-[0.98] transition-transform" onClick={() => setSelectedEvent(event)}>
                           <div className="relative h-48 w-full bg-muted">
                             <img src={event.image_url || '/placeholder-event.jpg'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
                             <div className="absolute top-3 left-3 flex gap-2">
                                 <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>{status.label}</Badge>
                                 {/* --- Explorer UI: High Match Score Badge --- */}
@@ -488,10 +505,18 @@ const Feed = () => {
                                 <span className="block text-xs font-bold uppercase text-red-500">{new Date(event.start_date).toLocaleString('default', { month: 'short' })}</span>
                                 <span className="block text-lg font-black leading-none">{new Date(event.start_date).getDate()}</span>
                               </div>
+                              <div className="absolute bottom-3 left-3 right-3 text-white">
+                                <h3 className="font-black text-xl leading-tight line-clamp-2">{event.title}</h3>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.location || locationName}</span>
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
+                                  {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
+                                </div>
+                              </div>
                             </div>
 
                             <CardContent className="p-4">
-                              <h3 className="font-bold text-lg leading-tight mb-1 line-clamp-2">{event.title}</h3>
+                              <h3 className="sr-only">{event.title}</h3>
                               <div className="flex items-center text-xs text-muted-foreground gap-3">
                                 <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || locationName}</span>
                               </div>

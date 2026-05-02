@@ -247,6 +247,19 @@ export default function Events() {
     return hasActiveFeature || hasActiveSub;
   };
 
+  const applyEventLocations = async <T extends { id: string }>(eventList: T[]): Promise<Array<T & { location: string }>> => {
+    if (eventList.length === 0) return [];
+    const { data: locations } = await supabase
+      .from('event_locations')
+      .select('event_id, location_name')
+      .in('event_id', eventList.map((event) => event.id));
+    const locationMap = new Map((locations || []).map((loc) => [loc.event_id, loc.location_name]));
+    return eventList.map((event) => ({
+      ...event,
+      location: locationMap.get(event.id) || 'Location TBA',
+    }));
+  };
+
   // 1. Fetch My Events
   const { data: myEvents = [], isLoading: loadingMy } = useQuery({
     queryKey: ["events", "my", userId],
@@ -278,12 +291,13 @@ export default function Events() {
       const countMap: Record<string, number> = {};
       attendees.forEach(a => countMap[a.event_id] = (countMap[a.event_id] || 0) + 1);
 
-      return events.map((event: any) => ({
+      const processedEvents = events.map((event: any) => ({
         ...event,
         event_type: (event.event_type as 'physical' | 'virtual') || 'physical',
         attendee_count: countMap[event.id] || 0,
         is_boosted: checkBoostPermission(event.creator_id, premiums, subs)
       }));
+      return applyEventLocations(processedEvents) as Promise<EventWithStats[]>;
     },
     enabled: !!userId,
     staleTime: 30000,
@@ -330,7 +344,9 @@ export default function Events() {
       const countMap: Record<string, number> = {};
       attendees.forEach(a => countMap[a.event_id] = (countMap[a.event_id] || 0) + 1);
 
-      const processedEvents = events.map((event: any) => ({
+      const eventsWithLocations = await applyEventLocations(events);
+
+      const processedEvents = eventsWithLocations.map((event: any) => ({
         ...event,
         attendee_count: countMap[event.id] || 0,
         is_boosted: checkBoostPermission(event.creator_id, premiums, subs)
@@ -606,7 +622,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     if (!searchQuery) return events;
     return events.filter(event => 
       event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      event.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (event.location || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       event.category.toLowerCase().includes(searchQuery.toLowerCase())
     );
   };
