@@ -146,6 +146,22 @@ const MapPage = () => {
     enabled: !!user?.id
   });
 
+  const { data: cityMilestone } = useQuery({
+    queryKey: ['map-city-milestone', location?.latitude, location?.longitude],
+    queryFn: async (): Promise<CityMilestone | null> => {
+      if (!location) return null;
+      const { data, error } = await supabase
+        .from('city_milestones')
+        .select('city_name, center_lat, center_long, radius_km');
+      if (error || !data) return null;
+      return data
+        .map((m) => ({ ...m, dist: distanceKm(location.latitude, location.longitude, m.center_lat, m.center_long) }))
+        .filter((m) => m.dist <= (m.radius_km ?? 25))
+        .sort((a, b) => a.dist - b.dist)[0] || null;
+    },
+    enabled: !!location,
+  });
+
   const discoveryRadiusKm = useMemo(() => {
     const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
     const km = (prefs?.discovery_radius ?? 25000) / 1000; // Default 25km
