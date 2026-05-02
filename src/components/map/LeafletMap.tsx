@@ -172,6 +172,7 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
         const lng = typeof friend.longitude === 'string' ? parseFloat(friend.longitude) : friend.longitude;
       
         if (lat && lng) {
+          const isEventMarker = friend.markerType === 'event';
           const avatar = friend.profiles?.avatar_url || "https://github.com/shadcn.png";
           const statusBubble = (friend as any).status_bubble; // Access the new status
       
@@ -179,12 +180,17 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
             className: 'bg-transparent border-0',
             html: `
               <div class="relative flex flex-col items-center">
-                ${statusBubble ? `
+                ${isEventMarker ? `
+                  <div class="relative flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground border-[3px] border-background shadow-xl">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 1 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <span class="absolute inset-0 rounded-full bg-primary opacity-30 animate-ping"></span>
+                  </div>
+                ` : statusBubble ? `
                   <div class="absolute -top-10 bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded-2xl shadow-xl animate-bounce whitespace-nowrap border-2 border-background z-50">
                     ${statusBubble}
                     <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rotate-45 border-r-2 border-b-2 border-background"></div>
                   </div>
-                ` : ''}
+                ` : `
                 
                 <div style="
                   width: 44px; height: 44px; 
@@ -195,6 +201,7 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
                   box-shadow: 0 8px 15px rgba(0,0,0,0.2);
                   background-color: #e2e8f0;
                 "></div>
+                `}
               </div>
             `,
             iconSize: [120, 120], // Increased size to prevent clipping the bubble
@@ -202,6 +209,7 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
           });
       
           const m = L.marker([lat, lng], { icon }).addTo(map);
+          m.on('click', () => onMarkerSelect?.(friend.user_id, friend.markerType));
           if (friend.profiles?.display_name) {
             m.bindPopup(`<div style="font-weight:600; text-align:center">${friend.profiles.display_name}</div>`);
           }
