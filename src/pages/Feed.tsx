@@ -480,6 +480,7 @@ const Feed = () => {
                         <Card key={event.id} className="overflow-hidden border-0 shadow-md group cursor-pointer active:scale-[0.98] transition-transform" onClick={() => setSelectedEvent(event)}>
                           <div className="relative h-48 w-full bg-muted">
                             <img src={event.image_url || '/placeholder-event.jpg'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
                             <div className="absolute top-3 left-3 flex gap-2">
                                 <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>{status.label}</Badge>
                                 {/* --- Explorer UI: High Match Score Badge --- */}
@@ -503,10 +504,18 @@ const Feed = () => {
                                 <span className="block text-xs font-bold uppercase text-red-500">{new Date(event.start_date).toLocaleString('default', { month: 'short' })}</span>
                                 <span className="block text-lg font-black leading-none">{new Date(event.start_date).getDate()}</span>
                               </div>
+                              <div className="absolute bottom-3 left-3 right-3 text-white">
+                                <h3 className="font-black text-xl leading-tight line-clamp-2">{event.title}</h3>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.location || locationName}</span>
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
+                                  {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
+                                </div>
+                              </div>
                             </div>
 
                             <CardContent className="p-4">
-                              <h3 className="font-bold text-lg leading-tight mb-1 line-clamp-2">{event.title}</h3>
+                              <h3 className="sr-only">{event.title}</h3>
                               <div className="flex items-center text-xs text-muted-foreground gap-3">
                                 <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || locationName}</span>
                               </div>
