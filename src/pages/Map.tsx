@@ -671,9 +671,12 @@ const MapPage = () => {
                     </div>
                     <div className="w-full px-1">
                       <h4 className="font-bold text-sm truncate">{item.name || item.title} {item.is_verified && <ShieldCheck className="w-3 h-3 text-primary" />}</h4>
-                      <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1">
-                        <MapPin className="w-3 h-3" /> {item.distanceKm}km
+                      <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1 truncate">
+                        <MapPin className="w-3 h-3" /> {activeView === 'events' ? item.location : `${item.distanceKm}km`}
                       </p>
+                      {activeView === 'events' && (
+                        <p className="text-[10px] font-bold text-primary">{item.distanceKm}km • {formatTicketPrice(item.ticket_price)}</p>
+                      )}
                     </div>
                   </div>
                 ))}
