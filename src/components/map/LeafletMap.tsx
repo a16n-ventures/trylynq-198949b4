@@ -11,6 +11,7 @@ interface FriendLocation {
   user_id: string;
   latitude?: string | number | null;
   longitude?: string | number | null;
+  markerType?: 'friend' | 'event';
   profiles?: {
     display_name?: string | null;
     avatar_url?: string | null;
@@ -23,6 +24,7 @@ interface LeafletMapProps {
   loading?: boolean;
   error?: string | null;
   mapStyle?: 'standard' | 'satellite';
+  onMarkerSelect?: (id: string, markerType?: 'friend' | 'event') => void;
   routeCoordinates?: [number, number][] | null; // ✅ Added prop for navigation route
 }
 
@@ -32,6 +34,7 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
   loading,
   error,
   mapStyle = 'standard',
+  onMarkerSelect,
   routeCoordinates // ✅ Destructure new prop
 }, ref) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
