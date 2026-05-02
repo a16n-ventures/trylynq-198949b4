@@ -622,7 +622,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     if (!searchQuery) return events;
     return events.filter(event => 
       event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      event.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (event.location || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       event.category.toLowerCase().includes(searchQuery.toLowerCase())
     );
   };
