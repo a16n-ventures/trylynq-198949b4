@@ -388,10 +388,11 @@ const MapPage = () => {
           <LeafletMap
             ref={mapRef}
             userLocation={location}
-            friendsLocations={activeView === 'friends' ? friendsMapped : []}
-            loading={locationLoading}
+            friendsLocations={activeView === 'friends' ? friendsMapped : nearbyEventsForMap}
+            loading={locationLoading || (activeView === 'events' && eventsLoading)}
             error={locationError}
             mapStyle={mapStyle} 
+            onMarkerSelect={handleMarkerSelect}
             routeCoordinates={routeCoordinates}
           />
         </div>
