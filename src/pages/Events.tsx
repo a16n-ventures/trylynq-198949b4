@@ -291,12 +291,13 @@ export default function Events() {
       const countMap: Record<string, number> = {};
       attendees.forEach(a => countMap[a.event_id] = (countMap[a.event_id] || 0) + 1);
 
-      return events.map((event: any) => ({
+      const processedEvents = events.map((event: any) => ({
         ...event,
         event_type: (event.event_type as 'physical' | 'virtual') || 'physical',
         attendee_count: countMap[event.id] || 0,
         is_boosted: checkBoostPermission(event.creator_id, premiums, subs)
       }));
+      return applyEventLocations(processedEvents) as Promise<EventWithStats[]>;
     },
     enabled: !!userId,
     staleTime: 30000,
@@ -343,7 +344,9 @@ export default function Events() {
       const countMap: Record<string, number> = {};
       attendees.forEach(a => countMap[a.event_id] = (countMap[a.event_id] || 0) + 1);
 
-      const processedEvents = events.map((event: any) => ({
+      const eventsWithLocations = await applyEventLocations(events);
+
+      const processedEvents = eventsWithLocations.map((event: any) => ({
         ...event,
         attendee_count: countMap[event.id] || 0,
         is_boosted: checkBoostPermission(event.creator_id, premiums, subs)
