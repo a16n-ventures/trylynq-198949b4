@@ -230,14 +230,21 @@ const MapPage = () => {
 
   // --- 4. Events (With Clyx "Decide" Data) ---
  const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm],
+    queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm, cityMilestone?.city_name],
     queryFn: async () => {
-      if (!location) return [];
-        const { data } = await supabase.from('events')
-        .select('*, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url)), event_locations(location_name, latitude, longitude)')
+      const origin = cityMilestone
+        ? { latitude: cityMilestone.center_lat, longitude: cityMilestone.center_long }
+        : location;
+      if (!origin) return [];
+      const { data, error } = await supabase.from('events')
+        .select('id, title, description, start_date, ticket_price, image_url, category, creator_id, max_attendees, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url)), event_locations(location_name, latitude, longitude)')
         .gt('start_date', new Date().toISOString())
         .eq('is_public', true);
 
+      if (error) {
+        console.error('[Map] Event load failed:', error);
+        return [];
+      }
       if (!data) return [];
 
       return (data.map((e: any) => {
@@ -246,7 +253,7 @@ const MapPage = () => {
         if (!loc || loc.latitude == null || loc.longitude == null) return null;
         const eLat = Number(loc.latitude);
         const eLng = Number(loc.longitude);
-        const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
+        const dist = distanceKm(origin.latitude, origin.longitude, eLat, eLng);
 
         if (dist > discoveryRadiusKm) return null;
 
@@ -255,8 +262,12 @@ const MapPage = () => {
         return {
           id: e.id,
           title: e.title,
+          description: e.description,
           location: loc.location_name,
           start_date: e.start_date,
+          ticket_price: e.ticket_price,
+          category: e.category,
+          max_attendees: e.max_attendees,
           image_url: e.image_url,
           latitude: eLat,
           longitude: eLng,
@@ -269,7 +280,7 @@ const MapPage = () => {
       }).filter(Boolean))
       .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
     },
-    enabled: !!location,
+    enabled: !!location || !!cityMilestone,
   });
 
   const nearbyEventsForMap = useMemo(() => {
