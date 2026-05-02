@@ -219,7 +219,7 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
     };
 
     updateMarkers();
-  }, [userLocation, friendsLocations]);
+  }, [userLocation, friendsLocations, onMarkerSelect]);
 
   // 4. ✅ Handle Route Rendering (New Logic)
   useEffect(() => {
