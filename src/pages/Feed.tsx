@@ -272,6 +272,9 @@ const Feed = () => {
             attendee_count: e.attendee_count || 0,
             is_attending: attendingIds.has(e.id),
             friend_images: e.friend_images || [],
+            distanceKm: currentLat && currentLong && e.latitude && e.longitude
+              ? Number(calculateDistanceKm(currentLat, currentLong, Number(e.latitude), Number(e.longitude)).toFixed(1))
+              : null,
             // --- INJECT VERIFIED STATUS HERE ---
             is_verified: verifiedCreators.has(e.creator_id)
           })));
