@@ -288,11 +288,28 @@ const MapPage = () => {
       user_id: e.id, 
       latitude: e.latitude,
       longitude: e.longitude,
+      markerType: 'event' as const,
       is_sharing: true, 
       updated_at: new Date().toISOString(),
       profiles: { display_name: e.title, avatar_url: e.image_url }
     }));
   }, [events]);
+
+  const handleMarkerSelect = (id: string, markerType?: 'friend' | 'event') => {
+    if (markerType === 'event' || activeView === 'events') {
+      const event = events.find((e: any) => e.id === id);
+      if (event) {
+        setSelectedFriend(null);
+        setSelectedEvent(event);
+      }
+      return;
+    }
+    const friend = friendsMapped.find((f) => f.id === id || f.user_id === id);
+    if (friend) {
+      setSelectedEvent(null);
+      setSelectedFriend(friend);
+    }
+  };
 
   // --- 5. Ghost Mode ---
   useEffect(() => {
