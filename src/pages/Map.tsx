@@ -23,6 +23,13 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 
+type CityMilestone = {
+  city_name: string;
+  center_lat: number;
+  center_long: number;
+  radius_km: number | null;
+};
+
 // --- Types ---
 type FriendOnMap = {
   id: string;
@@ -50,6 +57,11 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const dLon = toRad(lon2 - lon1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const formatTicketPrice = (price?: number | null) => {
+  if (!price || price <= 0) return 'Free';
+  return `₦${Number(price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 };
  
 const PremiumBadge = () => (
