@@ -257,11 +257,12 @@ const Feed = () => {
         if (response.events) {
           // --- FIXED: Fetch creator verification status since the RPC doesn't return it ---
           const creatorIds = Array.from(new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))) as string[];
-          
-          const { data: creatorProfiles } = await supabase
-            .from('profiles')
-            .select('user_id, verification_status')
-            .in('user_id', creatorIds);
+          const { data: creatorProfiles } = creatorIds.length > 0
+            ? await supabase
+                .from('profiles')
+                .select('user_id, verification_status')
+                .in('user_id', creatorIds)
+            : { data: [] as Array<{ user_id: string; verification_status: string | null }> };
             
           const verifiedCreators = new Set(
             creatorProfiles?.filter(p => p.verification_status === 'verified').map(p => p.user_id) || []
