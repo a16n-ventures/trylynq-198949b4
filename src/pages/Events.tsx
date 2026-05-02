@@ -247,6 +247,19 @@ export default function Events() {
     return hasActiveFeature || hasActiveSub;
   };
 
+  const applyEventLocations = async <T extends { id: string }>(eventList: T[]): Promise<Array<T & { location: string }>> => {
+    if (eventList.length === 0) return [];
+    const { data: locations } = await supabase
+      .from('event_locations')
+      .select('event_id, location_name')
+      .in('event_id', eventList.map((event) => event.id));
+    const locationMap = new Map((locations || []).map((loc) => [loc.event_id, loc.location_name]));
+    return eventList.map((event) => ({
+      ...event,
+      location: locationMap.get(event.id) || 'Location TBA',
+    }));
+  };
+
   // 1. Fetch My Events
   const { data: myEvents = [], isLoading: loadingMy } = useQuery({
     queryKey: ["events", "my", userId],
