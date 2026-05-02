@@ -241,7 +241,7 @@ const MapPage = () => {
       }).filter(Boolean))
       .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
     },
-    enabled: !!location && activeView === 'events',
+    enabled: !!location,
   });
 
   const nearbyEventsForMap = useMemo(() => {
