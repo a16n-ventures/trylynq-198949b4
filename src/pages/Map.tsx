@@ -137,7 +137,7 @@ const MapPage = () => {
   const discoveryRadiusKm = useMemo(() => {
     const prefs = userProfile?.preferences as { discovery_radius?: number } | null;
     const km = (prefs?.discovery_radius ?? 25000) / 1000; // Default 25km
-    return Math.min(5, Math.max(25, km)); // Clamp between 5km and 25km
+    return Math.min(25, Math.max(5, km)); // Clamp between 5km and 25km
   }, [userProfile]);
 
   // --- 3. Process & Sort Friends ---
@@ -206,18 +206,18 @@ const MapPage = () => {
     queryFn: async () => {
       if (!location) return [];
         const { data } = await supabase.from('events')
-        // --- FIXED: Join profiles to fetch creator's trust status ---
-        .select('*, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url))')
+        .select('*, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url)), event_locations(location_name, latitude, longitude)')
         .gt('start_date', new Date().toISOString())
         .eq('is_public', true);
 
       if (!data) return [];
 
       return (data.map((e: any) => {
-        // Skip events without coordinates rather than defaulting to Lagos
-        if (e.latitude == null || e.longitude == null) return null;
-        const eLat = e.latitude;
-        const eLng = e.longitude;
+        // Source coords + name from event_locations (single source of truth)
+        const loc = Array.isArray(e.event_locations) ? e.event_locations[0] : e.event_locations;
+        if (!loc || loc.latitude == null || loc.longitude == null) return null;
+        const eLat = Number(loc.latitude);
+        const eLng = Number(loc.longitude);
         const dist = distanceKm(location.latitude, location.longitude, eLat, eLng);
 
         if (dist > discoveryRadiusKm) return null;
@@ -227,7 +227,7 @@ const MapPage = () => {
         return {
           id: e.id,
           title: e.title,
-          location: e.location,
+          location: loc.location_name,
           start_date: e.start_date,
           image_url: e.image_url,
           latitude: eLat,
@@ -241,7 +241,7 @@ const MapPage = () => {
       }).filter(Boolean))
       .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
     },
-    enabled: !!location && activeView === 'events',
+    enabled: !!location,
   });
 
   const nearbyEventsForMap = useMemo(() => {

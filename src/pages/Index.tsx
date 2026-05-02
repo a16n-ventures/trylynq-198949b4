@@ -53,52 +53,65 @@ const Index = () => {
   // Detect user location → match nearest city_milestone
   useEffect(() => {
     let cancelled = false;
-    const findZone = async () => {
+
+    const matchTo = async (lat: number, lng: number) => {
       const { data: milestones } = await supabase.from('city_milestones').select('*');
       if (cancelled || !milestones || milestones.length === 0) {
         setZoneLoading(false);
         return;
       }
+      let best: any = null;
+      let bestDist = Infinity;
+      for (const m of milestones) {
+        const d = distKm(lat, lng, m.center_lat, m.center_long);
+        if (d < bestDist) { bestDist = d; best = m; }
+      }
+      const inZone = best && bestDist <= (best.radius_km ?? 25);
+      if (best) {
+        setZone({
+          city: best.city_name,
+          current: best.current_count ?? 0,
+          target: best.target_count ?? 0,
+          unlocked: best.is_unlocked === true,
+          inZone: !!inZone,
+        });
+      }
+      setZoneLoading(false);
+    };
 
-      const matchTo = (lat: number, lng: number) => {
-        let best: any = null;
-        let bestDist = Infinity;
-        for (const m of milestones) {
-          const d = distKm(lat, lng, m.center_lat, m.center_long);
-          if (d < bestDist) { bestDist = d; best = m; }
+    // IP-based geolocation fallback (no permission prompt) → returns lat/lng
+    const ipFallback = async () => {
+      try {
+        const res = await fetch('https://ipapi.co/json/');
+        const data = await res.json();
+        if (data?.latitude && data?.longitude && !cancelled) {
+          await matchTo(data.latitude, data.longitude);
+          return;
         }
-        const inZone = best && bestDist <= (best.radius_km ?? 25);
-        if (best) {
-          setZone({
-            city: best.city_name,
-            current: best.current_count ?? 0,
-            target: best.target_count ?? 0,
-            unlocked: best.is_unlocked === true,
-            inZone: !!inZone,
-          });
-        }
-        setZoneLoading(false);
-      };
-
-      if (!navigator.geolocation) {
-        // No GPS — show first/largest zone as a teaser
+      } catch (e) {
+        console.warn('IP geo failed', e);
+      }
+      // Last-resort: show first milestone as a teaser
+      const { data: milestones } = await supabase.from('city_milestones').select('*').limit(1);
+      if (cancelled) return;
+      if (milestones && milestones[0]) {
         const m = milestones[0];
         setZone({ city: m.city_name, current: m.current_count ?? 0, target: m.target_count ?? 0, unlocked: m.is_unlocked === true, inZone: false });
-        setZoneLoading(false);
-        return;
       }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => !cancelled && matchTo(pos.coords.latitude, pos.coords.longitude),
-        () => {
-          if (cancelled) return;
-          const m = milestones[0];
-          setZone({ city: m.city_name, current: m.current_count ?? 0, target: m.target_count ?? 0, unlocked: m.is_unlocked === true, inZone: false });
-          setZoneLoading(false);
-        },
-        { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
-      );
+      setZoneLoading(false);
     };
-    findZone();
+
+    if (!navigator.geolocation) {
+      ipFallback();
+      return () => { cancelled = true; };
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => !cancelled && matchTo(pos.coords.latitude, pos.coords.longitude),
+      () => { if (!cancelled) ipFallback(); },
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
+    );
+
     return () => { cancelled = true; };
   }, []);
 
