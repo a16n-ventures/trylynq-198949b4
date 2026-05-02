@@ -196,7 +196,6 @@ const CreateEvent = () => {
           title: eventData.title.trim(),
           description: eventData.description.trim(),
           category: eventData.category,
-          location: eventData.eventType === 'virtual' ? 'In-App' : eventData.location.trim(),
           start_date: startDateTime.toISOString(),
           end_date: null,
           max_attendees: eventData.capacity ? parseInt(eventData.capacity) : null,
@@ -216,6 +215,34 @@ const CreateEvent = () => {
         .single();
 
       if (error) throw error;
+
+      const locationName = eventData.eventType === 'virtual' ? 'In-App' : eventData.location.trim();
+      let matchedCoords: { latitude: number | null; longitude: number | null } = { latitude: null, longitude: null };
+      if (eventData.eventType === 'physical') {
+        const { data: milestones } = await supabase.from('city_milestones').select('city_name, center_lat, center_long');
+        const normalizedLocation = locationName.toLowerCase();
+        const matchedMilestone = milestones?.find((m) => {
+          const city = m.city_name.toLowerCase();
+          const cityParts = city.split(/\s+/).filter((part) => part.length > 2);
+          return normalizedLocation.includes(city) || cityParts.some((part) => normalizedLocation.includes(part));
+        });
+        if (matchedMilestone) {
+          matchedCoords = { latitude: matchedMilestone.center_lat, longitude: matchedMilestone.center_long };
+        }
+      }
+
+      const { error: locationError } = await supabase.from('event_locations').upsert({
+        event_id: newEvent.id,
+        location_name: locationName,
+        formatted_address: locationName,
+        latitude: matchedCoords.latitude,
+        longitude: matchedCoords.longitude,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (locationError) {
+        console.warn('Event created, but location details failed to save:', locationError);
+      }
 
       toast.success('Event created successfully!');
       
