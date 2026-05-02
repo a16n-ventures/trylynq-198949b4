@@ -185,12 +185,13 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 1 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>
                     <span class="absolute inset-0 rounded-full bg-primary opacity-30 animate-ping"></span>
                   </div>
-                ` : statusBubble ? `
+                ` : `
+                ${statusBubble ? `
                   <div class="absolute -top-10 bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded-2xl shadow-xl animate-bounce whitespace-nowrap border-2 border-background z-50">
                     ${statusBubble}
                     <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rotate-45 border-r-2 border-b-2 border-background"></div>
                   </div>
-                ` : `
+                ` : ''}
                 
                 <div style="
                   width: 44px; height: 44px; 
