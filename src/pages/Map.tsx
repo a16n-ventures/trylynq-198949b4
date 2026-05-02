@@ -581,6 +581,21 @@ const MapPage = () => {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">From city</p>
+                      <p className="text-sm font-black">{selectedEvent.distanceKm}km</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ticket</p>
+                      <p className="text-sm font-black">{formatTicketPrice(selectedEvent.ticket_price)}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Going</p>
+                      <p className="text-sm font-black">{selectedEvent.attendee_count || 0}</p>
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
                     <div className="flex items-center -space-x-3">
                       {selectedEvent.friend_images.length > 0 ? (
@@ -611,9 +626,9 @@ const MapPage = () => {
                     </Button>
                     <Button 
                       className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white"
-                      onClick={() => navigate(`/app/feed?event=${selectedEvent.id}`)}
+                      onClick={() => navigate(`/app/events/${selectedEvent.id}`)}
                     >
-                      <Calendar className="w-4 h-4 mr-2" /> RSVP
+                      <Calendar className="w-4 h-4 mr-2" /> Details
                     </Button>
                   </div>
                 </CardContent>
