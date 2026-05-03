@@ -91,6 +91,7 @@ const MapPage = () => {
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('satellite');
+  const [filters, setFilters] = useState<EventFilters>(defaultFilters);
   
   // Navigation State
   const [isNavigating, setIsNavigating] = useState(false);
@@ -230,60 +231,16 @@ const MapPage = () => {
       .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
   }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm]);
 
-  // --- 4. Events (With Clyx "Decide" Data) ---
- const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm, cityMilestone?.city_name],
-    queryFn: async () => {
-      const origin = cityMilestone
-        ? { latitude: cityMilestone.center_lat, longitude: cityMilestone.center_long }
-        : location;
-      if (!origin) return [];
-      const { data, error } = await supabase.from('events')
-        .select('id, title, description, start_date, ticket_price, image_url, category, creator_id, max_attendees, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url)), event_locations(location_name, latitude, longitude)')
-        .gt('start_date', new Date().toISOString())
-        .eq('is_public', true);
-
-      if (error) {
-        console.error('[Map] Event load failed:', error);
-        return [];
-      }
-      if (!data) return [];
-
-      return (data.map((e: any) => {
-        // Source coords + name from event_locations (single source of truth)
-        const loc = Array.isArray(e.event_locations) ? e.event_locations[0] : e.event_locations;
-        if (!loc || loc.latitude == null || loc.longitude == null) return null;
-        const eLat = Number(loc.latitude);
-        const eLng = Number(loc.longitude);
-        const dist = distanceKm(origin.latitude, origin.longitude, eLat, eLng);
-
-        if (dist > discoveryRadiusKm) return null;
-
-        const friendImages = e.event_attendees?.map((a: any) => a.profiles?.avatar_url).filter(Boolean).slice(0, 3) || [];
-
-        return {
-          id: e.id,
-          title: e.title,
-          description: e.description,
-          location: loc.location_name,
-          start_date: e.start_date,
-          ticket_price: e.ticket_price,
-          category: e.category,
-          max_attendees: e.max_attendees,
-          image_url: e.image_url,
-          latitude: eLat,
-          longitude: eLng,
-          distanceKm: Number(dist.toFixed(1)),
-          friend_images: friendImages,
-          attendee_count: e.event_attendees?.length || 0,
-          is_vibe: (e.event_attendees?.length || 0) >= 10,
-          is_verified: e.creator?.verification_status === 'verified'
-        };
-      }).filter(Boolean))
-      .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
-    },
-    enabled: !!location || !!cityMilestone,
+  // --- 4. Events: shared source of truth (uses event_locations + city_milestone origin) ---
+  const { data: nearbyEvents = [], isLoading: eventsLoading } = useNearbyEvents({
+    userLocation: location,
+    cityCenter: cityMilestone
+      ? { latitude: cityMilestone.center_lat, longitude: cityMilestone.center_long }
+      : null,
+    radiusKm: discoveryRadiusKm,
   });
+
+  const events = useMemo(() => applyEventFilters(nearbyEvents, filters), [nearbyEvents, filters]);
 
   const nearbyEventsForMap = useMemo(() => {
     return events.map((e: any) => ({
