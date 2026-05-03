@@ -524,7 +524,7 @@ const Feed = () => {
                               <div className="absolute bottom-3 left-3 right-3 text-white">
                                 <h3 className="font-black text-xl leading-tight line-clamp-2">{event.title}</h3>
                                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
-                                  {/* <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.location || locationName}</span> */}
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.location || locationName}</span> 
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
                                   {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
@@ -535,7 +535,7 @@ const Feed = () => {
                             <CardContent className="p-4">
                               <h3 className="sr-only">{event.title}</h3>
                               <div className="flex items-center text-xs text-muted-foreground gap-3">
-                                <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || locationName}</span>
+                                {/* <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || locationName}</span> */}
                               </div>
                               
                               <div className="mt-4 flex items-center justify-between">
