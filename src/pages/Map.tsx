@@ -408,6 +408,12 @@ const MapPage = () => {
                       {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
                     </Button>
                 </div>
+
+                {activeView === 'events' && (
+                  <div className="bg-background/70 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-lg">
+                    <EventFilterBar value={filters} onChange={setFilters} />
+                  </div>
+                )}
               </div>
             </div>
           )}
