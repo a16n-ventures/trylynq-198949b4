@@ -16,7 +16,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { isPast, isFuture, isToday, addHours, differenceInMinutes } from "date-fns";
+import { isPast, isFuture, isToday, addHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
 import { useNavigate } from 'react-router-dom';
 import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 import { useGeolocation } from '@/contexts/LocationContext'; 
@@ -165,6 +165,19 @@ const Feed = () => {
     fetchSmartFeed();
     checkPremium();
   }, [user, location?.latitude, location?.longitude]);
+
+  // Realtime: refresh feed when RSVPs change so attendee counts update live
+  useEffect(() => {
+    if (!user) return;
+    const ch = supabase
+      .channel('feed-attendees')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_attendees' }, () => {
+        fetchSmartFeed();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
     if (!selectedEvent?.id || !user) return;
