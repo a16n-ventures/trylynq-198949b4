@@ -49,6 +49,8 @@ import { Rocket, UserPlus, Globe } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; 
 import { z } from 'zod';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
+import { EventFilterBar, applyEventFilters, defaultFilters, type EventFilters } from '@/components/events/EventFilterBar';
+import { distanceKm as calcDistanceKm } from '@/hooks/useNearbyEvents';
 
 // --- TYPES ---
 type PremiumFeature = {
@@ -175,6 +177,7 @@ export default function Events() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my");
   const [hostedFilter, setHostedFilter] = useState<'active' | 'past'>('active');
+  const [filters, setFilters] = useState<EventFilters>(defaultFilters);
   
   // Payout & Modal States
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
@@ -216,7 +219,19 @@ export default function Events() {
     };
 
     getMilestoneData();
-  }, [user, location]); 
+  }, [user, location]);
+
+  // Realtime: refresh on RSVP changes
+  useEffect(() => {
+    if (!userId) return;
+    const ch = supabase
+      .channel('events-page-attendees')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_attendees' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['events'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [userId, queryClient]);
 
   // --- HELPER: Logic to check if an event is still "Active" ---
   const isEventActive = (dateString: string) => {
@@ -247,17 +262,25 @@ export default function Events() {
     return hasActiveFeature || hasActiveSub;
   };
 
-  const applyEventLocations = async <T extends { id: string }>(eventList: T[]): Promise<Array<T & { location: string }>> => {
+  const applyEventLocations = async <T extends { id: string }>(eventList: T[]): Promise<Array<T & { location: string; distanceKm: number | null }>> => {
     if (eventList.length === 0) return [];
     const { data: locations } = await supabase
       .from('event_locations')
-      .select('event_id, location_name')
+      .select('event_id, location_name, latitude, longitude')
       .in('event_id', eventList.map((event) => event.id));
-    const locationMap = new Map((locations || []).map((loc) => [loc.event_id, loc.location_name]));
-    return eventList.map((event) => ({
-      ...event,
-      location: locationMap.get(event.id) || 'Location TBA',
-    }));
+    const locationMap = new Map((locations || []).map((loc) => [loc.event_id, loc]));
+    return eventList.map((event) => {
+      const loc = locationMap.get(event.id);
+      let distanceKm: number | null = null;
+      if (loc?.latitude != null && loc?.longitude != null && location?.latitude && location?.longitude) {
+        distanceKm = Number(calcDistanceKm(location.latitude, location.longitude, Number(loc.latitude), Number(loc.longitude)).toFixed(1));
+      }
+      return {
+        ...event,
+        location: loc?.location_name || 'Location TBA',
+        distanceKm,
+      };
+    });
   };
 
   // 1. Fetch My Events
@@ -564,8 +587,11 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                )}
             </div>
             
-            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-              <MapPin className="w-3 h-3" /> <span className="truncate">{event.location}</span>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+              <span className="flex items-center gap-1 truncate"><MapPin className="w-3 h-3" /> {event.location}</span>
+              {(event as any).distanceKm != null && (
+                <span className="text-[11px] font-bold text-primary shrink-0">{(event as any).distanceKm}km away</span>
+              )}
             </div>
             
             {/* --- MODIFIED: Performance-First View for Builders --- */}
@@ -619,12 +645,15 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
   };
 
   const filterEvents = (events: EventWithStats[]) => {
-    if (!searchQuery) return events;
-    return events.filter(event => 
-      event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (event.location || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      event.category.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    let list = events as any[];
+    if (searchQuery) {
+      list = list.filter((event) =>
+        event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (event.location || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.category.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    return applyEventFilters(list as any, filters) as EventWithStats[];
   };
 
   const filteredMyEvents = filterEvents(myEvents);
@@ -659,6 +688,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             className="pl-10 bg-background/50 backdrop-blur-sm"
           />
         </div>
+        <EventFilterBar value={filters} onChange={setFilters} className="-mt-2" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">

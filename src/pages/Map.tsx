@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
-  MessageCircle, Calendar, Users, Loader2, X, 
+  MessageCircle, Calendar, Users, Loader2, X, Ticket,
   Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Rocket, Flame, ShieldCheck
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,8 @@ import type { LeafletMapHandle } from '@/components/map/LeafletMap';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
+import { useNearbyEvents } from '@/hooks/useNearbyEvents';
+import { EventFilterBar, applyEventFilters, defaultFilters, type EventFilters } from '@/components/events/EventFilterBar';
 
 type CityMilestone = {
   city_name: string;
@@ -89,6 +91,7 @@ const MapPage = () => {
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('satellite');
+  const [filters, setFilters] = useState<EventFilters>(defaultFilters);
   
   // Navigation State
   const [isNavigating, setIsNavigating] = useState(false);
@@ -228,60 +231,16 @@ const MapPage = () => {
       .sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
   }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm]);
 
-  // --- 4. Events (With Clyx "Decide" Data) ---
- const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['events', 'nearby', location?.latitude, location?.longitude, discoveryRadiusKm, cityMilestone?.city_name],
-    queryFn: async () => {
-      const origin = cityMilestone
-        ? { latitude: cityMilestone.center_lat, longitude: cityMilestone.center_long }
-        : location;
-      if (!origin) return [];
-      const { data, error } = await supabase.from('events')
-        .select('id, title, description, start_date, ticket_price, image_url, category, creator_id, max_attendees, creator:profiles!events_creator_id_fkey(user_type, verification_status), event_attendees(user_id, profiles(avatar_url)), event_locations(location_name, latitude, longitude)')
-        .gt('start_date', new Date().toISOString())
-        .eq('is_public', true);
-
-      if (error) {
-        console.error('[Map] Event load failed:', error);
-        return [];
-      }
-      if (!data) return [];
-
-      return (data.map((e: any) => {
-        // Source coords + name from event_locations (single source of truth)
-        const loc = Array.isArray(e.event_locations) ? e.event_locations[0] : e.event_locations;
-        if (!loc || loc.latitude == null || loc.longitude == null) return null;
-        const eLat = Number(loc.latitude);
-        const eLng = Number(loc.longitude);
-        const dist = distanceKm(origin.latitude, origin.longitude, eLat, eLng);
-
-        if (dist > discoveryRadiusKm) return null;
-
-        const friendImages = e.event_attendees?.map((a: any) => a.profiles?.avatar_url).filter(Boolean).slice(0, 3) || [];
-
-        return {
-          id: e.id,
-          title: e.title,
-          description: e.description,
-          location: loc.location_name,
-          start_date: e.start_date,
-          ticket_price: e.ticket_price,
-          category: e.category,
-          max_attendees: e.max_attendees,
-          image_url: e.image_url,
-          latitude: eLat,
-          longitude: eLng,
-          distanceKm: Number(dist.toFixed(1)),
-          friend_images: friendImages,
-          attendee_count: e.event_attendees?.length || 0,
-          is_vibe: (e.event_attendees?.length || 0) >= 10,
-          is_verified: e.creator?.verification_status === 'verified'
-        };
-      }).filter(Boolean))
-      .sort((a: any, b: any) => (a.distanceKm || 0) - (b.distanceKm || 0));
-    },
-    enabled: !!location || !!cityMilestone,
+  // --- 4. Events: shared source of truth (uses event_locations + city_milestone origin) ---
+  const { data: nearbyEvents = [], isLoading: eventsLoading } = useNearbyEvents({
+    userLocation: location,
+    cityCenter: cityMilestone
+      ? { latitude: cityMilestone.center_lat, longitude: cityMilestone.center_long }
+      : null,
+    radiusKm: discoveryRadiusKm,
   });
+
+  const events = useMemo(() => applyEventFilters(nearbyEvents, filters), [nearbyEvents, filters]);
 
   const nearbyEventsForMap = useMemo(() => {
     return events.map((e: any) => ({
@@ -449,6 +408,12 @@ const MapPage = () => {
                       {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
                     </Button>
                 </div>
+
+                {activeView === 'events' && (
+                  <div className="bg-background/70 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-lg">
+                    <EventFilterBar value={filters} onChange={setFilters} />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -617,20 +582,37 @@ const MapPage = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <Button 
-                      className="h-12 rounded-xl border-dashed border-2 border-primary/20 text-primary hover:bg-primary/5 bg-transparent"
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <Button
+                      variant="outline"
+                      className="h-11 rounded-xl text-xs font-semibold"
+                      onClick={() => navigate(`/app/events/${selectedEvent.id}#tickets`)}
+                    >
+                      <Ticket className="w-4 h-4 mr-1" /> Tickets
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-11 rounded-xl text-xs font-semibold"
                       onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}
                     >
-                      <Sparkles className="w-4 h-4 mr-2" /> Vibe Chat
+                      <MessageCircle className="w-4 h-4 mr-1" /> Chat
                     </Button>
-                    <Button 
-                      className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white"
-                      onClick={() => navigate(`/app/events/${selectedEvent.id}`)}
+                    <Button
+                      className="h-11 rounded-xl text-xs font-semibold shadow-lg bg-primary hover:bg-primary/90 text-white"
+                      onClick={() => handleGetDirections(selectedEvent.latitude, selectedEvent.longitude, selectedEvent.title)}
                     >
-                      <Calendar className="w-4 h-4 mr-2" /> Details
+                      <Navigation className="w-4 h-4 mr-1" /> Go
                     </Button>
                   </div>
+                  <Button
+                    className="w-full h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white text-base font-bold"
+                    onClick={() => navigate(`/app/events/${selectedEvent.id}?action=buy`)}
+                  >
+                    <Ticket className="w-5 h-5 mr-2" />
+                    {selectedEvent.ticket_price && selectedEvent.ticket_price > 0
+                      ? `Buy Ticket • ${formatTicketPrice(selectedEvent.ticket_price)}`
+                      : 'RSVP — Free'}
+                  </Button>
                 </CardContent>
               </Card>
             )}

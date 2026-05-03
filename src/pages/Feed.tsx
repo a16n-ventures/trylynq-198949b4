@@ -16,7 +16,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { isPast, isFuture, isToday, addHours, differenceInMinutes } from "date-fns";
+import { isPast, isFuture, isToday, addHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
 import { useNavigate } from 'react-router-dom';
 import { FriendProfilePreview } from '@/components/friends/FriendProfilePreview';
 import { useGeolocation } from '@/contexts/LocationContext'; 
@@ -165,6 +165,19 @@ const Feed = () => {
     fetchSmartFeed();
     checkPremium();
   }, [user, location?.latitude, location?.longitude]);
+
+  // Realtime: refresh feed when RSVPs change so attendee counts update live
+  useEffect(() => {
+    if (!user) return;
+    const ch = supabase
+      .channel('feed-attendees')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_attendees' }, () => {
+        fetchSmartFeed();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
     if (!selectedEvent?.id || !user) return;
@@ -373,9 +386,12 @@ const Feed = () => {
       filtered = filtered.filter(e => e.title.toLowerCase().includes(searchQuery.toLowerCase()));
     }
 
-    // 2. Prioritized View: Sort by Match Score and Friends Going for 'for_you'
+    // 2. Prioritized View: Nearby first for 'for_you', then friends-going & match score
     if (activeTab === 'for_you') {
       filtered.sort((a, b) => {
+        const da = a.distanceKm ?? 9999;
+        const db = b.distanceKm ?? 9999;
+        if (Math.abs(da - db) > 0.5) return da - db;
         const scoreA = (a.match_score || 0) + (a.friend_images?.length || 0) * 10;
         const scoreB = (b.match_score || 0) + (b.friend_images?.length || 0) * 10;
         return scoreB - scoreA;
@@ -511,6 +527,7 @@ const Feed = () => {
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.location || locationName}</span>
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
                                   {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
                                 </div>
                               </div>
                             </div>
