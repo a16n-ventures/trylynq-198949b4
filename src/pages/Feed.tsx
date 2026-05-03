@@ -533,10 +533,10 @@ const Feed = () => {
                             </div>
 
                             <CardContent className="p-4">
-                              <h3 className="sr-only">{event.title}</h3>
-                              <div className="flex items-center text-xs text-muted-foreground gap-3">
-                                {/* <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || locationName}</span> */}
-                              </div>
+                              <h3 className="sr-only">{event.description}</h3>
+                              {/* <div className="flex items-center text-xs text-muted-foreground gap-3">
+                                <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || locationName}</span> 
+                              </div> */}
                               
                               <div className="mt-4 flex items-center justify-between">
                                 {/* --- Explorer UI: Large Avatar Stacks for Social Proof --- */}
