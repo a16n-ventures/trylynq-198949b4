@@ -314,12 +314,12 @@ const CreateEvent = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="text-white hover:bg-white/20 p-2"
+            className="hover:bg-white/20 p-2"
             onClick={() => navigate('/app/messages')}
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <h1 className="heading-lg text-white">Create Event</h1>
+          <h1 className="heading-lg">Create Event</h1>
         </div>
       </div>
 
