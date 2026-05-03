@@ -1193,14 +1193,14 @@ const EventDetail = () => {
                       <Button 
                         className="w-full" 
                         onClick={startVideoCall} 
-                        variant="default"
+                        variant="outline"
                       >
                         <Video className="w-4 h-4 mr-2" />
                         Start In-App Event
                       </Button>
                     );
                   })() : (
-                    <Button
+                    <Button variant="outline"
                       className="w-full"
                       onClick={startRecording}
                       disabled={isRecording}
