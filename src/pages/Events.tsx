@@ -688,6 +688,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             className="pl-10 bg-background/50 backdrop-blur-sm"
           />
         </div>
+        <EventFilterBar value={filters} onChange={setFilters} className="-mt-2" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
