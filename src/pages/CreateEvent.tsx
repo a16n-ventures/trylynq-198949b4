@@ -309,19 +309,17 @@ const CreateEvent = () => {
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
-      <div className="gradient-primary text-white">
-        <div className="container-mobile py-4">
-          <div className="flex items-center gap-3 mb-4">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="text-white hover:bg-white/20 p-2"
-              onClick={() => navigate('/app/messages')}
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <h1 className="heading-lg text-white">Create Event</h1>
-          </div>
+      <div className="container-mobile py-4">
+        <div className="flex items-center gap-3 mb-4">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-white hover:bg-white/20 p-2"
+            onClick={() => navigate('/app/messages')}
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <h1 className="heading-lg text-white">Create Event</h1>
         </div>
       </div>
 
