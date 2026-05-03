@@ -645,12 +645,15 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
   };
 
   const filterEvents = (events: EventWithStats[]) => {
-    if (!searchQuery) return events;
-    return events.filter(event => 
-      event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (event.location || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      event.category.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    let list = events as any[];
+    if (searchQuery) {
+      list = list.filter((event) =>
+        event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (event.location || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.category.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    return applyEventFilters(list as any, filters) as EventWithStats[];
   };
 
   const filteredMyEvents = filterEvents(myEvents);
