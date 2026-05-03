@@ -741,7 +741,7 @@ const Profile = () => {
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-primary/10 rounded-lg text-primary"><Crown className="w-5 h-5" /></div>
                       <div>
-                        <p className="font-semibold text-sm">PRO</p>
+                        <p className="font-semibold text-sm">Premium Plan</p>
                         <p className="text-xs text-muted-foreground">{profile.is_premium ? 'Active' : 'Free Tier'}</p>
                       </div>
                     </div>
