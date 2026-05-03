@@ -219,7 +219,19 @@ export default function Events() {
     };
 
     getMilestoneData();
-  }, [user, location]); 
+  }, [user, location]);
+
+  // Realtime: refresh on RSVP changes
+  useEffect(() => {
+    if (!userId) return;
+    const ch = supabase
+      .channel('events-page-attendees')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_attendees' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['events'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [userId, queryClient]);
 
   // --- HELPER: Logic to check if an event is still "Active" ---
   const isEventActive = (dateString: string) => {
