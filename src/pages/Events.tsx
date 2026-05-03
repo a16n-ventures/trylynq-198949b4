@@ -250,17 +250,25 @@ export default function Events() {
     return hasActiveFeature || hasActiveSub;
   };
 
-  const applyEventLocations = async <T extends { id: string }>(eventList: T[]): Promise<Array<T & { location: string }>> => {
+  const applyEventLocations = async <T extends { id: string }>(eventList: T[]): Promise<Array<T & { location: string; distanceKm: number | null }>> => {
     if (eventList.length === 0) return [];
     const { data: locations } = await supabase
       .from('event_locations')
-      .select('event_id, location_name')
+      .select('event_id, location_name, latitude, longitude')
       .in('event_id', eventList.map((event) => event.id));
-    const locationMap = new Map((locations || []).map((loc) => [loc.event_id, loc.location_name]));
-    return eventList.map((event) => ({
-      ...event,
-      location: locationMap.get(event.id) || 'Location TBA',
-    }));
+    const locationMap = new Map((locations || []).map((loc) => [loc.event_id, loc]));
+    return eventList.map((event) => {
+      const loc = locationMap.get(event.id);
+      let distanceKm: number | null = null;
+      if (loc?.latitude != null && loc?.longitude != null && location?.latitude && location?.longitude) {
+        distanceKm = Number(calcDistanceKm(location.latitude, location.longitude, Number(loc.latitude), Number(loc.longitude)).toFixed(1));
+      }
+      return {
+        ...event,
+        location: loc?.location_name || 'Location TBA',
+        distanceKm,
+      };
+    });
   };
 
   // 1. Fetch My Events
