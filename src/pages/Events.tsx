@@ -49,6 +49,8 @@ import { Rocket, UserPlus, Globe } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; 
 import { z } from 'zod';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
+import { EventFilterBar, applyEventFilters, defaultFilters, type EventFilters } from '@/components/events/EventFilterBar';
+import { distanceKm as calcDistanceKm } from '@/hooks/useNearbyEvents';
 
 // --- TYPES ---
 type PremiumFeature = {
@@ -175,6 +177,7 @@ export default function Events() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my");
   const [hostedFilter, setHostedFilter] = useState<'active' | 'past'>('active');
+  const [filters, setFilters] = useState<EventFilters>(defaultFilters);
   
   // Payout & Modal States
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
