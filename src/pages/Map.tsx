@@ -582,20 +582,37 @@ const MapPage = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <Button 
-                      className="h-12 rounded-xl border-dashed border-2 border-primary/20 text-primary hover:bg-primary/5 bg-transparent"
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <Button
+                      variant="outline"
+                      className="h-11 rounded-xl text-xs font-semibold"
+                      onClick={() => navigate(`/app/events/${selectedEvent.id}#tickets`)}
+                    >
+                      <Ticket className="w-4 h-4 mr-1" /> Tickets
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-11 rounded-xl text-xs font-semibold"
                       onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}
                     >
-                      <Sparkles className="w-4 h-4 mr-2" /> Vibe Chat
+                      <MessageCircle className="w-4 h-4 mr-1" /> Chat
                     </Button>
-                    <Button 
-                      className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white"
-                      onClick={() => navigate(`/app/events/${selectedEvent.id}`)}
+                    <Button
+                      className="h-11 rounded-xl text-xs font-semibold shadow-lg bg-primary hover:bg-primary/90 text-white"
+                      onClick={() => handleGetDirections(selectedEvent.latitude, selectedEvent.longitude, selectedEvent.title)}
                     >
-                      <Calendar className="w-4 h-4 mr-2" /> Details
+                      <Navigation className="w-4 h-4 mr-1" /> Go
                     </Button>
                   </div>
+                  <Button
+                    className="w-full h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white text-base font-bold"
+                    onClick={() => navigate(`/app/events/${selectedEvent.id}?action=buy`)}
+                  >
+                    <Ticket className="w-5 h-5 mr-2" />
+                    {selectedEvent.ticket_price && selectedEvent.ticket_price > 0
+                      ? `Buy Ticket • ${formatTicketPrice(selectedEvent.ticket_price)}`
+                      : 'RSVP — Free'}
+                  </Button>
                 </CardContent>
               </Card>
             )}
