@@ -57,7 +57,7 @@ const FEATURES = [
   {
     icon: MapPin,
     title: 'Your Hood, Your Vibe',
-    body: 'Discover what's happening around you — from street food pop-ups to rooftop hangouts — all within your local area.',
+    body: 'Discover what\'s happening around you — from street food pop-ups to rooftop hangouts — all within your local area.',
     color: '#E8511A',
   },
   {
