@@ -258,7 +258,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground mb-3">
-        {isPremium ? `${uniqueViewers.length} unique viewer${uniqueViewers.length !== 1 ? 's' : ''} in the last 30 days` : 'Upgrade to Premium for detailed viewer analytics'}
+        {isPremium ? `${uniqueViewers.length} unique viewer${uniqueViewers.length !== 1 ? 's' : ''} in the last 30 days` : 'Upgrade to PRO for detailed viewer analytics'}
       </p>
       {uniqueViewers.map((viewer: any, idx: number) => (
         <div
@@ -286,7 +286,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
       {!isPremium && uniqueViewers.length > 0 && (
         <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent p-4 mt-4">
           <p className="text-sm font-semibold mb-1">Want to see who viewed your profile?</p>
-          <p className="text-xs text-muted-foreground mb-3">Upgrade to Premium to see full viewer details.</p>
+          <p className="text-xs text-muted-foreground mb-3">Upgrade to PRO to see full viewer details.</p>
           <Button size="sm" onClick={() => navigate('/premium')} className="gap-1">
             <Crown className="w-3.5 h-3.5" /> Upgrade
           </Button>
@@ -741,7 +741,7 @@ const Profile = () => {
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-primary/10 rounded-lg text-primary"><Crown className="w-5 h-5" /></div>
                       <div>
-                        <p className="font-semibold text-sm">Premium Plan</p>
+                        <p className="font-semibold text-sm">PRO</p>
                         <p className="text-xs text-muted-foreground">{profile.is_premium ? 'Active' : 'Free Tier'}</p>
                       </div>
                     </div>
@@ -1026,7 +1026,7 @@ const Profile = () => {
               <div className="p-5 space-y-4 relative z-10">
                 <h3 className="font-bold text-base flex items-center gap-2">
                   <Crown className="w-5 h-5 text-amber-500" /> Profile Analytics
-                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] ml-auto">Premium</Badge>
+                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] ml-auto">PRO</Badge>
                 </h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
