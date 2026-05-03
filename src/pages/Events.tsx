@@ -587,8 +587,11 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                )}
             </div>
             
-            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-              <MapPin className="w-3 h-3" /> <span className="truncate">{event.location}</span>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+              <span className="flex items-center gap-1 truncate"><MapPin className="w-3 h-3" /> {event.location}</span>
+              {(event as any).distanceKm != null && (
+                <span className="text-[11px] font-bold text-primary shrink-0">{(event as any).distanceKm}km away</span>
+              )}
             </div>
             
             {/* --- MODIFIED: Performance-First View for Builders --- */}
