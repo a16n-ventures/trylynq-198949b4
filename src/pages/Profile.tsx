@@ -1062,7 +1062,7 @@ const Profile = () => {
                 </h3>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Plan</span>
-                  <Badge className="bg-amber-100 text-amber-800 border-0">Premium Active</Badge>
+                  <Badge className="bg-amber-100 text-amber-800 border-0">Pro Active</Badge>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Ad-Free</span>
@@ -1070,7 +1070,7 @@ const Profile = () => {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Discovery Radius</span>
-                  <span className="font-semibold">Extended (150km)</span>
+                  <span className="font-semibold">Extended (75km)</span>
                 </div>
                 <Button variant="outline" className="w-full mt-2" onClick={() => navigate('/premium')}>
                   Manage Subscription
