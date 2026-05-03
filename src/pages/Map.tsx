@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
-  MessageCircle, Calendar, Users, Loader2, X, 
+  MessageCircle, Calendar, Users, Loader2, X, Ticket,
   Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Rocket, Flame, ShieldCheck
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
