@@ -1049,7 +1049,7 @@ const Profile = () => {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border/50">
-                  ✨ Premium members get detailed analytics on their profile and event performance.
+                  ✨ PRO members get detailed analytics on their profile and event performance.
                 </p>
               </div>
             </Card>
@@ -1062,7 +1062,7 @@ const Profile = () => {
                 </h3>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Plan</span>
-                  <Badge className="bg-amber-100 text-amber-800 border-0">Pro Active</Badge>
+                  <Badge className="bg-amber-100 text-amber-800 border-0">PRO</Badge>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Ad-Free</span>
