@@ -22,6 +22,8 @@ import type { LeafletMapHandle } from '@/components/map/LeafletMap';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
+import { useNearbyEvents } from '@/hooks/useNearbyEvents';
+import { EventFilterBar, applyEventFilters, defaultFilters, type EventFilters } from '@/components/events/EventFilterBar';
 
 type CityMilestone = {
   city_name: string;
