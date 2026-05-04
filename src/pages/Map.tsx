@@ -92,8 +92,12 @@ const MapPage = () => {
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('satellite');
-  
-  
+  const [filters, setFilters] = useEventFilters();
+  const { isPremium } = usePremiumStatus(user?.id);
+  const [tierSheetOpen, setTierSheetOpen] = useState(false);
+  const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
   // Navigation State
   const [isNavigating, setIsNavigating] = useState(false);
   const [navigationTarget, setNavigationTarget] = useState<{ lat: number; lng: number; name: string } | null>(null);
