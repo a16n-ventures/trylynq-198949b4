@@ -744,7 +744,22 @@ const MapPage = () => {
             navigate(`/app/events/${selectedEvent.id}?action=buy${tierParam}`);
           }}
         />
-      </div>
+      </div> 
+      {/* DEBUG OVERLAY — remove before production */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-32 left-4 z-[9999] bg-black/85 text-white text-[11px] font-mono rounded-xl p-3 max-w-[260px] space-y-1 pointer-events-none">
+          <div className="text-yellow-400 font-bold mb-1">🔍 Event Debug</div>
+          <div>📍 Location: {location ? `${location.latitude.toFixed(3)}, ${location.longitude.toFixed(3)}` : <span className="text-red-400">NULL</span>}</div>
+          <div>🏙️ City center: {cityMilestone ? <span className="text-green-400">{cityMilestone.city_name}</span> : <span className="text-red-400">none</span>}</div>
+          <div>📡 Origin: <span className={originLabel === 'none' ? 'text-red-400' : 'text-green-400'}>{originLabel}</span></div>
+          <div>🎯 Radius: {effectiveRadiusKm}km</div>
+          <div>📦 Raw events: {nearbyEvents.length === 0 ? <span className="text-red-400">0</span> : <span className="text-green-400">{nearbyEvents.length}</span>}</div>
+          <div>🔎 After filters: {events.length === 0 ? <span className="text-red-400">0</span> : <span className="text-green-400">{events.length}</span>}</div>
+          <div>🗺️ Map markers: {nearbyEventsForMap.length === 0 ? <span className="text-red-400">0</span> : <span className="text-green-400">{nearbyEventsForMap.length}</span>}</div>
+          <div>⏳ Loading: {eventsLoading ? <span className="text-yellow-400">yes</span> : 'no'}</div>
+          <div>🎛️ Filters: <span className="text-yellow-300">{JSON.stringify(filters)}</span></div>
+        </div>
+      )}
     </LaunchZoneGuard>
   );
 };
