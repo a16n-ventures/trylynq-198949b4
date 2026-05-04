@@ -744,8 +744,6 @@ const MapPage = () => {
             navigate(`/app/events/${selectedEvent.id}?action=buy${tierParam}`);
           }}
         />
-          </div>
-        </div>
       </div>
     </LaunchZoneGuard>
   );
