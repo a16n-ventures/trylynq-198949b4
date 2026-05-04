@@ -96,7 +96,7 @@ const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: num
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const formatTicketPrice = (price?: number | null) => price && price > 0 ? `₦${price.toLocaleString()}` : 'Free';
+import { formatTicketPrice } from '@/lib/eventFormat';
 
 const Feed = () => {
   const { user } = useAuth();
