@@ -66,6 +66,9 @@ const Friends = () => {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [previewProfile, setPreviewProfile] = useState<Profile | null>(null);
   const [previewFriendshipId, setPreviewFriendshipId] = useState<string | undefined>();
+  const [pendingConnectIds, setPendingConnectIds] = useState<Set<string>>(new Set());
+  const [pendingAcceptIds, setPendingAcceptIds] = useState<Set<string>>(new Set());
+  const [pendingDeclineIds, setPendingDeclineIds] = useState<Set<string>>(new Set());
 
   const openProfilePreview = (friend: Friend) => {
     setPreviewProfile({
@@ -348,6 +351,7 @@ const Friends = () => {
 
   const handleConnect = useMutation({
     mutationFn: async (targetId: string) => {
+        setPendingConnectIds(prev => new Set(prev).add(targetId));
         const { error } = await supabase.from('friendships').insert({
             requester_id: user?.id,
             addressee_id: targetId,
@@ -355,42 +359,51 @@ const Friends = () => {
         });
         if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, targetId) => {
         toast.success("Friend request sent!");
-        // Refresh all relevant lists
         queryClient.invalidateQueries({ queryKey: ['friend_suggestions'] });
         queryClient.invalidateQueries({ queryKey: ['app_contacts'] });
-        queryClient.invalidateQueries({ queryKey: ['friend_requests'] });
     },
-    onError: (err: Error) => {
+    onError: (err: Error, targetId) => {
+      setPendingConnectIds(prev => { const s = new Set(prev); s.delete(targetId); return s; });
       toast.error(err.message || "Could not send request");
     }
   });
 
   const handleAccept = useMutation({
     mutationFn: async (friendshipId: string) => {
+      setPendingAcceptIds(prev => new Set(prev).add(friendshipId));
       const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, friendshipId) => {
+      setPendingAcceptIds(prev => { const s = new Set(prev); s.delete(friendshipId); return s; });
       toast.success("Friend added!");
       queryClient.invalidateQueries({ queryKey: ['friend_requests'] });
       queryClient.invalidateQueries({ queryKey: ['my_friends_page'] });
-      queryClient.invalidateQueries({ queryKey: ['friend_suggestions'] }); // Remove from suggestions if there
+      queryClient.invalidateQueries({ queryKey: ['friend_suggestions'] });
     },
-    onError: () => toast.error("Failed to accept request")
+    onError: (_err, friendshipId) => {
+      setPendingAcceptIds(prev => { const s = new Set(prev); s.delete(friendshipId); return s; });
+      toast.error("Failed to accept request");
+    }
   });
 
   const handleDecline = useMutation({
     mutationFn: async (friendshipId: string) => {
+        setPendingDeclineIds(prev => new Set(prev).add(friendshipId));
         const { error } = await supabase.from('friendships').delete().eq('id', friendshipId);
         if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, friendshipId) => {
+        setPendingDeclineIds(prev => { const s = new Set(prev); s.delete(friendshipId); return s; });
         toast.success("Request removed");
         queryClient.invalidateQueries({ queryKey: ['friend_requests'] });
     },
-    onError: () => toast.error("Failed to remove request")
+    onError: (_err, friendshipId) => {
+      setPendingDeclineIds(prev => { const s = new Set(prev); s.delete(friendshipId); return s; });
+      toast.error("Failed to remove request");
+    }
   });
 
   // Combined list: Friends first, then imported contacts (with label)
@@ -475,13 +488,15 @@ const Friends = () => {
             <TabsTrigger value="circle" className="rounded-lg">
               My Circle ({friends.length})
             </TabsTrigger>
-            <TabsTrigger value="requests" className="rounded-lg relative">
-              Requests
-              {requests.length > 0 && (
-                <Badge className="ml-2 h-5 w-5 rounded-full px-0 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white animate-pulse">
-                  {requests.length}
-                </Badge>
-              )}
+            <TabsTrigger value="requests" className="rounded-lg">
+              <span className="relative inline-flex items-center gap-1.5">
+                Requests
+                {requests.length > 0 && (
+                  <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded-full text-[11px] font-bold bg-red-500 text-white animate-pulse leading-none">
+                    {requests.length}
+                  </span>
+                )}
+              </span>
             </TabsTrigger>
           </TabsList>
 
@@ -526,22 +541,16 @@ const Friends = () => {
                               {s.mutual_count} mutual friend{s.mutual_count > 1 ? 's' : ''}
                             </p>
                           )}
-                                {s.distance_km ? (
-                                    <p className="text-[10px] text-muted-foreground flex items-center gap-1 mb-3">
-                                        <MapPin className="w-2.5 h-2.5" /> {s.distance_km.toFixed(1)}km away
-                                    </p>
-                                ) : s.mutual_count ? (
-                                    <p className="text-[10px] text-muted-foreground mb-3">{s.mutual_count} mutual friends</p>
-                                ) : (
-                                    <p className="text-[10px] text-muted-foreground mb-3">Suggested</p>
-                                )}
+                          {!s.distance_km && !s.mutual_count && (
+                            <p className="text-[10px] text-muted-foreground mb-3">Suggested</p>
+                          )}
                                 <Button 
                                     size="sm" 
                                     className="w-full h-8 text-xs rounded-lg"
                                     onClick={() => handleConnect.mutate(s.user_id)}
-                                    disabled={handleConnect.isPending}
+                                    disabled={pendingConnectIds.has(s.user_id)}
                                 >
-                                    {handleConnect.isPending ? 'Sent' : 'Connect'}
+                                    {pendingConnectIds.has(s.user_id) ? 'Sent ✓' : 'Connect'}
                                 </Button>
                             </div>
                         ))}
@@ -618,9 +627,9 @@ const Friends = () => {
                             variant="secondary" 
                             className="h-8 px-3" 
                             onClick={() => friend.friendship_id !== 'imported' && handleConnect.mutate(friend.user_id)}
-                            disabled={handleConnect.isPending || friend.friendship_id === 'imported'}
+                            disabled={pendingConnectIds.has(friend.user_id) || friend.friendship_id === 'imported'}
                           >
-                              {friend.friendship_id === 'imported' ? 'Not on app' : <><UserPlus className="w-4 h-4 mr-1.5" /> Add</>}
+                              {friend.friendship_id === 'imported' ? 'Not on app' : pendingConnectIds.has(friend.user_id) ? 'Sent ✓' : <><UserPlus className="w-4 h-4 mr-1.5" /> Add</>}
                           </Button>
                       ) : (
                           <>
@@ -696,17 +705,17 @@ const Friends = () => {
                       variant="outline" 
                       className="h-9 w-9 p-0 rounded-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                       onClick={() => handleDecline.mutate(req.id)}
-                      disabled={handleDecline.isPending}
+                      disabled={pendingDeclineIds.has(req.id) || pendingAcceptIds.has(req.id)}
                     >
-                      <X className="w-5 h-5" />
+                      {pendingDeclineIds.has(req.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-5 h-5" />}
                     </Button>
                     <Button 
                       size="sm" 
                       className="h-9 w-9 p-0 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-sm"
                       onClick={() => handleAccept.mutate(req.id)}
-                      disabled={handleAccept.isPending}
+                      disabled={pendingAcceptIds.has(req.id) || pendingDeclineIds.has(req.id)}
                     >
-                      <Check className="w-5 h-5" />
+                      {pendingAcceptIds.has(req.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-5 h-5" />}
                     </Button>
                   </div>
                 </div>
