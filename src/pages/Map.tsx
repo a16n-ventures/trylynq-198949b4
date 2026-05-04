@@ -671,7 +671,6 @@ const MapPage = () => {
                       {(selectedEvent.ticket_price ?? 0) > 0 ? formatTicketPrice(selectedEvent.ticket_price) : 'Free'}
                     </Button>
                   </div>
-                  </Button>
                 </CardContent>
               </Card>
             )}
