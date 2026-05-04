@@ -65,10 +65,7 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const formatTicketPrice = (price?: number | null) => {
-  if (!price || price <= 0) return 'Free';
-  return `₦${Number(price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-};
+const formatTicketPrice = fmtTicket;
  
 const PremiumBadge = () => (
   <span className="inline-flex items-center justify-center bg-blue-500 text-white text-[8px] font-bold px-1 rounded-sm ml-1 h-3.5">
