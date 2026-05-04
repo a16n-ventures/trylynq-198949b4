@@ -237,15 +237,25 @@ const MapPage = () => {
   }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm]);
 
   // --- 4. Events: shared source of truth (uses event_locations + city_milestone origin) ---
-  const { data: nearbyEvents = [], isLoading: eventsLoading } = useNearbyEvents({
+  const {
+    events: nearbyEvents,
+    isLoading: eventsLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    originLabel,
+    effectiveRadiusKm,
+  } = useNearbyEvents({
     userLocation: location,
     cityCenter: cityMilestone
       ? { latitude: cityMilestone.center_lat, longitude: cityMilestone.center_long }
       : null,
     radiusKm: discoveryRadiusKm,
+    isPremium,
+    userId: user?.id ?? null,
   });
 
-  const events = useMemo(() => applyEventFilters(nearbyEvents, filters), [nearbyEvents, filters]);
+  const events = useMemo(() => applyEventFilters(nearbyEvents as any, filters), [nearbyEvents, filters]);
 
   const nearbyEventsForMap = useMemo(() => {
     return events.map((e: any) => ({
