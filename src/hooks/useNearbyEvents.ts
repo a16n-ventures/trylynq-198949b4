@@ -74,17 +74,27 @@ export function useNearbyEvents({
     queryFn: async ({ pageParam = 0 }): Promise<NearbyEvent[]> => {
       if (!origin) return [];
       const from = (pageParam as number) * pageSize;
-      const to = from + pageSize - 1;
+          const to = from + pageSize - 1; 
+          
+      // In useNearbyEvents.ts — replace the supabase query with:
+      const latDelta = effectiveRadiusKm / 111;
+      const lngDelta = effectiveRadiusKm / (111 * Math.cos((origin.latitude * Math.PI) / 180));
+      
       const { data, error } = await supabase
         .from('events')
         .select(
           'id, title, description, start_date, end_date, ticket_price, image_url, category, creator_id, max_attendees, ' +
           'creator:profiles!events_creator_id_fkey(verification_status), ' +
           'event_attendees(user_id, status, profiles(avatar_url)), ' +
-          'event_locations(location_name, latitude, longitude)'
+          'event_locations!inner(location_name, latitude, longitude)'  // ← !inner = only events WITH a location
         )
         .gt('start_date', new Date().toISOString())
         .eq('is_public', true)
+        // Bounding box pre-filter on the joined table
+        .gte('event_locations.latitude',  origin.latitude  - latDelta)
+        .lte('event_locations.latitude',  origin.latitude  + latDelta)
+        .gte('event_locations.longitude', origin.longitude - lngDelta)
+        .lte('event_locations.longitude', origin.longitude + lngDelta)
         .order('start_date', { ascending: true })
         .range(from, to);
 
