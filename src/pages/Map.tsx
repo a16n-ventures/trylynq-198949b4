@@ -23,7 +23,11 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 import { useNearbyEvents } from '@/hooks/useNearbyEvents';
-import { EventFilterBar, applyEventFilters, defaultFilters, type EventFilters } from '@/components/events/EventFilterBar';
+import { EventFilterBar, applyEventFilters } from '@/components/events/EventFilterBar';
+import { useEventFilters } from '@/hooks/useEventFilters';
+import { usePremiumStatus } from '@/hooks/usePremiumStatus';
+import { TicketTierSelector } from '@/components/events/TicketTierSelector';
+import { formatTicketPrice as fmtTicket } from '@/lib/eventFormat';
 
 type CityMilestone = {
   city_name: string;
