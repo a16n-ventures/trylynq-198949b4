@@ -720,8 +720,30 @@ const MapPage = () => {
                     </div>
                   </div>
                 ))}
+                {activeView === 'events' && hasNextPage && (
+                  <div ref={sentinelRef} className="flex-shrink-0 w-20 h-40 flex items-center justify-center text-xs text-muted-foreground">
+                    {isFetchingNextPage ? <Loader2 className="w-4 h-4 animate-spin" /> : '…'}
+                  </div>
+                )}
               </div>
             )}
+          </div>
+        </div>
+
+        <TicketTierSelector
+          eventId={selectedEvent?.id}
+          open={tierSheetOpen}
+          onOpenChange={setTierSheetOpen}
+          fallbackPrice={selectedEvent?.ticket_price}
+          selectedTierId={selectedTierId}
+          onSelectTier={setSelectedTierId}
+          onConfirm={(tier) => {
+            setTierSheetOpen(false);
+            if (!selectedEvent) return;
+            const tierParam = tier && tier.id !== '__default__' ? `&tier=${tier.id}` : '';
+            navigate(`/app/events/${selectedEvent.id}?action=buy${tierParam}`);
+          }}
+        />
           </div>
         </div>
       </div>
