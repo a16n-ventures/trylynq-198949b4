@@ -337,7 +337,38 @@ const MapPage = () => {
       setIsRouting(false);
     }
   };
-  
+
+  // RSVP toggle from map sheet
+  const handleToggleRSVP = async (ev: any) => {
+    if (!user) return toast.error('Please sign in to RSVP');
+    if (!ev) return;
+    const wasGoing = !!ev.is_attending;
+    setSelectedEvent({ ...ev, is_attending: !wasGoing, attendee_count: Math.max(0, (ev.attendee_count || 0) + (wasGoing ? -1 : 1)) });
+    try {
+      if (wasGoing) {
+        await supabase.from('event_attendees').delete().match({ event_id: ev.id, user_id: user.id });
+        toast.success('RSVP cancelled');
+      } else {
+        await supabase.from('event_attendees').insert({ event_id: ev.id, user_id: user.id, status: 'confirmed' });
+        toast.success("You're going! 🎉");
+      }
+    } catch (e: any) {
+      setSelectedEvent(ev);
+      toast.error(e.message || 'Action failed');
+    }
+  };
+
+  // Infinite scroll observer for the horizontal event list
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || activeView !== 'events') return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [activeView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   const filteredList = useMemo(() => {
     const q = searchQuery.toLowerCase();
     const list = activeView === 'friends' ? friendsMapped : events;
