@@ -592,9 +592,11 @@ const MapPage = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="grid grid-cols-3 gap-2 mb-2">
                     <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">From city</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                        From {originLabel === 'city' ? (cityMilestone?.city_name || 'city') : 'you'}
+                      </p>
                       <p className="text-sm font-black">{selectedEvent.distanceKm}km</p>
                     </div>
                     <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
@@ -606,6 +608,9 @@ const MapPage = () => {
                       <p className="text-sm font-black">{selectedEvent.attendee_count || 0}</p>
                     </div>
                   </div>
+                  {selectedEvent.is_attending && (
+                    <Badge className="mb-3 bg-green-600 text-white border-0">✓ You're going</Badge>
+                  )}
 
                   <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
                     <div className="flex items-center -space-x-3">
@@ -632,7 +637,7 @@ const MapPage = () => {
                     <Button
                       variant="outline"
                       className="h-11 rounded-xl text-xs font-semibold"
-                      onClick={() => navigate(`/app/events/${selectedEvent.id}#tickets`)}
+                      onClick={() => { setSelectedTierId(null); setTierSheetOpen(true); }}
                     >
                       <Ticket className="w-4 h-4 mr-1" /> Tickets
                     </Button>
@@ -650,14 +655,22 @@ const MapPage = () => {
                       <Navigation className="w-4 h-4 mr-1" /> Go
                     </Button>
                   </div>
-                  <Button
-                    className="w-full h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white text-base font-bold"
-                    onClick={() => navigate(`/app/events/${selectedEvent.id}?action=buy`)}
-                  >
-                    <Ticket className="w-5 h-5 mr-2" />
-                    {selectedEvent.ticket_price && selectedEvent.ticket_price > 0
-                      ? `Buy Ticket • ${formatTicketPrice(selectedEvent.ticket_price)}`
-                      : 'RSVP — Free'}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant={selectedEvent.is_attending ? 'success' : 'outline'}
+                      className="h-12 rounded-xl font-bold"
+                      onClick={() => handleToggleRSVP(selectedEvent)}
+                    >
+                      {selectedEvent.is_attending ? '✓ Going' : 'RSVP'}
+                    </Button>
+                    <Button
+                      className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white font-bold"
+                      onClick={() => { setSelectedTierId(null); setTierSheetOpen(true); }}
+                    >
+                      <Ticket className="w-5 h-5 mr-2" />
+                      {(selectedEvent.ticket_price ?? 0) > 0 ? formatTicketPrice(selectedEvent.ticket_price) : 'Free'}
+                    </Button>
+                  </div>
                   </Button>
                 </CardContent>
               </Card>
