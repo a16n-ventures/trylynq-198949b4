@@ -23,7 +23,11 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
 import { useNearbyEvents } from '@/hooks/useNearbyEvents';
-import { EventFilterBar, applyEventFilters, defaultFilters, type EventFilters } from '@/components/events/EventFilterBar';
+import { EventFilterBar, applyEventFilters } from '@/components/events/EventFilterBar';
+import { useEventFilters } from '@/hooks/useEventFilters';
+import { usePremiumStatus } from '@/hooks/usePremiumStatus';
+import { TicketTierSelector } from '@/components/events/TicketTierSelector';
+import { formatTicketPrice as fmtTicket } from '@/lib/eventFormat';
 
 type CityMilestone = {
   city_name: string;
@@ -61,10 +65,7 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const formatTicketPrice = (price?: number | null) => {
-  if (!price || price <= 0) return 'Free';
-  return `₦${Number(price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-};
+const formatTicketPrice = fmtTicket;
  
 const PremiumBadge = () => (
   <span className="inline-flex items-center justify-center bg-blue-500 text-white text-[8px] font-bold px-1 rounded-sm ml-1 h-3.5">
@@ -91,8 +92,12 @@ const MapPage = () => {
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('satellite');
-  const [filters, setFilters] = useState<EventFilters>(defaultFilters);
-  
+  const [filters, setFilters] = useEventFilters();
+  const { isPremium } = usePremiumStatus(user?.id);
+  const [tierSheetOpen, setTierSheetOpen] = useState(false);
+  const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
   // Navigation State
   const [isNavigating, setIsNavigating] = useState(false);
   const [navigationTarget, setNavigationTarget] = useState<{ lat: number; lng: number; name: string } | null>(null);
@@ -232,15 +237,25 @@ const MapPage = () => {
   }, [nearbyFriendsRaw, friendsPresence, location, discoveryRadiusKm]);
 
   // --- 4. Events: shared source of truth (uses event_locations + city_milestone origin) ---
-  const { data: nearbyEvents = [], isLoading: eventsLoading } = useNearbyEvents({
+  const {
+    events: nearbyEvents,
+    isLoading: eventsLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    originLabel,
+    effectiveRadiusKm,
+  } = useNearbyEvents({
     userLocation: location,
     cityCenter: cityMilestone
       ? { latitude: cityMilestone.center_lat, longitude: cityMilestone.center_long }
       : null,
     radiusKm: discoveryRadiusKm,
+    isPremium,
+    userId: user?.id ?? null,
   });
 
-  const events = useMemo(() => applyEventFilters(nearbyEvents, filters), [nearbyEvents, filters]);
+  const events = useMemo(() => applyEventFilters(nearbyEvents as any, filters), [nearbyEvents, filters]);
 
   const nearbyEventsForMap = useMemo(() => {
     return events.map((e: any) => ({
@@ -322,7 +337,38 @@ const MapPage = () => {
       setIsRouting(false);
     }
   };
-  
+
+  // RSVP toggle from map sheet
+  const handleToggleRSVP = async (ev: any) => {
+    if (!user) return toast.error('Please sign in to RSVP');
+    if (!ev) return;
+    const wasGoing = !!ev.is_attending;
+    setSelectedEvent({ ...ev, is_attending: !wasGoing, attendee_count: Math.max(0, (ev.attendee_count || 0) + (wasGoing ? -1 : 1)) });
+    try {
+      if (wasGoing) {
+        await supabase.from('event_attendees').delete().match({ event_id: ev.id, user_id: user.id });
+        toast.success('RSVP cancelled');
+      } else {
+        await supabase.from('event_attendees').insert({ event_id: ev.id, user_id: user.id, status: 'confirmed' });
+        toast.success("You're going! 🎉");
+      }
+    } catch (e: any) {
+      setSelectedEvent(ev);
+      toast.error(e.message || 'Action failed');
+    }
+  };
+
+  // Infinite scroll observer for the horizontal event list
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || activeView !== 'events') return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [activeView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   const filteredList = useMemo(() => {
     const q = searchQuery.toLowerCase();
     const list = activeView === 'friends' ? friendsMapped : events;
@@ -546,9 +592,11 @@ const MapPage = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 mb-4">
+                  <div className="grid grid-cols-3 gap-2 mb-2">
                     <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">From city</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                        From {originLabel === 'city' ? (cityMilestone?.city_name || 'city') : 'you'}
+                      </p>
                       <p className="text-sm font-black">{selectedEvent.distanceKm}km</p>
                     </div>
                     <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
@@ -560,6 +608,9 @@ const MapPage = () => {
                       <p className="text-sm font-black">{selectedEvent.attendee_count || 0}</p>
                     </div>
                   </div>
+                  {selectedEvent.is_attending && (
+                    <Badge className="mb-3 bg-green-600 text-white border-0">✓ You're going</Badge>
+                  )}
 
                   <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
                     <div className="flex items-center -space-x-3">
@@ -586,7 +637,7 @@ const MapPage = () => {
                     <Button
                       variant="outline"
                       className="h-11 rounded-xl text-xs font-semibold"
-                      onClick={() => navigate(`/app/events/${selectedEvent.id}#tickets`)}
+                      onClick={() => { setSelectedTierId(null); setTierSheetOpen(true); }}
                     >
                       <Ticket className="w-4 h-4 mr-1" /> Tickets
                     </Button>
@@ -604,15 +655,22 @@ const MapPage = () => {
                       <Navigation className="w-4 h-4 mr-1" /> Go
                     </Button>
                   </div>
-                  <Button
-                    className="w-full h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white text-base font-bold"
-                    onClick={() => navigate(`/app/events/${selectedEvent.id}?action=buy`)}
-                  >
-                    <Ticket className="w-5 h-5 mr-2" />
-                    {selectedEvent.ticket_price && selectedEvent.ticket_price > 0
-                      ? `Buy Ticket • ${formatTicketPrice(selectedEvent.ticket_price)}`
-                      : 'RSVP — Free'}
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant={selectedEvent.is_attending ? 'success' : 'outline'}
+                      className="h-12 rounded-xl font-bold"
+                      onClick={() => handleToggleRSVP(selectedEvent)}
+                    >
+                      {selectedEvent.is_attending ? '✓ Going' : 'RSVP'}
+                    </Button>
+                    <Button
+                      className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white font-bold"
+                      onClick={() => { setSelectedTierId(null); setTierSheetOpen(true); }}
+                    >
+                      <Ticket className="w-5 h-5 mr-2" />
+                      {(selectedEvent.ticket_price ?? 0) > 0 ? formatTicketPrice(selectedEvent.ticket_price) : 'Free'}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -662,10 +720,30 @@ const MapPage = () => {
                     </div>
                   </div>
                 ))}
+                {activeView === 'events' && hasNextPage && (
+                  <div ref={sentinelRef} className="flex-shrink-0 w-20 h-40 flex items-center justify-center text-xs text-muted-foreground">
+                    {isFetchingNextPage ? <Loader2 className="w-4 h-4 animate-spin" /> : '…'}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
+
+        <TicketTierSelector
+          eventId={selectedEvent?.id}
+          open={tierSheetOpen}
+          onOpenChange={setTierSheetOpen}
+          fallbackPrice={selectedEvent?.ticket_price}
+          selectedTierId={selectedTierId}
+          onSelectTier={setSelectedTierId}
+          onConfirm={(tier) => {
+            setTierSheetOpen(false);
+            if (!selectedEvent) return;
+            const tierParam = tier && tier.id !== '__default__' ? `&tier=${tier.id}` : '';
+            navigate(`/app/events/${selectedEvent.id}?action=buy${tierParam}`);
+          }}
+        />
       </div>
     </LaunchZoneGuard>
   );

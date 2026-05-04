@@ -524,6 +524,7 @@ export type Database = {
           event_id: string
           id: string
           status: string
+          ticket_tier_id: string | null
           user_id: string
         }
         Insert: {
@@ -531,6 +532,7 @@ export type Database = {
           event_id: string
           id?: string
           status?: string
+          ticket_tier_id?: string | null
           user_id: string
         }
         Update: {
@@ -538,6 +540,7 @@ export type Database = {
           event_id?: string
           id?: string
           status?: string
+          ticket_tier_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -553,6 +556,13 @@ export type Database = {
             columns: ["event_id"]
             isOneToOne: false
             referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_attendees_ticket_tier_id_fkey"
+            columns: ["ticket_tier_id"]
+            isOneToOne: false
+            referencedRelation: "event_ticket_tiers"
             referencedColumns: ["id"]
           },
         ]
@@ -788,6 +798,63 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "public_profiles"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      event_ticket_tiers: {
+        Row: {
+          capacity: number | null
+          created_at: string
+          description: string | null
+          event_id: string
+          id: string
+          is_active: boolean
+          name: string
+          price: number
+          sold_count: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          capacity?: number | null
+          created_at?: string
+          description?: string | null
+          event_id: string
+          id?: string
+          is_active?: boolean
+          name: string
+          price?: number
+          sold_count?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          capacity?: number | null
+          created_at?: string
+          description?: string | null
+          event_id?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          price?: number
+          sold_count?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_ticket_tiers_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "event_stats"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "event_ticket_tiers_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
           },
         ]
       }

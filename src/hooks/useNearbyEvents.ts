@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 // Shared distance helper (km)
@@ -31,35 +31,50 @@ export type NearbyEvent = {
   friend_images: string[];
   is_verified: boolean;
   is_vibe: boolean;
+  is_attending: boolean;
 };
 
 type Origin = { latitude: number; longitude: number } | null;
 
 interface Options {
   userLocation: Origin;
-  cityCenter: Origin;            // city_milestone center if user is in a launch zone
-  radiusKm: number;              // 5..25
+  cityCenter: Origin;
+  radiusKm: number;
   enabled?: boolean;
+  isPremium?: boolean;     // premium users get a wider fallback radius
+  pageSize?: number;
+  userId?: string | null;  // for is_attending flag
 }
 
-/**
- * Single source of truth for "events near me".
- * - origin = cityCenter (preferred) or userLocation
- * - reads coords + name from event_locations (single source of truth)
- * - subscribes to event_attendees so attendee_count stays live
- */
-export function useNearbyEvents({ userLocation, cityCenter, radiusKm, enabled = true }: Options) {
+const PREMIUM_FALLBACK_RADIUS_KM = 150;
+
+export function useNearbyEvents({
+  userLocation, cityCenter, radiusKm, enabled = true,
+  isPremium = false, pageSize = 12, userId = null,
+}: Options) {
   const qc = useQueryClient();
   const origin = cityCenter ?? userLocation;
+  const originLabel: 'city' | 'gps' | 'none' = cityCenter ? 'city' : userLocation ? 'gps' : 'none';
 
-  const queryKey = ['nearby-events', origin?.latitude, origin?.longitude, radiusKm];
+  // Premium-but-outside-city users get an extended radius so they still see launch-zone events.
+  const effectiveRadiusKm = useMemo(() => {
+    if (isPremium && originLabel === 'gps') return Math.max(radiusKm, PREMIUM_FALLBACK_RADIUS_KM);
+    return radiusKm;
+  }, [isPremium, originLabel, radiusKm]);
 
-  const query = useQuery({
+  const queryKey = ['nearby-events', origin?.latitude, origin?.longitude, effectiveRadiusKm, userId];
+
+  const query = useInfiniteQuery({
     queryKey,
     enabled: enabled && !!origin,
     refetchInterval: 60_000,
-    queryFn: async (): Promise<NearbyEvent[]> => {
+    initialPageParam: 0,
+    getNextPageParam: (lastPage: NearbyEvent[], allPages) =>
+      lastPage.length === pageSize ? allPages.length : undefined,
+    queryFn: async ({ pageParam = 0 }): Promise<NearbyEvent[]> => {
       if (!origin) return [];
+      const from = (pageParam as number) * pageSize;
+      const to = from + pageSize - 1;
       const { data, error } = await supabase
         .from('events')
         .select(
@@ -69,7 +84,9 @@ export function useNearbyEvents({ userLocation, cityCenter, radiusKm, enabled = 
           'event_locations(location_name, latitude, longitude)'
         )
         .gt('start_date', new Date().toISOString())
-        .eq('is_public', true);
+        .eq('is_public', true)
+        .order('start_date', { ascending: true })
+        .range(from, to);
 
       if (error) {
         console.error('[useNearbyEvents] query failed:', error);
@@ -83,13 +100,14 @@ export function useNearbyEvents({ userLocation, cityCenter, radiusKm, enabled = 
           const lat = Number(loc.latitude);
           const lng = Number(loc.longitude);
           const dist = distanceKm(origin.latitude, origin.longitude, lat, lng);
-          if (dist > radiusKm) return null;
+          if (dist > effectiveRadiusKm) return null;
 
           const confirmed = (e.event_attendees || []).filter((a: any) => a.status === 'confirmed');
           const friend_images = confirmed
             .map((a: any) => a.profiles?.avatar_url)
             .filter(Boolean)
             .slice(0, 3);
+          const is_attending = !!userId && (e.event_attendees || []).some((a: any) => a.user_id === userId);
 
           return {
             id: e.id,
@@ -110,10 +128,10 @@ export function useNearbyEvents({ userLocation, cityCenter, radiusKm, enabled = 
             friend_images,
             is_verified: e.creator?.verification_status === 'verified',
             is_vibe: confirmed.length >= 10,
+            is_attending,
           };
         })
-        .filter((x): x is NearbyEvent => x !== null)
-        .sort((a, b) => a.distanceKm - b.distanceKm);
+        .filter((x): x is NearbyEvent => x !== null);
     },
   });
 
@@ -126,11 +144,19 @@ export function useNearbyEvents({ userLocation, cityCenter, radiusKm, enabled = 
         qc.invalidateQueries({ queryKey });
       })
       .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
+    return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, origin?.latitude, origin?.longitude, radiusKm]);
+  }, [enabled, origin?.latitude, origin?.longitude, effectiveRadiusKm, userId]);
 
-  return query;
+  const events = useMemo<NearbyEvent[]>(() => {
+    const flat = (query.data?.pages.flat() ?? []) as NearbyEvent[];
+    return flat.sort((a, b) => a.distanceKm - b.distanceKm);
+  }, [query.data]);
+
+  return {
+    ...query,
+    events,
+    originLabel,
+    effectiveRadiusKm,
+  };
 }
