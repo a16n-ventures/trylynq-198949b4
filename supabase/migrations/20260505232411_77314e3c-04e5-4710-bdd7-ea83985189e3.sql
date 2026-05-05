@@ -1,0 +1,1 @@
+UPDATE public.events SET image_url = '/ahmia-zaria-launch.jpg' WHERE id = '92988e75-bf43-464c-a95f-352df6e20386';
