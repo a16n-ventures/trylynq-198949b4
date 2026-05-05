@@ -76,21 +76,18 @@ export function useNearbyEvents({
       const from = (pageParam as number) * pageSize;
           const to = from + pageSize - 1; 
           
-      // In useNearbyEvents.ts — replace the supabase query with:
       const latDelta = effectiveRadiusKm / 111;
       const lngDelta = effectiveRadiusKm / (111 * Math.cos((origin.latitude * Math.PI) / 180));
-      
+
+      // 1. Events + location (no fragile creator/attendee embed — those FKs don't exist in PostgREST cache)
       const { data, error } = await supabase
         .from('events')
         .select(
           'id, title, description, start_date, end_date, ticket_price, image_url, category, creator_id, max_attendees, ' +
-          'creator:profiles!events_creator_id_fkey(verification_status), ' +
-          'event_attendees(user_id, status, profiles(avatar_url)), ' +
-          'event_locations!inner(location_name, latitude, longitude)'  // ← !inner = only events WITH a location
+          'event_locations!inner(location_name, latitude, longitude)'
         )
         .gt('start_date', new Date().toISOString())
         .eq('is_public', true)
-        // Bounding box pre-filter on the joined table
         .gte('event_locations.latitude',  origin.latitude  - latDelta)
         .lte('event_locations.latitude',  origin.latitude  + latDelta)
         .gte('event_locations.longitude', origin.longitude - lngDelta)
@@ -103,6 +100,35 @@ export function useNearbyEvents({
         return [];
       }
 
+      const eventIds = (data || []).map((e: any) => e.id);
+      const creatorIds = Array.from(new Set((data || []).map((e: any) => e.creator_id).filter(Boolean)));
+
+      // 2. Attendees + 3. creator verification, in parallel
+      const [{ data: attendees }, { data: creators }] = await Promise.all([
+        eventIds.length
+          ? supabase.from('event_attendees').select('event_id, user_id, status').in('event_id', eventIds)
+          : Promise.resolve({ data: [] as any[] }),
+        creatorIds.length
+          ? supabase.from('profiles').select('user_id, verification_status, avatar_url').in('user_id', creatorIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      // 4. Avatar lookup for confirmed attendees
+      const confirmedUserIds = Array.from(new Set(
+        (attendees || []).filter((a: any) => a.status === 'confirmed').map((a: any) => a.user_id)
+      ));
+      const { data: attendeeProfiles } = confirmedUserIds.length
+        ? await supabase.from('profiles').select('user_id, avatar_url').in('user_id', confirmedUserIds)
+        : { data: [] as any[] };
+
+      const avatarByUser = new Map((attendeeProfiles || []).map((p: any) => [p.user_id, p.avatar_url]));
+      const creatorByUser = new Map((creators || []).map((p: any) => [p.user_id, p]));
+      const attByEvent = new Map<string, any[]>();
+      (attendees || []).forEach((a: any) => {
+        if (!attByEvent.has(a.event_id)) attByEvent.set(a.event_id, []);
+        attByEvent.get(a.event_id)!.push(a);
+      });
+
       return (data || [])
         .map((e: any): NearbyEvent | null => {
           const loc = Array.isArray(e.event_locations) ? e.event_locations[0] : e.event_locations;
@@ -112,12 +138,13 @@ export function useNearbyEvents({
           const dist = distanceKm(origin.latitude, origin.longitude, lat, lng);
           if (dist > effectiveRadiusKm) return null;
 
-          const confirmed = (e.event_attendees || []).filter((a: any) => a.status === 'confirmed');
+          const eAttendees = attByEvent.get(e.id) || [];
+          const confirmed = eAttendees.filter((a: any) => a.status === 'confirmed');
           const friend_images = confirmed
-            .map((a: any) => a.profiles?.avatar_url)
+            .map((a: any) => avatarByUser.get(a.user_id))
             .filter(Boolean)
-            .slice(0, 3);
-          const is_attending = !!userId && (e.event_attendees || []).some((a: any) => a.user_id === userId);
+            .slice(0, 3) as string[];
+          const is_attending = !!userId && eAttendees.some((a: any) => a.user_id === userId);
 
           return {
             id: e.id,
@@ -136,7 +163,7 @@ export function useNearbyEvents({
             distanceKm: Number(dist.toFixed(1)),
             attendee_count: confirmed.length,
             friend_images,
-            is_verified: e.creator?.verification_status === 'verified',
+            is_verified: creatorByUser.get(e.creator_id)?.verification_status === 'verified',
             is_vibe: confirmed.length >= 10,
             is_attending,
           };
