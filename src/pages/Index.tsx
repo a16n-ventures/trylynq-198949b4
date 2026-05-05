@@ -286,59 +286,50 @@ const Index = () => {
         </div>
       </section>
 
-      {/* ── ZONE UNLOCK CARD ── */}
+      {/* ── FEATURED LAUNCH EVENT ── */}
       <section className="px-6 pb-16">
-        <div className="rounded-3xl p-6 overflow-hidden relative" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          {zoneLoading || !zone ? (
-            <div className="flex items-center gap-3 py-6 text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              <Loader2 className="w-4 h-4 animate-spin" /> Detecting your area…
-            </div>
-          ) : (
-            <>
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#E8511A' }}>
-                    {zone.inZone ? '📍 You are in a launch zone' : '🔍 Nearest launch zone'}
-                  </p>
-                  <h3 className="text-2xl font-black" style={{ letterSpacing: '-0.03em' }}>
-                    {zone.city} — {cityProgress}% unlocked
-                  </h3>
-                </div>
-                {zone.unlocked
-                  ? <Sparkles className="w-5 h-5 mt-1 flex-shrink-0" style={{ color: '#E8511A' }} />
-                  : <Lock className="w-5 h-5 mt-1 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }} />}
-              </div>
-
-              {/* Progress bar */}
-              <div className="rounded-full overflow-hidden mb-4" style={{ height: 10, background: 'rgba(255,255,255,0.08)' }}>
-                <div
-                  className="h-full rounded-full transition-all duration-1000"
-                  style={{
-                    width: `${cityProgress}%`,
-                    background: 'linear-gradient(90deg, #E8511A, #F0851A)',
-                    boxShadow: '0 0 12px rgba(232,81,26,0.6)'
-                  }}
-                />
-              </div>
-
-              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                {zone.unlocked
-                  ? `${zone.city} is live — sign up and start meeting people around you.`
-                  : zone.target > 0
-                    ? `${Math.max(0, zone.target - zone.current).toLocaleString()} more sign-ups needed to activate ${zone.city}. Invite your people.`
-                    : `Be the founding member in ${zone.city}.`}
+        <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(232,81,26,0.25)' }}>
+          <div className="relative h-64 w-full">
+            <img
+              src="/ahmia-zaria-launch.jpg"
+              alt="Ahmia Zaria Launch — ABU campus festival at golden hour"
+              loading="lazy"
+              width={1280}
+              height={768}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 5%, rgba(0,0,0,0.35) 55%, transparent 100%)' }} />
+            <span
+              className="absolute top-4 left-4 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full"
+              style={{ background: '#E8511A', color: '#fff' }}
+            >
+              🔥 Flagship Launch
+            </span>
+            <div className="absolute bottom-0 left-0 right-0 p-5">
+              <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#FFB088' }}>
+                June 1 · ABU Zaria
               </p>
-
-              <button
-                className="mt-5 flex items-center gap-2 text-sm font-bold px-5 py-3 rounded-xl transition-all active:scale-95"
-                style={{ background: '#E8511A', color: '#fff' }}
-                onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
-              >
-                Join & help unlock {zone.city}
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </>
-          )}
+              <h3 className="text-2xl font-black leading-tight mb-1" style={{ letterSpacing: '-0.03em' }}>
+                Ahmia Zaria Launch
+              </h3>
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                Music. Jollof. Real link-ups. The day Northern Nigeria gets its city.
+              </p>
+            </div>
+          </div>
+          <div className="p-5 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              {daysLeft > 0 ? <><span className="font-black text-white">{daysLeft}</span> days to go</> : 'Live now'}
+            </div>
+            <button
+              className="flex items-center gap-2 font-bold text-sm px-5 py-3 rounded-xl transition-all active:scale-95"
+              style={{ background: '#E8511A', color: '#fff' }}
+              onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
+            >
+              RSVP free
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </section>
 
