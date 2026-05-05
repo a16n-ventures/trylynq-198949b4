@@ -219,101 +219,109 @@ const Friends = () => {
     enabled: !!user?.id,
   });
 
-  // C. Fetch Smart Suggestions (Nearby & Mutuals)
+  // C. Fetch Smart Suggestions (Nearby + Mutual + Shared interests)
   const { data: suggestions = [] } = useQuery({
     queryKey: ['friend_suggestions', user?.id, location?.latitude],
     queryFn: async () => {
       if (!user?.id) return [];
-      
+
       try {
-        // Fetch friends INSIDE this query for exclusion
-        const { data: existingFriends } = await supabase
-          .from('friendships')
-          .select('requester_id, addressee_id')
-          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
-        
-        const friendIds = existingFriends?.map((f: any) => 
+        // Fetch my interests + my friends for ranking/exclusion
+        const [{ data: me }, { data: existingFriends }] = await Promise.all([
+          supabase.from('profiles').select('interests').eq('user_id', user.id).maybeSingle(),
+          supabase.from('friendships')
+            .select('requester_id, addressee_id')
+            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`),
+        ]);
+        const myInterests: string[] = Array.isArray((me as any)?.interests) ? (me as any).interests : [];
+        const friendIds = (existingFriends || []).map((f: any) =>
           f.requester_id === user.id ? f.addressee_id : f.requester_id
-        ) || [];
-        
-        // 1. Try RPC (Database Function) first
+        );
+
+        // 1. Try RPC for nearby (in-city) candidates
+        let candidates: any[] = [];
         if (location) {
-          const { data: rpcData, error } = await supabase.rpc('suggest_nearby_friends', {
+          const { data: rpcData } = await supabase.rpc('suggest_nearby_friends', {
             requesting_user_id: user.id,
             user_lat: location.latitude,
             user_long: location.longitude,
-            limit_count: 5
+            limit_count: 20,
           });
-          
-          if (!error && rpcData && rpcData.length > 0) {
-            return rpcData.map((s: any) => ({
+          if (rpcData?.length) {
+            candidates = rpcData.map((s: any) => ({
               user_id: s.friend_id || s.user_id,
               display_name: s.display_name,
               username: s.username || 'suggested',
               avatar_url: s.avatar_url,
               distance_km: s.distance_km,
-              score: s.score
             }));
           }
         }
-  
-        // 2. Fallback: Random profiles not currently friends
-        let query = supabase
-          .from('profiles')
-          .select('user_id, display_name, username, avatar_url')
-          .neq('user_id', user.id)
-          .limit(5);
-        
-        if (friendIds.length > 0) {
-          query = query.not('user_id', 'in', `(${friendIds.join(',')})`);
-        }
-        
-        const { data: randomData } = await query;
-  
-        // Calculate real mutual friends count
-        const suggestedIds = (randomData || []).map((p: any) => p.user_id);
-        const mutualCounts = new Map<string, number>();
-        
-        if (suggestedIds.length > 0 && friendIds.length > 0) {
-          for (const sugId of suggestedIds) {
-            const { data: theirFriends } = await supabase
-              .from('friendships')
-              .select('requester_id, addressee_id')
-              .or(`requester_id.eq.${sugId},addressee_id.eq.${sugId}`)
-              .eq('status', 'accepted');
-            
-            const theirFriendIds = (theirFriends || []).map(f => 
-              f.requester_id === sugId ? f.addressee_id : f.requester_id
-            );
-            const mutuals = theirFriendIds.filter(id => friendIds.includes(id) && id !== user.id);
-            mutualCounts.set(sugId, mutuals.length);
-          }
+
+        // 2. Fallback: random profiles
+        if (candidates.length === 0) {
+          let q = supabase
+            .from('profiles')
+            .select('user_id, display_name, username, avatar_url, created_at')
+            .neq('user_id', user.id)
+            .limit(20);
+          if (friendIds.length > 0) q = q.not('user_id', 'in', `(${friendIds.join(',')})`);
+          const { data: random } = await q;
+          candidates = random || [];
         }
 
-        return (randomData || []).map((p: any) => {
-          const isNew = new Date(p.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-          
+        const candidateIds = candidates.map(c => c.user_id);
+        if (candidateIds.length === 0) return [];
+
+        // 3. Enrich with interests + mutuals
+        const { data: candidateProfiles } = await supabase
+          .from('profiles')
+          .select('user_id, interests, created_at')
+          .in('user_id', candidateIds);
+        const profMap = new Map((candidateProfiles || []).map((p: any) => [p.user_id, p]));
+
+        const mutualCounts = new Map<string, number>();
+        if (friendIds.length > 0) {
+          const { data: theirEdges } = await supabase
+            .from('friendships')
+            .select('requester_id, addressee_id, status')
+            .or(`requester_id.in.(${candidateIds.join(',')}),addressee_id.in.(${candidateIds.join(',')})`)
+            .eq('status', 'accepted');
+          (theirEdges || []).forEach((e: any) => {
+            const candidate = candidateIds.includes(e.requester_id) ? e.requester_id : e.addressee_id;
+            const other = e.requester_id === candidate ? e.addressee_id : e.requester_id;
+            if (friendIds.includes(other)) {
+              mutualCounts.set(candidate, (mutualCounts.get(candidate) || 0) + 1);
+            }
+          });
+        }
+
+        return candidates.map((c: any) => {
+          const p: any = profMap.get(c.user_id) || {};
+          const theirInterests: string[] = Array.isArray(p.interests) ? p.interests : [];
+          const sharedInterests = myInterests.filter(i => theirInterests.includes(i)).length;
+          const isNew = p.created_at && new Date(p.created_at) > new Date(Date.now() - 7 * 86400000);
+          const mutual_count = mutualCounts.get(c.user_id) || 0;
+          // Composite ranking score: nearby > mutuals > shared interests > new
+          const score =
+            (c.distance_km != null ? Math.max(0, 25 - c.distance_km) * 4 : 0) +
+            mutual_count * 10 +
+            sharedInterests * 5 +
+            (isNew ? 2 : 0);
           return {
-            ...p,
-            distance_km: p.distance_km || null,
-            mutual_count: mutualCounts.get(p.user_id) || 0,
-            is_new: isNew // Inject the "New" status
+            ...c,
+            mutual_count,
+            shared_interests: sharedInterests,
+            is_new: !!isNew,
+            score,
           };
-        }).sort((a, b) => {
-          // STRICT PRIORITIZATION: 
-          // 1. Closest friends first (Distance < 5km)
-          // 2. Then by Mutual Count
-          // 3. Then by "New" status
-          if ((a.distance_km || 999) < (b.distance_km || 999)) return -1;
-          if (b.mutual_count !== a.mutual_count) return b.mutual_count - a.mutual_count;
-          return a.is_new ? -1 : 1;
-        });
+        }).sort((a, b) => b.score - a.score).slice(0, 8);
       } catch (e) {
-        console.error("Suggestion fetch failed", e);
+        console.error('Suggestion fetch failed', e);
         return [];
       }
     },
-    enabled: !!user
+    enabled: !!user,
   });
 
   // D. Fetch Requests
