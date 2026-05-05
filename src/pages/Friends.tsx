@@ -325,20 +325,41 @@ const Friends = () => {
       try {
         const { data, error } = await supabase
           .from('friendships')
-          .select(`
-            id, created_at,
-            requester:profiles!requester_id(id, user_id, display_name, username, avatar_url)
-          `)
+          .select('id, created_at, requester_id')
           .eq('addressee_id', user.id)
           .eq('status', 'pending');
-        
+
         if (error) {
           console.error('Friend requests query error:', error);
           throw error;
         }
-        
-        // Type assertion with safety check
-        return (data || []).filter(r => r.requester) as unknown as Request[];
+
+        const requesterIds = (data || []).map((r: any) => r.requester_id);
+        if (requesterIds.length === 0) return [];
+
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, user_id, display_name, username, avatar_url')
+          .in('user_id', requesterIds);
+
+        const profMap = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+
+        return (data || [])
+          .map((r: any) => {
+            const p: any = profMap.get(r.requester_id);
+            if (!p) return null;
+            return {
+              id: r.id,
+              created_at: r.created_at,
+              requester: {
+                id: p.id,
+                display_name: p.display_name || 'User',
+                username: p.username || 'user',
+                avatar_url: p.avatar_url,
+              },
+            } as Request;
+          })
+          .filter(Boolean) as Request[];
       } catch (error) {
         console.error('Failed to fetch friend requests:', error);
         return [];
