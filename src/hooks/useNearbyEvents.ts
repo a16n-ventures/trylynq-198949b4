@@ -145,7 +145,10 @@ export function useNearbyEvents({
 
           const eAttendees = attByEvent.get(e.id) || [];
           const confirmed = eAttendees.filter((a: any) => a.status === 'confirmed');
-          const friend_images = confirmed
+          // Exclude current user from "others going"
+          const others = confirmed.filter((a: any) => a.user_id !== userId);
+          const friendsGoing = others.filter((a: any) => friendSet.has(a.user_id));
+          const friend_images = friendsGoing
             .map((a: any) => avatarByUser.get(a.user_id))
             .filter(Boolean)
             .slice(0, 3) as string[];
@@ -166,8 +169,9 @@ export function useNearbyEvents({
             latitude: lat,
             longitude: lng,
             distanceKm: Number(dist.toFixed(1)),
-            attendee_count: confirmed.length,
+            attendee_count: others.length,
             friend_images,
+            friends_going_count: friendsGoing.length,
             is_verified: creatorByUser.get(e.creator_id)?.verification_status === 'verified',
             is_vibe: confirmed.length >= 10,
             is_attending,
