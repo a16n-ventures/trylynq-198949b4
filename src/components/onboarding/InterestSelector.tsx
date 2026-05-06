@@ -41,13 +41,27 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
 
     setLoading(true);
     try {
+      // Read existing prefs to avoid clobbering them
+      const { data: existing } = await supabase
+        .from('profiles')
+        .select('preferences')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const currentPrefs = (existing?.preferences || {}) as Record<string, any>;
+      const mergedPrefs = {
+        ...currentPrefs,
+        discovery_radius: currentPrefs.discovery_radius ?? 25000, // 25km default
+      };
+
       const { data, error } = await supabase
         .from('profiles')
-        .upsert({ 
+        .upsert({
           user_id: user.id,
           interests: selected,
+          preferences: mergedPrefs,
           updated_at: new Date().toISOString(),
-        }, { 
+        }, {
           onConflict: 'user_id'
         })
         .select();
