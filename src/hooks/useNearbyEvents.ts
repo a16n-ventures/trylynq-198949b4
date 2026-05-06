@@ -27,8 +27,9 @@ export type NearbyEvent = {
   latitude: number;
   longitude: number;
   distanceKm: number;
-  attendee_count: number;
-  friend_images: string[];
+  attendee_count: number;       // others going (excludes me)
+  friend_images: string[];      // friends-only avatars (excludes me)
+  friends_going_count: number;  // count of my friends going (excludes me)
   is_verified: boolean;
   is_vibe: boolean;
   is_attending: boolean;
@@ -44,6 +45,7 @@ interface Options {
   isPremium?: boolean;     // premium users get a wider fallback radius
   pageSize?: number;
   userId?: string | null;  // for is_attending flag
+  friendIds?: string[];    // to compute friends-going avatars/count
 }
 
 const PREMIUM_GPS_FALLBACK_RADIUS_KM = 150;
@@ -51,7 +53,7 @@ const PREMIUM_CITY_MAX_RADIUS_KM = 75;
 
 export function useNearbyEvents({
   userLocation, cityCenter, radiusKm, enabled = true,
-  isPremium = false, pageSize = 12, userId = null,
+  isPremium = false, pageSize = 12, userId = null, friendIds = [],
 }: Options) {
   const qc = useQueryClient();
   const origin = cityCenter ?? userLocation;
@@ -64,7 +66,8 @@ export function useNearbyEvents({
     return radiusKm;
   }, [isPremium, originLabel, radiusKm]);
 
-  const queryKey = ['nearby-events', origin?.latitude, origin?.longitude, effectiveRadiusKm, userId];
+  const friendSet = useMemo(() => new Set((friendIds || []).filter(Boolean)), [friendIds]);
+  const queryKey = ['nearby-events', origin?.latitude, origin?.longitude, effectiveRadiusKm, userId, friendSet.size];
 
   const query = useInfiniteQuery({
     queryKey,
@@ -142,7 +145,10 @@ export function useNearbyEvents({
 
           const eAttendees = attByEvent.get(e.id) || [];
           const confirmed = eAttendees.filter((a: any) => a.status === 'confirmed');
-          const friend_images = confirmed
+          // Exclude current user from "others going"
+          const others = confirmed.filter((a: any) => a.user_id !== userId);
+          const friendsGoing = others.filter((a: any) => friendSet.has(a.user_id));
+          const friend_images = friendsGoing
             .map((a: any) => avatarByUser.get(a.user_id))
             .filter(Boolean)
             .slice(0, 3) as string[];
@@ -163,8 +169,9 @@ export function useNearbyEvents({
             latitude: lat,
             longitude: lng,
             distanceKm: Number(dist.toFixed(1)),
-            attendee_count: confirmed.length,
+            attendee_count: others.length,
             friend_images,
+            friends_going_count: friendsGoing.length,
             is_verified: creatorByUser.get(e.creator_id)?.verification_status === 'verified',
             is_vibe: confirmed.length >= 10,
             is_attending,
