@@ -27,8 +27,9 @@ export type NearbyEvent = {
   latitude: number;
   longitude: number;
   distanceKm: number;
-  attendee_count: number;
-  friend_images: string[];
+  attendee_count: number;       // others going (excludes me)
+  friend_images: string[];      // friends-only avatars (excludes me)
+  friends_going_count: number;  // count of my friends going (excludes me)
   is_verified: boolean;
   is_vibe: boolean;
   is_attending: boolean;
