@@ -344,7 +344,7 @@ const MapPage = () => {
     if (!user) return toast.error('Please sign in to RSVP');
     if (!ev) return;
     const wasGoing = !!ev.is_attending;
-    setSelectedEvent({ ...ev, is_attending: !wasGoing, attendee_count: Math.max(0, (ev.attendee_count || 0) + (wasGoing ? -1 : 1)) });
+    setSelectedEvent({ ...ev, is_attending: !wasGoing });
     try {
       if (wasGoing) {
         await supabase.from('event_attendees').delete().match({ event_id: ev.id, user_id: user.id });
