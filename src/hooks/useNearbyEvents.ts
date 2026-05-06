@@ -44,6 +44,7 @@ interface Options {
   isPremium?: boolean;     // premium users get a wider fallback radius
   pageSize?: number;
   userId?: string | null;  // for is_attending flag
+  friendIds?: string[];    // to compute friends-going avatars/count
 }
 
 const PREMIUM_GPS_FALLBACK_RADIUS_KM = 150;
