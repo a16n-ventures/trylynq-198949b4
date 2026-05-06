@@ -605,7 +605,7 @@ const MapPage = () => {
                       <p className="text-sm font-black">{formatTicketPrice(selectedEvent.ticket_price)}</p>
                     </div>
                     <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Going</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Others Going</p>
                       <p className="text-sm font-black">{selectedEvent.attendee_count || 0}</p>
                     </div>
                   </div>
@@ -613,26 +613,30 @@ const MapPage = () => {
                     <Badge className="mb-3 bg-green-600 text-white border-0">✓ You're going</Badge>
                   )}
 
-                  <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
-                    <div className="flex items-center -space-x-3">
-                      {selectedEvent.friend_images.length > 0 ? (
-                        selectedEvent.friend_images.map((img: string, i: number) => (
+                  {(selectedEvent.friends_going_count || 0) > 0 ? (
+                    <div className="flex items-center justify-between mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50">
+                      <div className="flex items-center -space-x-3">
+                        {selectedEvent.friend_images.map((img: string, i: number) => (
                           <Avatar key={i} className="w-8 h-8 border-2 border-background">
                             <AvatarImage src={img} />
                           </Avatar>
-                        ))
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] text-muted-foreground">?</div>
-                      )}
-                      <div className="w-8 h-8 rounded-full bg-background border-2 border-muted flex items-center justify-center text-[10px] font-bold z-10 shadow-sm">
-                        +{selectedEvent.attendee_count}
+                        ))}
+                        {selectedEvent.friends_going_count > selectedEvent.friend_images.length && (
+                          <div className="w-8 h-8 rounded-full bg-background border-2 border-muted flex items-center justify-center text-[10px] font-bold z-10 shadow-sm">
+                            +{selectedEvent.friends_going_count - selectedEvent.friend_images.length}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-xs font-medium text-right">
+                        <p className="text-primary">{selectedEvent.friends_going_count} {selectedEvent.friends_going_count === 1 ? 'friend' : 'friends'}</p>
+                        <p className="text-muted-foreground">going too</p>
                       </div>
                     </div>
-                    <div className="text-xs font-medium text-right">
-                      <p className="text-primary">{selectedEvent.friend_images.length} friends</p>
-                      <p className="text-muted-foreground">are going</p>
+                  ) : (
+                    <div className="mb-5 bg-muted/30 p-2.5 rounded-xl border border-border/50 text-center text-xs text-muted-foreground">
+                      None of your friends are going yet
                     </div>
-                  </div>
+                  )}
 
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     <Button
