@@ -53,7 +53,7 @@ export const ProtectedRoute = ({
       try {
         const { data: profile, error } = await supabase
           .from('profiles')
-          .select('interests')
+          .select('interests, preferences')
           .eq('user_id', user.id)
           .maybeSingle();
 
@@ -63,14 +63,12 @@ export const ProtectedRoute = ({
           return;
         }
 
-        // Check if interests are missing
-        const hasInterests = profile?.interests && 
-                            Array.isArray(profile.interests) && 
-                            profile.interests.length > 0;
+        const hasInterests = Array.isArray(profile?.interests) && profile!.interests.length > 0;
+        const prefs = (profile?.preferences || {}) as { discovery_radius?: number };
+        const hasRadius = typeof prefs.discovery_radius === 'number' && prefs.discovery_radius > 0;
 
-        if (!hasInterests) {
-          console.log("No interests found, redirecting to onboarding...");
-          // Silently redirect - NO LOADER
+        if (!hasInterests || !hasRadius) {
+          console.log("Onboarding incomplete, redirecting...", { hasInterests, hasRadius });
           navigate("/onboarding", { replace: true });
           return;
         }

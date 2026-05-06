@@ -606,15 +606,23 @@ const Profile = () => {
 
       if (attError || !attendances?.length) return [];
 
-      const { data: events, error: eventsError } = await supabase
-        .from('events')
-        .select('id, title, start_date, location, image_url')
-        .in('id', attendances.map((a: any) => a.event_id))
-        .gte('start_date', new Date().toISOString())
-        .order('start_date', { ascending: true });
+      const eventIds = attendances.map((a: any) => a.event_id);
+
+      const [{ data: events, error: eventsError }, { data: locs }] = await Promise.all([
+        supabase
+          .from('events')
+          .select('id, title, start_date, image_url')
+          .in('id', eventIds)
+          .order('start_date', { ascending: true }),
+        supabase
+          .from('event_locations')
+          .select('event_id, location_name')
+          .in('event_id', eventIds),
+      ]);
 
       if (eventsError) return [];
-      return events || [];
+      const locByEvent = new Map((locs || []).map((l: any) => [l.event_id, l.location_name]));
+      return (events || []).map((e: any) => ({ ...e, location: locByEvent.get(e.id) || 'TBA' }));
     },
     enabled: !!user?.id,
   });
