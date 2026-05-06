@@ -253,7 +253,7 @@ const MapPage = () => {
     radiusKm: discoveryRadiusKm,
     isPremium,
     userId: user?.id ?? null,
-  });
+    friendIds,
 
   const events = useMemo(() => applyEventFilters(nearbyEvents as any, filters), [nearbyEvents, filters]);
 
