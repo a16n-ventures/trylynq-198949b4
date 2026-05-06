@@ -210,21 +210,36 @@ export default function Messages() {
           byName.set(c.name, c);
         }
       }
+      const dedupedCommunities = Array.from(byName.values());
 
-      return Array.from(byName.values()).map((c: any) => ({
-        id: c.id,
-        type: 'community',
-        name: c.name,
-        avatar: c.cover_url,
-        subtitle: `${c.member_count || 0} members`,
-        meta: { 
-          is_joined: memberMap.has(c.id),
-          my_role: memberMap.get(c.id) || null,
-          is_premium: c.is_premium || false,
-          join_fee: c.join_fee || 0,
-          description: c.description,
-        }
-      })) as ChatItem[];
+      // Reconcile real member counts from community_members table
+      const ids = dedupedCommunities.map((c: any) => c.id);
+      const { data: allMembers } = ids.length
+        ? await supabase.from('community_members').select('community_id').in('community_id', ids)
+        : { data: [] as any[] };
+      const realCount = new Map<string, number>();
+      (allMembers || []).forEach((m: any) => {
+        realCount.set(m.community_id, (realCount.get(m.community_id) || 0) + 1);
+      });
+
+      return dedupedCommunities.map((c: any) => {
+        const count = realCount.get(c.id) ?? (c.member_count || 0);
+        return {
+          id: c.id,
+          type: 'community',
+          name: c.name,
+          avatar: c.cover_url,
+          subtitle: `${count} ${count === 1 ? 'member' : 'members'}`,
+          meta: {
+            is_joined: memberMap.has(c.id),
+            my_role: memberMap.get(c.id) || null,
+            is_premium: c.is_premium || false,
+            join_fee: c.join_fee || 0,
+            description: c.description,
+            member_count: count,
+          }
+        };
+      }) as ChatItem[];
     },
     enabled: !!user && activeTab === 'community'
   });
