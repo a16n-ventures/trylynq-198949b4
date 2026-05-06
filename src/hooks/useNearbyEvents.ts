@@ -53,7 +53,7 @@ const PREMIUM_CITY_MAX_RADIUS_KM = 75;
 
 export function useNearbyEvents({
   userLocation, cityCenter, radiusKm, enabled = true,
-  isPremium = false, pageSize = 12, userId = null,
+  isPremium = false, pageSize = 12, userId = null, friendIds = [],
 }: Options) {
   const qc = useQueryClient();
   const origin = cityCenter ?? userLocation;
