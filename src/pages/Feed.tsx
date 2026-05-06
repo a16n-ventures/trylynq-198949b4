@@ -301,11 +301,21 @@ const Feed = () => {
             seen.add(c.id);
             return true;
           });
+          // Reconcile real member counts
+          const ids = unique.map((c: any) => c.id);
+          const { data: members } = ids.length
+            ? await supabase.from('community_members').select('community_id').in('community_id', ids)
+            : { data: [] as any[] };
+          const realCount = new Map<string, number>();
+          (members || []).forEach((m: any) => {
+            realCount.set(m.community_id, (realCount.get(m.community_id) || 0) + 1);
+          });
           setCommunities(unique.map((c: any) => ({
             ...c,
             avatar_url: c.cover_url || c.avatar_url || null,
             is_premium: c.is_premium || false,
             join_fee: c.join_fee || 0,
+            member_count: realCount.get(c.id) ?? (c.member_count || 0),
           })));
         }
       }
