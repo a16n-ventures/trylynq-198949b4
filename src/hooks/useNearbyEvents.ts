@@ -66,7 +66,8 @@ export function useNearbyEvents({
     return radiusKm;
   }, [isPremium, originLabel, radiusKm]);
 
-  const queryKey = ['nearby-events', origin?.latitude, origin?.longitude, effectiveRadiusKm, userId];
+  const friendSet = useMemo(() => new Set((friendIds || []).filter(Boolean)), [friendIds]);
+  const queryKey = ['nearby-events', origin?.latitude, origin?.longitude, effectiveRadiusKm, userId, friendSet.size];
 
   const query = useInfiniteQuery({
     queryKey,
