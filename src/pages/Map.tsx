@@ -91,7 +91,7 @@ const MapPage = () => {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [isGhostMode, setIsGhostMode] = useState(false);
   const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
-  const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('satellite');
+  const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [filters, setFilters] = useEventFilters();
   const { isPremium } = usePremiumStatus(user?.id);
   const [tierSheetOpen, setTierSheetOpen] = useState(false);
@@ -750,17 +750,6 @@ const MapPage = () => {
           }}
         />
       </div> 
-      <div style={{position:'fixed',bottom:140,left:16,zIndex:9999,background:'rgba(0,0,0,0.9)',color:'white',fontSize:11,fontFamily:'monospace',borderRadius:12,padding:12,maxWidth:280,pointerEvents:'none'}}>
-  <div style={{color:'#facc15',fontWeight:'bold',marginBottom:4}}>🔍 Event Debug</div>
-  <div>location: {location ? `${location.latitude.toFixed(3)},${location.longitude.toFixed(3)}` : '❌ NULL'}</div>
-  <div>cityMilestone: {cityMilestone?.city_name ?? '❌ null'}</div>
-  <div>originLabel: {originLabel}</div>
-  <div>effectiveRadiusKm: {effectiveRadiusKm}</div>
-  <div>nearbyEvents: {nearbyEvents.length}</div>
-  <div>events (filtered): {events.length}</div>
-  <div>activeView: {activeView}</div>
-  <div>eventsLoading: {String(eventsLoading)}</div>
-</div>
     </LaunchZoneGuard>
   );
 };
