@@ -46,7 +46,8 @@ interface Options {
   userId?: string | null;  // for is_attending flag
 }
 
-const PREMIUM_FALLBACK_RADIUS_KM = 150;
+const PREMIUM_GPS_FALLBACK_RADIUS_KM = 150;
+const PREMIUM_CITY_MAX_RADIUS_KM = 75;
 
 export function useNearbyEvents({
   userLocation, cityCenter, radiusKm, enabled = true,
@@ -56,9 +57,10 @@ export function useNearbyEvents({
   const origin = cityCenter ?? userLocation;
   const originLabel: 'city' | 'gps' | 'none' = cityCenter ? 'city' : userLocation ? 'gps' : 'none';
 
-  // Premium-but-outside-city users get an extended radius so they still see launch-zone events.
+  // Premium gets a wider radius: in-city up to 75km, outside-city up to 150km.
   const effectiveRadiusKm = useMemo(() => {
-    if (isPremium && originLabel === 'gps') return Math.max(radiusKm, PREMIUM_FALLBACK_RADIUS_KM);
+    if (isPremium && originLabel === 'gps') return Math.max(radiusKm, PREMIUM_GPS_FALLBACK_RADIUS_KM);
+    if (isPremium && originLabel === 'city') return Math.max(radiusKm, PREMIUM_CITY_MAX_RADIUS_KM);
     return radiusKm;
   }, [isPremium, originLabel, radiusKm]);
 

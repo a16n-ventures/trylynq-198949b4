@@ -145,6 +145,31 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   }, [updateDatabase, isLocationSharingEnabled]);
 
+  // IP-based fallback when GPS unavailable / denied
+  const tryIpFallback = useCallback(async () => {
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      if (!res.ok) return false;
+      const j = await res.json();
+      if (typeof j.latitude === 'number' && typeof j.longitude === 'number') {
+        const loc: LocationData = {
+          latitude: j.latitude,
+          longitude: j.longitude,
+          accuracy: 25000, // ~city-level
+        };
+        setLocation(loc);
+        saveLocal(loc);
+        setError(null);
+        setLoading(false);
+        console.log('📍 IP fallback location applied:', j.city, j.region);
+        return true;
+      }
+    } catch (e) {
+      console.warn('IP fallback failed:', e);
+    }
+    return false;
+  }, []);
+
   // Core: Error Handler
   const handleError = useCallback((err: GeolocationPositionError) => {
     console.warn('Geolocation error:', err.code, err.message);
@@ -152,13 +177,19 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     let critical = true;
 
     if (err.code === 1) {
-      message = 'Location permission denied. Please enable it in browser settings.';
+      message = 'Location permission denied. Using approximate location.';
+      critical = false;
     } else if (err.code === 2) {
       message = 'Location unavailable.';
       critical = false; 
     } else if (err.code === 3) {
       message = 'Location request timed out.';
       if (location) critical = false; 
+    }
+
+    // Try IP fallback whenever GPS fails and we don't already have a fix
+    if (!location) {
+      tryIpFallback();
     }
 
     if (critical) {
@@ -169,7 +200,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setLoading(false);
-  }, [location]);
+  }, [location, tryIpFallback]);
 
   // Manual Request (Exposed to UI)
   const requestLocation = useCallback(async () => {
