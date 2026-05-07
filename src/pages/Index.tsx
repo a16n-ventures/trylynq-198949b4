@@ -167,10 +167,12 @@ const Index = () => {
   return (
     <div className="min-h-screen text-white flex flex-col font-sans" style={{ background: '#0D0D0D', fontFamily: "'Instrument Sans', 'DM Sans', sans-serif" }}>
 
-      {/* ── LAUNCH TICKER ── */}
+      {/* ── LAUNCH TICKER ── */} 
+      {/*
       <div className="w-full py-2 px-4 text-center text-xs font-bold uppercase tracking-[0.2em]" style={{ background: '#E8511A', color: '#fff' }}>
         🇳🇬 &nbsp; Ahmia goes LIVE June 1st &nbsp;·&nbsp; {daysLeft} days to go &nbsp;·&nbsp; Secure your spot now &nbsp; 🔥
       </div>
+      */}
 
       {/* ── NAV ── */}
       <nav className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
