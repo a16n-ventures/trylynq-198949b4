@@ -19,7 +19,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useGeolocation } from '@/contexts/LocationContext';
 import { useLaunchZone } from '@/hooks/useLaunchZone';
-import { Rocket, UserPlus, Globe } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
@@ -59,7 +58,9 @@ export default function Messages() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { location, isLoading: locationLoading } = useGeolocation();
-  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading, currentCount, targetCount } = useLaunchZone(location?.latitude, location?.longitude);
+  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
+  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
 
   // State
   const [activeTab, setActiveTab] = useState<ChatType>('dm');
@@ -383,11 +384,12 @@ export default function Messages() {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={!!launchCityName}
+      isWithinCity={isWithinCity}
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0}
+      onCityResolved={setGeocodedCity}
     >
       <div className="flex h-screen bg-background overflow-hidden">
         

@@ -80,7 +80,9 @@ const MapPage = () => {
   
   // Global State
   const { location, requestLocation, isLoading: locationLoading, error: locationError } = useGeolocation();
-  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading, currentCount, targetCount } = useLaunchZone(location?.latitude, location?.longitude);
+  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
+  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
   const { friends = [] } = useFriends(user?.id);
 
   // Local State
@@ -152,22 +154,6 @@ const MapPage = () => {
       return data;
     },
     enabled: !!user?.id
-  });
-
-  const { data: cityMilestone } = useQuery({
-    queryKey: ['map-city-milestone', location?.latitude, location?.longitude],
-    queryFn: async (): Promise<CityMilestone | null> => {
-      if (!location) return null;
-      const { data, error } = await supabase
-        .from('city_milestones')
-        .select('city_name, center_lat, center_long, radius_km');
-      if (error || !data) return null;
-      return data
-        .map((m) => ({ ...m, dist: distanceKm(location.latitude, location.longitude, m.center_lat, m.center_long) }))
-        .filter((m) => m.dist <= (m.radius_km ?? 25))
-        .sort((a, b) => a.dist - b.dist)[0] || null;
-    },
-    enabled: !!location,
   });
 
   const discoveryRadiusKm = useMemo(() => {
@@ -381,11 +367,12 @@ const MapPage = () => {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={!!launchCityName}
+      isWithinCity={isWithinCity}
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0}
+      onCityResolved={setGeocodedCity}
     >
       <div className="relative h-screen w-screen overflow-hidden bg-background">
         
@@ -596,7 +583,7 @@ const MapPage = () => {
                   <div className="grid grid-cols-3 gap-2 mb-2">
                     <div className="rounded-xl bg-muted/30 border border-border/50 p-2.5">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                        From {originLabel === 'city' ? (cityMilestone?.city_name || 'city') : 'you'}
+                        From {originLabel === 'city' ? (launchCityName || 'city') : 'you'}
                       </p>
                       <p className="text-sm font-black">{selectedEvent.distanceKm}km</p>
                     </div>
