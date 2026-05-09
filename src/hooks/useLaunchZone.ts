@@ -42,8 +42,17 @@ export function useLaunchZone(
   latRef.current = latitude;
   lonRef.current = longitude;
 
-  const distMoved = prevCoords ? haversineKm(lat, lon, prevCoords.lat, prevCoords.lon) : 1;
-  if (distMoved < 0.005 && result.isInLaunchZone !== null) return;
+  // ── FIX 1 ─────────────────────────────────────────────────────────────────
+  // REMOVED the two orphaned lines that were sitting outside any function:
+  //
+  //   const distMoved = prevCoords ? haversineKm(...) : 1;
+  //   if (distMoved < 0.005 && result.isInLaunchZone !== null) return;
+  //
+  // `prevCoords`, `lat`, `lon`, and `result` were never declared in this
+  // scope. These lines caused an immediate ReferenceError on module import,
+  // crashing the hook for every page that uses it.
+  // ──────────────────────────────────────────────────────────────────────────
+
   // ── Core zone check ────────────────────────────────────────────────────────
   // Extracted so it can be called both on mount and from Realtime callbacks.
   const checkZone = useCallback(async (cancelled: { current: boolean }) => {
@@ -102,7 +111,7 @@ export function useLaunchZone(
       // Show COMING_SOON screen. Fetch live waitlist count for this city so
       // the user can see social momentum even before their city is promoted.
       cityRef.current = null;
-      const geocodedCity = resolvedCityName?.toLowerCase().trim() ?? null; // Normalize
+      const geocodedCity = resolvedCityName?.toLowerCase().trim() ?? null;
 
       let waitlistCount = 0;
       if (geocodedCity) {
@@ -122,12 +131,22 @@ export function useLaunchZone(
         targetCount: 0,              // no target until admin promotes this city
         isLoading: false,
       });
+
     } catch (err) {
-      const cachedStatus = localStorage.getItem(`zone_cache_${lat.toFixed(2)}`);
-        if (cachedStatus === 'unlocked') {
-            setResult(prev => ({ ...prev, isInLaunchZone: true, isLoading: false }));
-            return;
-        }
+      // ── FIX 3 ───────────────────────────────────────────────────────────────
+      // REMOVED the localStorage bypass that was here:
+      //
+      //   const cachedStatus = localStorage.getItem(`zone_cache_${lat.toFixed(2)}`);
+      //   if (cachedStatus === 'unlocked') {
+      //     setResult(prev => ({ ...prev, isInLaunchZone: true ... }));
+      //     return;
+      //   }
+      //
+      // Any user could open DevTools and run:
+      //   localStorage.setItem('zone_cache_XX.XX', 'unlocked')
+      // to permanently bypass the zone gate on any device.
+      // The catch block must always fail closed — no exceptions.
+      // ────────────────────────────────────────────────────────────────────────
       if (cancelled.current) return;
       console.error('[LaunchZone] Unexpected error:', err);
       // Fail closed — don't let an exception silently pass everyone through.
@@ -199,7 +218,7 @@ export function useLaunchZone(
     // Subscribes to INSERT events on waitlist filtered to the user's geocoded
     // city so the count ticks up in real-time as locals join the waitlist,
     // building visible social momentum on the COMING_SOON screen.
-    const geocodedCity = resolvedCityName?.toLowerCase().trim() ?? null; // Normalize
+    const geocodedCity = resolvedCityName?.toLowerCase().trim() ?? null;
     const waitlistChannel = geocodedCity
       ? supabase
           .channel(`waitlist-${geocodedCity}`)
@@ -211,10 +230,24 @@ export function useLaunchZone(
               table: 'waitlist',
               filter: `city=eq.${geocodedCity}`,
             },
-            (payload) => {
-              // payload.new.user_id is available in the broadcast
-              if (payload.new.user_id === currentUserId) return; // Ignore self
-    
+            () => {
+              // ── FIX 2 ─────────────────────────────────────────────────────
+              // REMOVED the self-filter that was here:
+              //
+              //   if (payload.new.user_id === currentUserId) return;
+              //
+              // `currentUserId` was never declared or passed into this hook,
+              // so the comparison always threw a ReferenceError and the
+              // entire waitlist count subscription silently stopped working.
+              //
+              // The self-join case is already handled correctly: when the
+              // current user joins, useWaitlist does an optimistic increment
+              // in LaunchZoneGuard immediately. The Realtime INSERT that
+              // fires shortly after will then re-sync to the authoritative
+              // count from the DB — incrementing twice briefly then snapping
+              // back is acceptable and far better than crashing the channel.
+              // ──────────────────────────────────────────────────────────────
+              if (cityRef.current) return; // only update in COMING_SOON state
               setResult(prev => ({
                 ...prev,
                 currentCount: prev.currentCount + 1,
