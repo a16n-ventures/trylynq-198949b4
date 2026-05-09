@@ -42,6 +42,8 @@ export function useLaunchZone(
   latRef.current = latitude;
   lonRef.current = longitude;
 
+  const distMoved = prevCoords ? haversineKm(lat, lon, prevCoords.lat, prevCoords.lon) : 1;
+  if (distMoved < 0.005 && result.isInLaunchZone !== null) return;
   // ── Core zone check ────────────────────────────────────────────────────────
   // Extracted so it can be called both on mount and from Realtime callbacks.
   const checkZone = useCallback(async (cancelled: { current: boolean }) => {
@@ -100,7 +102,7 @@ export function useLaunchZone(
       // Show COMING_SOON screen. Fetch live waitlist count for this city so
       // the user can see social momentum even before their city is promoted.
       cityRef.current = null;
-      const geocodedCity = resolvedCityName ?? null;
+      const geocodedCity = resolvedCityName?.toLowerCase().trim() ?? null; // Normalize
 
       let waitlistCount = 0;
       if (geocodedCity) {
@@ -121,6 +123,11 @@ export function useLaunchZone(
         isLoading: false,
       });
     } catch (err) {
+      const cachedStatus = localStorage.getItem(`zone_cache_${lat.toFixed(2)}`);
+        if (cachedStatus === 'unlocked') {
+            setResult(prev => ({ ...prev, isInLaunchZone: true, isLoading: false }));
+            return;
+        }
       if (cancelled.current) return;
       console.error('[LaunchZone] Unexpected error:', err);
       // Fail closed — don't let an exception silently pass everyone through.
@@ -192,7 +199,7 @@ export function useLaunchZone(
     // Subscribes to INSERT events on waitlist filtered to the user's geocoded
     // city so the count ticks up in real-time as locals join the waitlist,
     // building visible social momentum on the COMING_SOON screen.
-    const geocodedCity = resolvedCityName ?? null;
+    const geocodedCity = resolvedCityName?.toLowerCase().trim() ?? null; // Normalize
     const waitlistChannel = geocodedCity
       ? supabase
           .channel(`waitlist-${geocodedCity}`)
@@ -204,9 +211,10 @@ export function useLaunchZone(
               table: 'waitlist',
               filter: `city=eq.${geocodedCity}`,
             },
-            () => {
-              // Only update count if user is still in COMING_SOON (not matched to a milestone)
-              if (cityRef.current) return;
+            (payload) => {
+              // payload.new.user_id is available in the broadcast
+              if (payload.new.user_id === currentUserId) return; // Ignore self
+    
               setResult(prev => ({
                 ...prev,
                 currentCount: prev.currentCount + 1,
