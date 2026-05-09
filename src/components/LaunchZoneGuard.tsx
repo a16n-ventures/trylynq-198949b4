@@ -184,17 +184,15 @@ type GuardState = 'PASS_THROUGH' | 'LOADING' | 'NO_GPS' | 'WAITING_ROOM' | 'COMI
 function resolveState(
   isLoading: boolean,
   locationDetected: boolean,
-  isWithinCity: boolean,
   isInLaunchZone: boolean | null,
+  locationError: boolean // Add this
 ): GuardState {
-  // Still waiting for GPS or DB
+  if (locationError) return 'NO_GPS'; 
   if (isLoading || isInLaunchZone === null) return 'LOADING';
+  if (!locationDetected) return 'NO_GPS';
 
   // Zone is unlocked — let the user in
   if (isInLaunchZone === true) return 'PASS_THROUGH';
-
-  // GPS not available
-  if (!locationDetected) return 'NO_GPS';
 
   // User is inside a registered city but it hasn't unlocked yet
   if (isWithinCity) return 'WAITING_ROOM';
@@ -244,6 +242,8 @@ export function LaunchZoneGuard({
     increment,
     decrement,
   );
+  
+  if (state === 'LOADING') return <FullscreenSpinner />;
 
   // Transparent pass-through states
   if (state === 'PASS_THROUGH' || state === 'LOADING') return <>{children}</>;
