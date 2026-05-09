@@ -112,7 +112,8 @@ const Feed = () => {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const { location, isLoading: locationLoading } = useGeolocation();
   const [locationName, setLocationName] = useState("Detecting...");
-  const { isInLaunchZone, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName } = useLaunchZone(location?.latitude, location?.longitude);
+  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
+  const { isInLaunchZone, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName } = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
@@ -230,9 +231,9 @@ const Feed = () => {
     ]);
     setIsPremium(!!subData || (featureData && featureData.length > 0));
   };
-
+  
   const fetchSmartFeed = async () => {
-    setLoading(true);
+  if (!isInLaunchZone) return; // Wait for the guard to verify access  setLoading(true);
     try {
       const currentLat = location?.latitude;
       const currentLong = location?.longitude;
@@ -246,15 +247,18 @@ const Feed = () => {
           setLocationName(city);
         } catch (e) {
           console.warn("Reverse geocoding failed", e);
-          setLocationName("Global Mode");
+          setLocationName("Nearby");
         }
       }
+      
+      // Use the name already resolved by the Guard/useLaunchZone
+      const cityQueryName = launchCityName || geocodedCity || "Nearby";
 
       const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
         p_user_id: user?.id,
         p_user_lat: currentLat,
         p_user_long: currentLong,
-        p_city: city
+        p_city: cityQueryName, // Prioritize the DB-matched city name
       });
 
       if (error) throw error;
@@ -431,6 +435,7 @@ const Feed = () => {
       cityName={launchCityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0}
+      onCityResolved{setGeocodedCity}
     >
       <div className="min-h-screen bg-background pb-24">
         {/* HEADER */}
