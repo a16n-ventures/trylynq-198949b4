@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Lock, MapPin, Globe, UserPlus, Bell, CheckCircle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useGeolocation } from '@/contexts/LocationContext'; 
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -37,10 +37,112 @@ function useResolvedCityName(): string {
   return resolvedCity;
 } 
 
+// ─── Live Zone Counts Hook ─────────────────────────────────────────────────────
+// Fetches current/target counts from `launch_zones` and subscribes to
+// Realtime changes on the `waitlist` table so the progress bar updates live
+// for every user watching — no refresh needed.
+function useLiveZoneCounts(
+  cityName: string,
+  propCurrentCount: number,
+  propTargetCount: number,
+) {
+  const [counts, setCounts] = useState({
+    current: propCurrentCount,
+    target:  propTargetCount,
+  });
+
+  // Sync if parent props change (e.g. initial server-side value arrives)
+  useEffect(() => {
+    setCounts({ current: propCurrentCount, target: propTargetCount });
+  }, [propCurrentCount, propTargetCount]);
+
+  useEffect(() => {
+    if (!cityName) return;
+
+    // Initial fetch from launch_zones
+    supabase
+      .from('launch_zones')
+      .select('current_count, target_count')
+      .eq('city', cityName)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setCounts({ current: data.current_count, target: data.target_count });
+      });
+
+    // Realtime — re-fetch counts whenever a waitlist row for this city changes
+    const channel = supabase
+      .channel(`zone-counts-${cityName}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'waitlist', filter: `city=eq.${cityName}` },
+        () => {
+          supabase
+            .from('launch_zones')
+            .select('current_count, target_count')
+            .eq('city', cityName)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data) setCounts({ current: data.current_count, target: data.target_count });
+            });
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [cityName]);
+
+  // Optimistic helpers — called by useWaitlist on join attempt
+  const increment = useCallback(() => setCounts(c => ({ ...c, current: c.current + 1 })), []);
+  const decrement = useCallback(() => setCounts(c => ({ ...c, current: Math.max(0, c.current - 1) })), []);
+
+  return { counts, increment, decrement };
+}
+
+// ─── Animated Count Hook ───────────────────────────────────────────────────────
+// Smoothly ticks the displayed number up when `target` increases,
+// so Realtime updates feel alive rather than snapping.
+function useAnimatedCount(target: number): number {
+  const [display, setDisplay] = useState(target);
+  const ref = useRef(target);
+
+  useEffect(() => {
+    const diff = target - ref.current;
+    if (diff <= 0) {
+      setDisplay(target);
+      ref.current = target;
+      return;
+    }
+
+    // Tick up over ~800 ms
+    const steps    = Math.min(diff, 20);
+    const interval = 800 / steps;
+    let   step     = 0;
+
+    const id = setInterval(() => {
+      step++;
+      setDisplay(Math.round(ref.current + (diff * step) / steps));
+      if (step >= steps) {
+        clearInterval(id);
+        ref.current = target;
+      }
+    }, interval);
+
+    return () => clearInterval(id);
+  }, [target]);
+
+  return display;
+}
+
 // ─── Waitlist Hook ─────────────────────────────────────────────────────────────
 // No form needed — auto-captures logged-in user's profile data.
-// Saves to `waitlist` table + inserts an `admin_notifications` row. 
-function useWaitlist(cityName: string) {
+// Saves to `waitlist` table + inserts an `admin_notifications` row.
+// Accepts optimistic increment/decrement callbacks from useLiveZoneCounts
+// so the progress bar reacts instantly on join, with rollback on error.
+function useWaitlist(
+  cityName: string,
+  onOptimisticIncrement: () => void,
+  onOptimisticDecrement: () => void,
+) {
   const { user } = useAuth();
   const { location } = useGeolocation();
   const [status, setStatus] = useState<'idle' | 'loading' | 'joined'>('idle');
@@ -59,6 +161,7 @@ function useWaitlist(cityName: string) {
   const joinWaitlist = useCallback(async () => {
     if (!user?.id || status !== 'idle') return;
     setStatus('loading');
+    onOptimisticIncrement(); // update count immediately — don't wait for DB
 
     try {
       // Auto-capture name from profile — no form needed
@@ -101,9 +204,10 @@ function useWaitlist(cityName: string) {
     } catch (err: any) {
       console.error('[Waitlist]', err);
       toast.error("Couldn't join — please try again.");
+      onOptimisticDecrement(); // roll back the optimistic increment
       setStatus('idle');
     }
-  }, [user, location, cityName, status]);
+  }, [user, location, cityName, status, onOptimisticIncrement, onOptimisticDecrement]);
 
   return { status, joinWaitlist };
 }
@@ -116,6 +220,7 @@ interface LaunchZoneGuardProps {
   cityName: string | null;
   currentCount: number;
   targetCount: number;
+  onZoneUnlocked?: () => void;
   children: React.ReactNode;
 }
 
@@ -162,17 +267,65 @@ export function LaunchZoneGuard({
   cityName,
   currentCount,
   targetCount,
+  onZoneUnlocked,
   children,
 }: LaunchZoneGuardProps) {
   const navigate = useNavigate();
   const resolvedCityName = useResolvedCityName();
   const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone); 
   
-    // DB milestone name takes priority, then live geocode, then generic fallback
+  // DB milestone name takes priority, then live geocode, then generic fallback
   const bestCityName = (cityName || resolvedCityName || 'YOUR CITY').toUpperCase();
-  
-    // Waitlist hook — only meaningful in COMING_SOON but safe to always call (hook rules)
-  const { status: waitlistStatus, joinWaitlist } = useWaitlist(cityName || resolvedCityName);
+
+  // Live counts — subscribes to Realtime; falls back to prop values until connected
+  const { counts, increment, decrement } = useLiveZoneCounts(
+    cityName || resolvedCityName,
+    currentCount,
+    targetCount,
+  );
+
+  // Animated display value — smoothly ticks up when Realtime pushes a new count
+  const animatedCount = useAnimatedCount(counts.current);
+
+  // Waitlist hook — only meaningful in COMING_SOON but safe to always call (hook rules)
+  const { status: waitlistStatus, joinWaitlist } = useWaitlist(
+    cityName || resolvedCityName,
+    increment,
+    decrement,
+  );
+
+  // ── Zone unlock subscription ───────────────────────────────────────────────
+  // Listens for `launch_zones` UPDATE so the guard auto-transitions when the
+  // zone flips to unlocked — no manual refresh needed.
+  useEffect(() => {
+    const city = cityName || resolvedCityName;
+    if (!city) return;
+
+    const channel = supabase
+      .channel(`zone-unlock-${city}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'UPDATE',
+          schema: 'public',
+          table:  'launch_zones',
+          filter: `city=eq.${city}`,
+        },
+        (payload) => {
+          if (payload.new.is_unlocked === true) {
+            if (onZoneUnlocked) {
+              onZoneUnlocked();
+            } else {
+              // Fallback: hard reload if parent hasn't wired up a callback
+              window.location.reload();
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [cityName, resolvedCityName, onZoneUnlocked]);
 
   // Transparent pass-through states
   if (state === 'PASS_THROUGH' || state === 'LOADING') return <>{children}</>;
@@ -196,7 +349,7 @@ export function LaunchZoneGuard({
     COMING_SOON:  "Ahmia hasn't landed in your city yet. We're expanding fast!",
   }[state];
 
-  const progress = targetCount > 0 ? Math.min(100, (currentCount / targetCount) * 100) : 0;
+  const progress = counts.target > 0 ? Math.min(100, (counts.current / counts.target) * 100) : 0;
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -229,16 +382,16 @@ export function LaunchZoneGuard({
             </div>
 
             {/* Progress bar — only in WAITING_ROOM with a real target */}
-            {state === 'WAITING_ROOM' && targetCount > 0 && (
+            {state === 'WAITING_ROOM' && counts.target > 0 && (
               <div className="space-y-2 mt-4">
                 <div className="flex justify-between items-end px-1">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
                     Progress
                   </span>
                   <span className="text-sm font-black italic">
-                    {currentCount}{' '}
+                    {animatedCount}{' '}
                     <span className="text-muted-foreground text-[10px] uppercase not-italic font-bold">
-                      / {targetCount} Pioneers
+                      / {counts.target} Pioneers
                     </span>
                   </span>
                 </div>
