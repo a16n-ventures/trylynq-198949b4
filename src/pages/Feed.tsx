@@ -113,7 +113,8 @@ const Feed = () => {
   const { location, isLoading: locationLoading } = useGeolocation();
   const [locationName, setLocationName] = useState("Detecting...");
   const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
-  const { isInLaunchZone, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName } = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
+  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
@@ -430,7 +431,7 @@ const Feed = () => {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={!!launchCityName}
+      isWithinCity={isWithinCity}
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
