@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -45,7 +45,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useGeolocation } from '@/contexts/LocationContext';
 import { useLaunchZone } from '@/hooks/useLaunchZone';
-import { Rocket, UserPlus, Globe } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; 
 import { z } from 'zod';
 import { LaunchZoneGuard } from '@/components/LaunchZoneGuard';
@@ -172,6 +171,9 @@ export default function Events() {
   const queryClient = useQueryClient();
   const { location, isLoading: locationLoading } = useGeolocation();
   const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading, currentCount, targetCount } = useLaunchZone(location?.latitude, location?.longitude); 
+  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
+  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity); 
   
   const [milestone, setMilestone] = useState<{ current: number; target: number; is_unlocked: boolean; zone_name?: string } | null>(null);
   const [locationName, setLocationName] = useState("Detecting..."); 
@@ -664,7 +666,11 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
   const myActiveEvents = filteredMyEvents.filter(e => isEventActive(e.start_date));
   const myPastEvents = filteredMyEvents.filter(e => !isEventActive(e.start_date));
   
-  const filteredAttendingEvents = filterEvents(attendingEvents);
+  const filteredAttendingEvents = filterEvents(attendingEvents); 
+  
+  const handleCityResolved = useCallback((city: string) => {
+    setGeocodedCity(prev => prev === city ? prev : city);
+  }, []);
 
   return (
     <LaunchZoneGuard
@@ -675,6 +681,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
       cityName={launchCityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0}
+      onCityResolved={handleCityResolved}
     >
       <div className="container-mobile py-4 space-y-6 pb-24">
         <div className="flex items-center justify-between px-1">
