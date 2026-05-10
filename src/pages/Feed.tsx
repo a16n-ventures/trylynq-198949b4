@@ -166,7 +166,7 @@ const Feed = () => {
 
     fetchSmartFeed();
     checkPremium();
-  }, [user, location?.latitude, location?.longitude]);
+  }, [user, location?.latitude, location?.longitude, isInLaunchZone]]);
 
   // Realtime: refresh feed when RSVPs change so attendee counts update live
   useEffect(() => {
@@ -234,9 +234,9 @@ const Feed = () => {
   };
   
   const fetchSmartFeed = async () => {
-  if (!isInLaunchZone) return; // only fetch once zone is confirmed unlocked
+  if (!isInLaunchZone) return; // Wait for the guard to verify access  
   setLoading(true);
-  try {
+    try {
       const currentLat = location?.latitude;
       const currentLong = location?.longitude;
       let city = 'Detecting...';
