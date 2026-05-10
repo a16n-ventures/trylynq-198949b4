@@ -1,14 +1,16 @@
 import { Button } from '@/components/ui/button';
 import { Lock, MapPin, Globe, UserPlus, Bell, CheckCircle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useGeolocation } from '@/contexts/LocationContext'; 
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-// Reverse-geocodes coords → real city name, fully self-contained
-function useResolvedCityName(): string {
+// Reverse-geocodes coords → real city name, fully self-contained.
+// Exposed via onCityResolved so the parent can pass it into useLaunchZone,
+// which now needs it to query the waitlist table for COMING_SOON counts.
+function useResolvedCityName(onCityResolved?: (city: string) => void): string {
   const { location } = useGeolocation();
   const [resolvedCity, setResolvedCity] = useState('');
 
@@ -22,13 +24,14 @@ function useResolvedCityName(): string {
       .then(r => r.json())
       .then(data => {
         if (cancelled) return;
-        setResolvedCity(
+        const city =
           data?.address?.city ||
           data?.address?.town  ||
           data?.address?.county ||
           data?.address?.state  ||
-          ''
-        );
+          '';
+        setResolvedCity(city);
+        if (city) onCityResolved?.(city);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -37,10 +40,51 @@ function useResolvedCityName(): string {
   return resolvedCity;
 } 
 
+// ─── Animated Count Hook ───────────────────────────────────────────────────────
+// Smoothly ticks the displayed number up when `target` increases,
+// so Realtime updates feel alive rather than snapping.
+function useAnimatedCount(target: number): number {
+  const [display, setDisplay] = useState(target);
+  const ref = useRef(target);
+
+  useEffect(() => {
+    const diff = target - ref.current;
+    if (diff <= 0) {
+      setDisplay(target);
+      ref.current = target;
+      return;
+    }
+
+    // Tick up over ~800 ms
+    const steps    = Math.min(diff, 20);
+    const interval = 800 / steps;
+    let   step     = 0;
+
+    const id = setInterval(() => {
+      step++;
+      setDisplay(Math.round(ref.current + (diff * step) / steps));
+      if (step >= steps) {
+        clearInterval(id);
+        ref.current = target;
+      }
+    }, interval);
+
+    return () => clearInterval(id);
+  }, [target]);
+
+  return display;
+}
+
 // ─── Waitlist Hook ─────────────────────────────────────────────────────────────
 // No form needed — auto-captures logged-in user's profile data.
-// Saves to `waitlist` table + inserts an `admin_notifications` row. 
-function useWaitlist(cityName: string) {
+// Saves to `waitlist` table + inserts an `admin_notifications` row.
+// Accepts optimistic increment/decrement callbacks so the progress bar
+// reacts instantly on join, with rollback on error.
+function useWaitlist(
+  cityName: string,
+  onOptimisticIncrement: () => void,
+  onOptimisticDecrement: () => void,
+) {
   const { user } = useAuth();
   const { location } = useGeolocation();
   const [status, setStatus] = useState<'idle' | 'loading' | 'joined'>('idle');
@@ -59,6 +103,7 @@ function useWaitlist(cityName: string) {
   const joinWaitlist = useCallback(async () => {
     if (!user?.id || status !== 'idle') return;
     setStatus('loading');
+    onOptimisticIncrement(); // update count immediately — don't wait for DB
 
     try {
       // Auto-capture name from profile — no form needed
@@ -101,9 +146,10 @@ function useWaitlist(cityName: string) {
     } catch (err: any) {
       console.error('[Waitlist]', err);
       toast.error("Couldn't join — please try again.");
+      onOptimisticDecrement(); // roll back the optimistic increment
       setStatus('idle');
     }
-  }, [user, location, cityName, status]);
+  }, [user, location, cityName, status, onOptimisticIncrement, onOptimisticDecrement]);
 
   return { status, joinWaitlist };
 }
@@ -116,6 +162,10 @@ interface LaunchZoneGuardProps {
   cityName: string | null;
   currentCount: number;
   targetCount: number;
+  onZoneUnlocked?: () => void;
+  // Called once the geocoder resolves a city name so the parent can forward
+  // it into useLaunchZone for live waitlist count subscriptions.
+  onCityResolved?: (city: string) => void;
   children: React.ReactNode;
 }
 
@@ -129,22 +179,23 @@ interface LaunchZoneGuardProps {
 //  WAITING_ROOM  → inside a city radius but zone locked        → "CITY LOADING..."
 //  COMING_SOON   → outside every known launch zone             → "Coming Soon"
 //
+const { error: locationError } = useGeolocation(); 
+
 type GuardState = 'PASS_THROUGH' | 'LOADING' | 'NO_GPS' | 'WAITING_ROOM' | 'COMING_SOON';
 
 function resolveState(
   isLoading: boolean,
   locationDetected: boolean,
-  isWithinCity: boolean,
+  isWithinCity: boolean, 
   isInLaunchZone: boolean | null,
+  locationError: boolean // Add this
 ): GuardState {
-  // Still waiting for GPS or DB
+  if (locationError) return 'NO_GPS'; 
   if (isLoading || isInLaunchZone === null) return 'LOADING';
+  if (!locationDetected) return 'NO_GPS';
 
   // Zone is unlocked — let the user in
   if (isInLaunchZone === true) return 'PASS_THROUGH';
-
-  // GPS not available
-  if (!locationDetected) return 'NO_GPS';
 
   // User is inside a registered city but it hasn't unlocked yet
   if (isWithinCity) return 'WAITING_ROOM';
@@ -162,17 +213,46 @@ export function LaunchZoneGuard({
   cityName,
   currentCount,
   targetCount,
+  onZoneUnlocked,
+  onCityResolved,
   children,
 }: LaunchZoneGuardProps) {
   const navigate = useNavigate();
-  const resolvedCityName = useResolvedCityName();
-  const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone); 
-  
-    // DB milestone name takes priority, then live geocode, then generic fallback
+
+  // Geocodes the user's position → city name.
+  // Fires onCityResolved so the parent can pass it into useLaunchZone,
+  // enabling the live waitlist count subscription for COMING_SOON cities.
+  const resolvedCityName = useResolvedCityName(onCityResolved);
+
+  const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone, !!locationError);
+
+  // DB milestone name takes priority, then live geocode, then generic fallback
   const bestCityName = (cityName || resolvedCityName || 'YOUR CITY').toUpperCase();
+
+  // Optimistic helpers wired directly into useWaitlist.
+  // currentCount / targetCount already stay live via useLaunchZone's
+  // Realtime subscriptions — the parent passes updated values as props.
+  const [optimisticDelta, setOptimisticDelta] = useState(0);
+  const increment = useCallback(() => setOptimisticDelta(d => d + 1), []);
+  const decrement = useCallback(() => setOptimisticDelta(d => Math.max(0, d - 1)), []);
+
+  // Animated display value — smoothly ticks up when Realtime pushes a new count
+  const animatedCount = useAnimatedCount(currentCount + optimisticDelta);
+
+  // Waitlist hook — only meaningful in COMING_SOON but safe to always call (hook rules)
+  const { status: waitlistStatus, joinWaitlist } = useWaitlist(
+    cityName || resolvedCityName,
+    increment,
+    decrement,
+  );
   
-    // Waitlist hook — only meaningful in COMING_SOON but safe to always call (hook rules)
-  const { status: waitlistStatus, joinWaitlist } = useWaitlist(cityName || resolvedCityName);
+  if (state === 'LOADING') {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Transparent pass-through states
   if (state === 'PASS_THROUGH' || state === 'LOADING') return <>{children}</>;
@@ -196,7 +276,7 @@ export function LaunchZoneGuard({
     COMING_SOON:  "Ahmia hasn't landed in your city yet. We're expanding fast!",
   }[state];
 
-  const progress = targetCount > 0 ? Math.min(100, (currentCount / targetCount) * 100) : 0;
+  const progress = targetCount > 0 ? Math.min(100, (animatedCount / targetCount) * 100) : 0;
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -228,28 +308,38 @@ export function LaunchZoneGuard({
               </small>
             </div>
 
-            {/* Progress bar — only in WAITING_ROOM with a real target */}
-            {state === 'WAITING_ROOM' && targetCount > 0 && (
+            {/* Progress bar — WAITING_ROOM: pioneer count toward unlock target
+                             COMING_SOON:  waitlist count (no target, shows interest) */}
+            {(state === 'WAITING_ROOM' && targetCount > 0) || state === 'COMING_SOON' ? (
               <div className="space-y-2 mt-4">
                 <div className="flex justify-between items-end px-1">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
-                    Progress
+                    {state === 'WAITING_ROOM' ? 'Progress' : 'Interested'}
                   </span>
                   <span className="text-sm font-black italic">
-                    {currentCount}{' '}
-                    <span className="text-muted-foreground text-[10px] uppercase not-italic font-bold">
-                      / {targetCount} Pioneers
-                    </span>
+                    {animatedCount}{' '}
+                    {state === 'WAITING_ROOM' ? (
+                      <span className="text-muted-foreground text-[10px] uppercase not-italic font-bold">
+                        / {targetCount} Pioneers
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-[10px] uppercase not-italic font-bold">
+                        locals interested
+                      </span>
+                    )}
                   </span>
                 </div>
-                <div className="h-3 w-full bg-muted rounded-full overflow-hidden border p-[2px]">
-                  <div
-                    className="h-full bg-gradient-to-r from-primary to-purple-500 rounded-full transition-all duration-1000"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
+                {/* Only render the progress bar fill when there's a real target */}
+                {targetCount > 0 && (
+                  <div className="h-3 w-full bg-muted rounded-full overflow-hidden border p-[2px]">
+                    <div
+                      className="h-full bg-gradient-to-r from-primary to-purple-500 rounded-full transition-all duration-1000"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                )}
               </div>
-            )}
+            ) : null}
 
             {/* ── CTA — NO_GPS ── */}
             {state === 'NO_GPS' && (
