@@ -232,7 +232,7 @@ const Friends = () => {
 
   // C. Fetch Smart Suggestions (Nearby + Mutual + Shared interests)
   const { data: suggestions = [] } = useQuery({
-    queryKey: ['friend_suggestions', user?.id, location?.latitude],
+    queryKey: ['friend_suggestions', user?.id, location?.latitude, allFriendships.length],
     queryFn: async () => {
       if (!user?.id) return [];
 
@@ -323,8 +323,10 @@ const Friends = () => {
             (isNew ? 2 : 0);
           return { ...c, mutual_count, shared_interests: sharedInterests, is_new: !!isNew, score };
         })
-          .sort((a: any, b: any) => b.score - a.score)
-          .slice(0, 8);
+        .filter((c: any) => !acceptedFriendIds.includes(c.user_id)) // ← add this
+        .map((c: any) => { ... })
+        .sort((a: any, b: any) => b.score - a.score)
+        .slice(0, 8);
       } catch (e) {
         console.error('[Friends] Suggestion fetch failed:', e);
         return [];
