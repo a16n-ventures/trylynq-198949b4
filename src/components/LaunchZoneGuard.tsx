@@ -195,8 +195,8 @@ function resolveState(
   if (!locationDetected) return 'NO_GPS'; 
 
   // User is inside a registered city but it hasn't unlocked yet
-  if (isWithinCity && targetCount > 0) return 'WAITING_ROOM';
 
+  if (isWithinCity && targetCount > 0) return 'WAITING_ROOM';
   // User is outside every known city
   return 'COMING_SOON';
 }
@@ -222,7 +222,7 @@ export function LaunchZoneGuard({
   // enabling the live waitlist count subscription for COMING_SOON cities.
   const resolvedCityName = useResolvedCityName(onCityResolved);
 
-  const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone, !!locationError);
+  const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone, targetCount, !!locationError);
 
   // DB milestone name takes priority, then live geocode, then generic fallback
   const bestCityName = (cityName || resolvedCityName || 'YOUR CITY').toUpperCase();
