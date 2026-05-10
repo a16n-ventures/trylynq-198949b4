@@ -84,10 +84,10 @@ export function useLaunchZone(
         // 3. AUTOMATED WAITING ROOM COUNT: Range-based matching
           // This ensures that even if coords are stored with high precision, 
           // they still get counted in the 2-decimal bucket.
-          const latMin = roundedLat - 0.005;
-          const latMax = roundedLat + 0.005;
-          const lonMin = roundedLon - 0.005;
-          const lonMax = roundedLon + 0.005;
+          const latMin = roundedLat - 0.1;
+          const latMax = roundedLat + 0.9;
+          const lonMin = roundedLon - 0.1;
+          const lonMax = roundedLon + 0.9;
           
           const { count, error: countError } = await supabase
             .from('user_locations') 
