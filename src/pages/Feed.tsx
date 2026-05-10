@@ -436,7 +436,7 @@ const Feed = () => {
       cityName={launchCityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0}
-      onCityResolved{setGeocodedCity}
+      onCityResolved={setGeocodedCity}
     >
       <div className="min-h-screen bg-background pb-24">
         {/* HEADER */}
