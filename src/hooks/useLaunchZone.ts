@@ -247,7 +247,6 @@ export function useLaunchZone(
               // count from the DB — incrementing twice briefly then snapping
               // back is acceptable and far better than crashing the channel.
               // ──────────────────────────────────────────────────────────────
-              if (cityRef.current) return; // only update in COMING_SOON state
               setResult(prev => ({
                 ...prev,
                 currentCount: prev.currentCount + 1,
