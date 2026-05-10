@@ -48,11 +48,11 @@ export function useLaunchZone(
     if (lat == null || lon == null) return;
 
     try {
-      // 1. COORDINATE MATCHING: Round to 2 decimal places as requested
+      // 1. PRECISE MATCHING: Round user coords to 2 decimal places
       const roundedLat = parseFloat(lat.toFixed(2));
       const roundedLon = parseFloat(lon.toFixed(2));
 
-      // Fetch all milestones to check for coordinate or radius matches
+      // Fetch milestones to find a match in the city_milestones table
       const { data: milestones, error } = await supabase
         .from('city_milestones')
         .select('*')
@@ -65,14 +65,15 @@ export function useLaunchZone(
         return;
       }
 
-      // 2. CHECK FOR WAITING ROOM / LAUNCH ZONE
+      // 2. CHECK CITY_MILESTONES: Match by 2-decimal coords or radius
       const match = milestones.find(m => {
         const mLatFixed = parseFloat(m.center_lat.toFixed(2));
         const mLonFixed = parseFloat(m.center_long.toFixed(2));
-        // Check strict 2-decimal coordinate match first
+        
+        // Strict match on the table's latitude and longitude columns
         if (mLatFixed === roundedLat && mLonFixed === roundedLon) return true;
         
-        // Fallback to radius check (Original logic)
+        // Fallback radius match from original file
         const dist = haversineKm(lat, lon, m.center_lat, m.center_long);
         return dist <= (m.radius_km ?? 25);
       });
@@ -80,7 +81,7 @@ export function useLaunchZone(
       if (match) {
         cityRef.current = match.city_name;
         
-        // 3. AUTOMATED COUNT: Count users in user_locations matching these 2-decimal coords
+        // 3. AUTOMATED WAITING ROOM COUNT: Check user_locations for matches
         const { count } = await supabase
           .from('user_locations') 
           .select('*', { count: 'exact', head: true })
@@ -91,14 +92,14 @@ export function useLaunchZone(
           isInLaunchZone: match.is_unlocked === true,
           isWithinCity: true,
           cityName: match.city_name,
-          currentCount: count || 0,
+          currentCount: count || 0, // Automated from user_locations table
           targetCount: match.target_count || 500,
           isLoading: false,
         });
         return;
       }
 
-      // 4. COMING SOON UI: Fallback for cities not in milestones (Original logic)
+      // 4. COMING SOON UI: Fallback for unmatched cities
       cityRef.current = null;
       const geocodedCity = resolvedCityName?.toLowerCase().trim() ?? null;
       let waitlistCount = 0;
@@ -131,45 +132,26 @@ export function useLaunchZone(
     const cancelled = { current: false };
     checkZone(cancelled);
 
-    // 5. REAL-TIME: Listen for user changes to update Waiting Room counts
-    const locationChannel = supabase
-      .channel('location-updates')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'user_locations' },
-        () => checkZone(cancelled)
-      )
+    // 5. REAL-TIME UPDATES: Listen for new users and milestone changes
+    const locationChannel = supabase.channel('location-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_locations' }, () => checkZone(cancelled))
       .subscribe();
 
-    // 6. REAL-TIME: Listen for milestone changes (Original logic)
-    const milestoneChannel = supabase
-      .channel('milestone-updates')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'city_milestones' },
-        () => checkZone(cancelled)
-      )
+    const milestoneChannel = supabase.channel('milestone-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'city_milestones' }, () => checkZone(cancelled))
       .subscribe();
 
-    // 7. REAL-TIME: Listen for waitlist additions (Coming Soon logic)
+    // 6. WAITLIST REAL-TIME: Restored from original file
     const waitlistChannel = resolvedCityName 
-      ? supabase
-          .channel('waitlist-updates')
-          .on(
-            'postgres_changes',
-            { 
-              event: 'INSERT', 
-              schema: 'public', 
-              table: 'waitlist', 
-              filter: `city=eq.${resolvedCityName.toLowerCase().trim()}` 
-            },
+      ? supabase.channel('waitlist-updates')
+          .on('postgres_changes', 
+            { event: 'INSERT', schema: 'public', table: 'waitlist', filter: `city=eq.${resolvedCityName.toLowerCase().trim()}` },
             () => {
-              if (!cityRef.current) { // Only increment if in COMING_SOON state
+              if (!cityRef.current) {
                 setResult(prev => ({ ...prev, currentCount: prev.currentCount + 1 }));
               }
             }
-          )
-          .subscribe()
+          ).subscribe()
       : null;
 
     return () => {
