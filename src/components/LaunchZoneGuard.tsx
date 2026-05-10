@@ -30,12 +30,14 @@ function useResolvedCityName(onCityResolved?: (city: string) => void): string {
           data?.address?.county ||
           data?.address?.state  ||
           '';
-        setResolvedCity(city);
-        if (city) onCityResolved?.(city);
-      })
-      .catch(() => {});
+          // ONLY update and notify if the value is actually new
+        if (city && city !== resolvedCity) { 
+          setResolvedCity(city);
+          onCityResolved?.(city); // This breaks the infinite loop
+        }
+      });
     return () => { cancelled = true; };
-  }, [location?.latitude, location?.longitude]);
+  }, [location, onCityResolved, resolvedCity]); // Added resolvedCity to deps
 
   return resolvedCity;
 } 
