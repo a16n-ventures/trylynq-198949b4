@@ -234,8 +234,9 @@ const Feed = () => {
   };
   
   const fetchSmartFeed = async () => {
-  if (!isInLaunchZone) return; // Wait for the guard to verify access  setLoading(true);
-    try {
+  if (!isInLaunchZone) return; // only fetch once zone is confirmed unlocked
+  setLoading(true);
+  try {
       const currentLat = location?.latitude;
       const currentLong = location?.longitude;
       let city = 'Detecting...';
