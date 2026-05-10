@@ -236,22 +236,29 @@ const Feed = () => {
     setIsPremium(!!subData || (featureData && featureData.length > 0));
   };
   
+  // 1. In your Feed component, use the geocoded name for the RPC
   const fetchSmartFeed = async () => {
-  // 1. Critical: Don't fetch if we don't know WHERE the user is yet
-  const cityQueryName = launchCityName || geocodedCity || "Nearby"; 
-  
-  if (!isInLaunchZone || !cityQueryName) return; 
-  
-  setLoading(true);
+    setLoading(true);
     try {
       const currentLat = location?.latitude;
       const currentLong = location?.longitude;
-
+      
+      // Use the name resolved by the geocoder
+      let city = 'Detecting...';
+      if (currentLat && currentLong) {
+         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLong}`);
+         const data = await res.json();
+         // Prioritize broader city name
+         city = data.address.city || data.address.town || data.address.state || "Nearby";
+         setLocationName(city); // Update the UI
+      }
+  
+      // Pass this specific city name to the backend
       const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
         p_user_id: user?.id,
         p_user_lat: currentLat,
         p_user_long: currentLong,
-        p_city: cityQueryName, // Prioritize the DB-matched city name
+        p_city: city // This ensures the feed matches the geocoded city
       });
 
       if (error) throw error;
