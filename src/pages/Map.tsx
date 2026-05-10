@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -80,7 +80,9 @@ const MapPage = () => {
   
   // Global State
   const { location, requestLocation, isLoading: locationLoading, error: locationError } = useGeolocation();
-  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading, currentCount, targetCount } = useLaunchZone(location?.latitude, location?.longitude);
+  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
+  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
   const { friends = [] } = useFriends(user?.id);
 
   // Local State
@@ -375,7 +377,11 @@ const MapPage = () => {
     const list = activeView === 'friends' ? friendsMapped : events;
     if (!q) return list;
     return list.filter((item: any) => (item.name || item.title).toLowerCase().includes(q));
-  }, [searchQuery, friendsMapped, events, activeView]);
+  }, [searchQuery, friendsMapped, events, activeView]); 
+  
+  const handleCityResolved = useCallback((city: string) => {
+    setGeocodedCity(prev => prev === city ? prev : city);
+  }, []);
 
   return (
     <LaunchZoneGuard
@@ -385,7 +391,8 @@ const MapPage = () => {
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
-      targetCount={targetCount || 0}
+      targetCount={targetCount || 0} 
+      onCityResolved={handleCityResolved}
     >
       <div className="relative h-screen w-screen overflow-hidden bg-background">
         
