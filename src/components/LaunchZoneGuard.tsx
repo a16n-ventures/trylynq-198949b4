@@ -175,7 +175,6 @@ interface LaunchZoneGuardProps {
 //  WAITING_ROOM  → inside a city radius but zone locked        → "CITY LOADING..."
 //  COMING_SOON   → outside every known launch zone             → "Coming Soon"
 //
-const { error: locationError } = useGeolocation(); 
 
 type GuardState = 'PASS_THROUGH' | 'LOADING' | 'NO_GPS' | 'WAITING_ROOM' | 'COMING_SOON';
 
@@ -213,7 +212,8 @@ export function LaunchZoneGuard({
   onCityResolved,
   children,
 }: LaunchZoneGuardProps) {
-  const navigate = useNavigate();
+  const navigate = useNavigate(); 
+  const { error: locationError } = useGeolocation(); 
 
   // Geocodes the user's position → city name.
   // Fires onCityResolved so the parent can pass it into useLaunchZone,
