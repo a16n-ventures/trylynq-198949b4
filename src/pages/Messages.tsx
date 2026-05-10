@@ -59,7 +59,9 @@ export default function Messages() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { location, isLoading: locationLoading } = useGeolocation();
-  const { isInLaunchZone, cityName: launchCityName, isLoading: launchZoneLoading, currentCount, targetCount } = useLaunchZone(location?.latitude, location?.longitude);
+  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
+  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
 
   // State
   const [activeTab, setActiveTab] = useState<ChatType>('dm');
@@ -376,7 +378,11 @@ export default function Messages() {
         setShowNewEventModal(true);
         break;
     }
-  };
+  }; 
+  
+  const handleCityResolved = useCallback((city: string) => {
+    setGeocodedCity(prev => prev === city ? prev : city);
+  }, []);
 
   // --- RENDER ---
   return (
@@ -387,7 +393,8 @@ export default function Messages() {
       isInLaunchZone={isInLaunchZone}
       cityName={launchCityName}
       currentCount={currentCount || 0}
-      targetCount={targetCount || 0}
+      targetCount={targetCount || 0} 
+      onCityResolved={handleCityResolved} 
     >
       <div className="flex h-screen bg-background overflow-hidden">
         
