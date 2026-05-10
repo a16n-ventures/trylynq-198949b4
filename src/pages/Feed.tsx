@@ -166,7 +166,7 @@ const Feed = () => {
 
     fetchSmartFeed();
     checkPremium();
-  }, [user, location?.latitude, location?.longitude, isInLaunchZone]]);
+  }, [user, location?.latitude, location?.longitude, isInLaunchZone]);
 
   // Realtime: refresh feed when RSVPs change so attendee counts update live
   useEffect(() => {
