@@ -179,6 +179,8 @@ interface LaunchZoneGuardProps {
 //  WAITING_ROOM  → inside a city radius but zone locked        → "CITY LOADING..."
 //  COMING_SOON   → outside every known launch zone             → "Coming Soon"
 //
+const { error: locationError } = useGeolocation(); 
+
 type GuardState = 'PASS_THROUGH' | 'LOADING' | 'NO_GPS' | 'WAITING_ROOM' | 'COMING_SOON';
 
 function resolveState(
@@ -222,7 +224,7 @@ export function LaunchZoneGuard({
   // enabling the live waitlist count subscription for COMING_SOON cities.
   const resolvedCityName = useResolvedCityName(onCityResolved);
 
-  const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone);
+  const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone, !!locationError);
 
   // DB milestone name takes priority, then live geocode, then generic fallback
   const bestCityName = (cityName || resolvedCityName || 'YOUR CITY').toUpperCase();
@@ -244,7 +246,13 @@ export function LaunchZoneGuard({
     decrement,
   );
   
-  if (state === 'LOADING') return <FullscreenSpinner />;
+  if (state === 'LOADING') {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Transparent pass-through states
   if (state === 'PASS_THROUGH' || state === 'LOADING') return <>{children}</>;
