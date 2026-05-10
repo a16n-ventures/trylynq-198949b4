@@ -451,7 +451,7 @@ const Feed = () => {
                     Discover <span className="text-primary">{milestone?.zone_name}</span>
                   </h1>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> City: {launchCityName || geocodedCity || "Detecting..."}
+                    <MapPin className="w-3 h-3" /> City: {geocodedCity || "Detecting..."}
                   </p>
                 </div>
                 <div className="flex items-center gap-2"> 
