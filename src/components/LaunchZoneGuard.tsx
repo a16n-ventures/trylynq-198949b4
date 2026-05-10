@@ -16,31 +16,25 @@ function useResolvedCityName(onCityResolved?: (city: string) => void): string {
 
   useEffect(() => {
     if (!location?.latitude || !location?.longitude) return;
+    
     let cancelled = false;
-    fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.latitude}&lon=${location.longitude}`,
-      { headers: { 'User-Agent': 'Ahmia-App-Production' } }
-    )
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.latitude}&lon=${location.longitude}`)
       .then(r => r.json())
       .then(data => {
         if (cancelled) return;
-        const city =
-          data?.address?.city ||
-          data?.address?.town  ||
-          data?.address?.county ||
-          data?.address?.state  ||
-          '';
-          // ONLY update and notify if the value is actually new
+        const city = data?.address?.city || data?.address?.town || '';
+        
         if (city && city !== resolvedCity) { 
           setResolvedCity(city);
-          onCityResolved?.(city); // This breaks the infinite loop
+          if (onCityResolved) onCityResolved(city);
         }
       });
     return () => { cancelled = true; };
-  }, [location, onCityResolved, resolvedCity]); // Added resolvedCity to deps
+    // REMOVE resolvedCity from this array to prevent the loop
+  }, [location?.latitude, location?.longitude]); 
 
   return resolvedCity;
-} 
+}
 
 // ─── Animated Count Hook ───────────────────────────────────────────────────────
 // Smoothly ticks the displayed number up when `target` increases,
