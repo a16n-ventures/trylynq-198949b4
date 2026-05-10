@@ -238,7 +238,8 @@ const Feed = () => {
   
   const fetchSmartFeed = async () => {
   // 1. Critical: Don't fetch if we don't know WHERE the user is yet
-  const cityQueryName = geocodedCity || "Nearby";
+  const cityQueryName = launchCityName || geocodedCity || "Nearby"; 
+  
   if (!isInLaunchZone || !cityQueryName) return; 
   
   setLoading(true);
