@@ -81,21 +81,32 @@ export function useLaunchZone(
       if (match) {
         cityRef.current = match.city_name;
         
-        // 3. AUTOMATED WAITING ROOM COUNT: Check user_locations for matches
-        const { count } = await supabase
-          .from('user_locations') 
-          .select('*', { count: 'exact', head: true })
-          .eq('latitude', roundedLat)
-          .eq('longitude', roundedLon);
-
-        setResult({
-          isInLaunchZone: match.is_unlocked === true,
-          isWithinCity: true,
-          cityName: match.city_name,
-          currentCount: count || 0, // Automated from user_locations table
-          targetCount: match.target_count || 500,
-          isLoading: false,
-        });
+        // 3. AUTOMATED WAITING ROOM COUNT: Range-based matching
+          // This ensures that even if coords are stored with high precision, 
+          // they still get counted in the 2-decimal bucket.
+          const latMin = roundedLat - 0.005;
+          const latMax = roundedLat + 0.005;
+          const lonMin = roundedLon - 0.005;
+          const lonMax = roundedLon + 0.005;
+          
+          const { count, error: countError } = await supabase
+            .from('user_locations') 
+            .select('*', { count: 'exact', head: true })
+            .gte('latitude', latMin)
+            .lte('latitude', latMax)
+            .gte('longitude', lonMin)
+            .lte('longitude', lonMax);
+          
+          if (countError) console.error("Count Error:", countError);
+          
+          setResult({
+            isInLaunchZone: match.is_unlocked === true,
+            isWithinCity: true,
+            cityName: match.city_name,
+            currentCount: count || 0, 
+            targetCount: match.target_count || 500,
+            isLoading: false,
+          });
         return;
       }
 
