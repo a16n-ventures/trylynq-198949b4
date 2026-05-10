@@ -118,7 +118,7 @@ export function useLaunchZone(
         const { count } = await supabase
           .from('waitlist')
           .select('*', { count: 'exact', head: true })
-          .eq('city', geocodedCity);
+          .ilike('city', geocodedCity);
         if (!cancelled.current) waitlistCount = count ?? 0;
       }
 
