@@ -169,7 +169,7 @@ const Feed = () => {
 
     fetchSmartFeed();
     checkPremium();
-  }, [user, location?.latitude, location?.longitude, isInLaunchZone]);
+  }, [user, location?.latitude, location?.longitude, isInLaunchZone, launchCityName]);
 
   // Realtime: refresh feed when RSVPs change so attendee counts update live
   useEffect(() => {
@@ -237,27 +237,14 @@ const Feed = () => {
   };
   
   const fetchSmartFeed = async () => {
-  if (!isInLaunchZone) return; // Wait for the guard to verify access  
+  // 1. Critical: Don't fetch if we don't know WHERE the user is yet
+  const cityQueryName = launchCityName || geocodedCity;
+  if (!isInLaunchZone || !cityQueryName) return; 
+  
   setLoading(true);
     try {
       const currentLat = location?.latitude;
       const currentLong = location?.longitude;
-      let city = 'Detecting...';
-
-      if (currentLat && currentLong) {
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLong}`);
-          const data = await res.json();
-          city = data.address.city || data.address.town || data.address.state || "Nearby";
-          setLocationName(city);
-        } catch (e) {
-          console.warn("Reverse geocoding failed", e);
-          setLocationName("Nearby");
-        }
-      }
-      
-      // Use the name already resolved by the Guard/useLaunchZone
-      const cityQueryName = launchCityName || geocodedCity || "Nearby";
 
       const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
         p_user_id: user?.id,
@@ -456,7 +443,7 @@ const Feed = () => {
                     Discover <span className="text-primary">{milestone?.zone_name}</span>
                   </h1>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> City: {locationName}
+                    <MapPin className="w-3 h-3" /> City: {launchCityName || geocodedCity || "Detecting..."}
                   </p>
                 </div>
                 <div className="flex items-center gap-2"> 
