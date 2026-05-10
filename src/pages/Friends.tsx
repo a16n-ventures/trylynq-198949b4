@@ -44,7 +44,7 @@ const Friends = () => {
   const [previewProfile, setPreviewProfile] = useState<Profile | null>(null);
   const [previewFriendshipId, setPreviewFriendshipId] = useState<string | undefined>();
 
-  // --- OPTIMIZED DATA FETCHING ---
+  // --- DATA QUERIES ---
   const { data: allFriendships = [] } = useQuery({
     queryKey: ['all_friendships', user?.id],
     queryFn: async () => {
@@ -61,7 +61,7 @@ const Friends = () => {
     allFriendships.filter(f => f.status === 'accepted').map(f => f.requester_id === user?.id ? f.addressee_id : f.requester_id)
   , [allFriendships, user?.id]);
 
-  const { data: friends = [], isLoading: loadingFriends } = useQuery({
+  const { data: friends = [] } = useQuery({
     queryKey: ['my_friends_list', user?.id, acceptedFriendIds],
     queryFn: async () => {
       if (acceptedFriendIds.length === 0) return [];
@@ -100,7 +100,7 @@ const Friends = () => {
     enabled: !!user?.id && !!location
   });
 
-  const { data: requests = [], isLoading: loadingRequests } = useQuery({
+  const { data: requests = [] } = useQuery({
     queryKey: ['friend_requests', user?.id],
     queryFn: async () => {
       const { data } = await supabase
@@ -113,7 +113,7 @@ const Friends = () => {
     enabled: !!user?.id
   });
 
-  // --- UNIFIED LOGIC ---
+  // --- UNIFIED MUTATION (CLEAN REWRITE) ---
   const friendshipMutation = useMutation({
     mutationFn: async ({ action, id, targetId }: { action: 'connect' | 'accept' | 'decline' | 'unfriend' | 'block' | 'report', id?: string, targetId?: string }) => {
       switch (action) {
@@ -121,16 +121,19 @@ const Friends = () => {
         case 'accept': return supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
         case 'decline': case 'unfriend': return supabase.from('friendships').delete().eq('id', id);
         case 'block': return supabase.from('blocked_users').insert({ blocker_id: user?.id, blocked_id: targetId });
-        case 'report': return supabase.from('reports').insert({ reporter_id: user?.id, target_id: targetId, target_type: 'user', reason: 'Reported from list' });
+        case 'report': return supabase.from('reports').insert({ reporter_id: user?.id, target_id: targetId, target_type: 'user', reason: 'Reported from friends list' });
       }
     },
-    onSuccess: (_, v) => {
+    onSuccess: (_, variables) => {
+      if (variables.action === 'connect') toast.success('Friend request sent!');
       queryClient.invalidateQueries({ queryKey: ['all_friendships'] });
       queryClient.invalidateQueries({ queryKey: ['friend_requests'] });
       queryClient.invalidateQueries({ queryKey: ['my_friends_list'] });
-    }
+    },
+    onError: () => toast.error('Action failed. Please try again.')
   });
 
+  // --- OPTIMIZED FILTERING ---
   const filteredFullList = useMemo(() => {
     const pendingTargetIds = allFriendships.filter(f => f.status === 'pending' && f.requester_id === user?.id).map(f => f.addressee_id);
     const appContacts = allContacts
@@ -150,6 +153,7 @@ const Friends = () => {
 
   return (
     <div className="min-h-screen bg-background pb-20">
+      {/* Header */}
       <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-xl border-b p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Friends</h1>
@@ -178,7 +182,7 @@ const Friends = () => {
           </TabsList>
 
           <TabsContent value="circle" className="space-y-6">
-            {/* SUGGESTIONS CARD UI - RESTORED */}
+            {/* SUGGESTIONS CARD - FULLY RESTORED */}
             {suggestions.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
@@ -188,15 +192,27 @@ const Friends = () => {
                   {suggestions.map((s: any) => (
                     <div key={s.user_id} className="min-w-[140px] p-4 bg-card border rounded-2xl text-center space-y-3 relative overflow-hidden group">
                       <div className="absolute top-2 right-2">
-                        {s.distance < 5000 ? <Rocket className="w-3 h-3 text-primary/40" /> : <Globe className="w-3 h-3 text-primary/40" />}
+                        {s.distance < 5000 ? (
+                          <Rocket className="w-3 h-3 text-primary/40 group-hover:text-primary transition-colors" />
+                        ) : (
+                          <Globe className="w-3 h-3 text-primary/40 group-hover:text-primary transition-colors" />
+                        )}
                       </div>
-                      <Avatar className="mx-auto h-16 w-16">
+                      <Avatar className="mx-auto h-16 w-16 shadow-sm border-2 border-background">
                         <AvatarImage src={s.avatar_url} />
-                        <AvatarFallback>{s.display_name[0]}</AvatarFallback>
+                        <AvatarFallback className="bg-primary/5 text-primary">{s.display_name[0]}</AvatarFallback>
                       </Avatar>
-                      <p className="text-sm font-bold truncate">{s.display_name}</p>
-                      <Button size="sm" className="w-full h-8" onClick={() => friendshipMutation.mutate({ action: 'connect', targetId: s.user_id })}>
-                        Connect
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-bold truncate">{s.display_name}</p>
+                        <p className="text-[10px] text-muted-foreground">Nearby</p>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        className="w-full h-8 rounded-lg text-xs font-medium" 
+                        onClick={() => friendshipMutation.mutate({ action: 'connect', targetId: s.user_id })}
+                        disabled={friendshipMutation.isPending}
+                      >
+                        {friendshipMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Connect"}
                       </Button>
                     </div>
                   ))}
@@ -204,38 +220,44 @@ const Friends = () => {
               </div>
             )}
 
-            {/* FRIENDS LIST UI - RESTORED */}
+            {/* LIST SECTION */}
             <div className="space-y-2">
               {filteredFullList.map((friend) => (
                 <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card border rounded-2xl hover:shadow-sm transition-all">
-                  <Avatar className="h-12 w-12">
+                  <Avatar className="h-12 w-12 border border-border/50">
                     <AvatarImage src={friend.avatar_url} />
                     <AvatarFallback>{friend.display_name[0]}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-semibold text-sm truncate flex items-center gap-2">
                       {friend.display_name}
-                      {friend.is_contact && <Badge variant="secondary" className="text-[9px] bg-primary/5 text-primary border-none">Contact</Badge>}
+                      {friend.is_contact && <Badge variant="secondary" className="text-[9px] bg-primary/5 text-primary border-none font-bold">CONTACT</Badge>}
                     </h4>
                     <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
                   </div>
                   
                   {friend.friendship_id === 'pending' ? (
-                    <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200">Pending</Badge>
+                    <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 text-[10px] animate-pulse">Pending</Badge>
                   ) : friend.friendship_id === 'contact' ? (
-                    <Button size="sm" className="h-8 rounded-lg" onClick={() => friendshipMutation.mutate({ action: 'connect', targetId: friend.user_id })}>
+                    <Button size="sm" className="h-8 rounded-lg px-4" onClick={() => friendshipMutation.mutate({ action: 'connect', targetId: friend.user_id })}>
                       Add
                     </Button>
                   ) : (
                     <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => navigate(`/app/messages?userId=${friend.user_id}`)}>
+                      <Button size="icon" variant="ghost" className="rounded-full" onClick={() => navigate(`/app/messages?userId=${friend.user_id}`)}>
                         <MessageCircle className="w-5 h-5 text-muted-foreground" />
                       </Button>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreVertical className="w-5 h-5" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => { setPreviewProfile(friend); setPreviewFriendshipId(friend.friendship_id); }}>View Profile</DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600" onClick={() => friendshipMutation.mutate({ action: 'unfriend', id: friend.friendship_id })}>Unfriend</DropdownMenuItem>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="rounded-full"><MoreVertical className="w-5 h-5" /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="rounded-xl">
+                          <DropdownMenuItem onClick={() => { setPreviewProfile(friend); setPreviewFriendshipId(friend.friendship_id); }}>
+                            View Profile
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={() => friendshipMutation.mutate({ action: 'unfriend', id: friend.friendship_id })}>
+                            <UserMinus className="w-4 h-4 mr-2" /> Unfriend
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -248,25 +270,36 @@ const Friends = () => {
           <TabsContent value="requests" className="space-y-3">
             {requests.map((req: any) => (
               <div key={req.id} className="flex items-center gap-3 p-4 bg-card border rounded-2xl shadow-sm">
-                <Avatar className="h-12 w-12"><AvatarImage src={req.requester.avatar_url} /><AvatarFallback>{req.requester.display_name?.[0]}</AvatarFallback></Avatar>
-                <div className="flex-1 min-w-0"><h4 className="text-sm font-bold">{req.requester.display_name}</h4><p className="text-xs text-muted-foreground">Sent a request</p></div>
+                <Avatar className="h-12 w-12 shadow-sm border border-border/50">
+                  <AvatarImage src={req.requester.avatar_url} />
+                  <AvatarFallback>{req.requester.display_name?.[0]}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-bold truncate">{req.requester.display_name}</h4>
+                  <p className="text-xs text-muted-foreground">Sent a request</p>
+                </div>
                 <div className="flex items-center gap-2">
-                  <Button size="icon" variant="outline" className="rounded-full text-red-500" onClick={() => friendshipMutation.mutate({ action: 'decline', id: req.id })}><X className="w-4 h-4" /></Button>
-                  <Button size="icon" className="rounded-full bg-green-600 hover:bg-green-700" onClick={() => friendshipMutation.mutate({ action: 'accept', id: req.id })}><Check className="w-4 h-4" /></Button>
+                  <Button size="icon" variant="outline" className="h-9 w-9 rounded-full text-red-500 border-red-100 hover:bg-red-50" onClick={() => friendshipMutation.mutate({ action: 'decline', id: req.id })}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                  <Button size="icon" className="h-9 w-9 rounded-full bg-green-600 hover:bg-green-700 shadow-sm" onClick={() => friendshipMutation.mutate({ action: 'accept', id: req.id })}>
+                    <Check className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
             ))}
-            {/* REQUEST EMPTY STATE - RESTORED */}
+            
+            {/* REQUEST EMPTY STATE - FULLY RESTORED */}
             {requests.length === 0 && (
               <div className="text-center py-20 space-y-4">
-                <div className="bg-muted/50 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
+                <div className="bg-muted/50 w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-inner">
                   <Users className="w-8 h-8 text-muted-foreground/40" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">No pending requests</p>
-                  <p className="text-xs text-muted-foreground">Discover people around you to add to your circle</p>
+                  <p className="text-sm font-semibold">No pending requests</p>
+                  <p className="text-xs text-muted-foreground px-10">Discover people around you to add to your circle</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setActiveTab('circle')} className="rounded-full px-6">
+                <Button variant="outline" size="sm" onClick={() => setActiveTab('circle')} className="rounded-full px-6 bg-primary/5 border-primary/20 text-primary hover:bg-primary/10">
                   Find Friends
                 </Button>
               </div>
