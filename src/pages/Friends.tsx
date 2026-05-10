@@ -310,7 +310,8 @@ const Friends = () => {
           }
         });
 
-        return candidates.map((c: any) => {
+        return candidates.filter((c: any) => !acceptedFriendIds.includes(c.user_id)) // ← add this
+        .map((c: any) => {
           const p: any = profMap.get(c.user_id) || {};
           const theirInterests: string[] = Array.isArray(p.interests) ? p.interests : [];
           const sharedInterests = myInterests.filter(i => theirInterests.includes(i)).length;
@@ -323,8 +324,6 @@ const Friends = () => {
             (isNew ? 2 : 0);
           return { ...c, mutual_count, shared_interests: sharedInterests, is_new: !!isNew, score };
         })
-        .filter((c: any) => !acceptedFriendIds.includes(c.user_id)) // ← add this
-        .map((c: any) => { ... })
         .sort((a: any, b: any) => b.score - a.score)
         .slice(0, 8);
       } catch (e) {
