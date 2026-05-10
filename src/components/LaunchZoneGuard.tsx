@@ -230,7 +230,7 @@ export function LaunchZoneGuard({
   const state = resolveState(isLoading, locationDetected, isWithinCity, isInLaunchZone, targetCount, !!locationError);
 
   // DB milestone name takes priority, then live geocode, then generic fallback
-  const bestCityName = (resolvedCityName || cityName || 'Nearby');
+  const bestCityName = (cityName || 'Nearby').toUpperCase();
 
   // Optimistic helpers wired directly into useWaitlist.
   // currentCount / targetCount already stay live via useLaunchZone's
