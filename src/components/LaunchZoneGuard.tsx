@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { Lock, MapPin, Globe, UserPlus, Bell, CheckCircle, Loader2 } from 'lucide-react';
+import { Lock, MapPin, Globe, UserPlus, Bell, CheckCircle, FullscreenSpinner, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useGeolocation } from '@/contexts/LocationContext'; 
@@ -184,6 +184,7 @@ type GuardState = 'PASS_THROUGH' | 'LOADING' | 'NO_GPS' | 'WAITING_ROOM' | 'COMI
 function resolveState(
   isLoading: boolean,
   locationDetected: boolean,
+  isWithinCity: boolean, 
   isInLaunchZone: boolean | null,
   locationError: boolean // Add this
 ): GuardState {
