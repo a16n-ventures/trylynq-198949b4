@@ -49,8 +49,8 @@ export function useLaunchZone(
 
     try {
       // 1. PRECISE MATCHING: Round user coords to 2 decimal places
-      const roundedLat = parseFloat(lat.toFixed(4));
-      const roundedLon = parseFloat(lon.toFixed(4));
+      const roundedLat = parseFloat(lat.toFixed(9));
+      const roundedLon = parseFloat(lon.toFixed(9));
 
       // Fetch milestones to find a match in the city_milestones table
       const { data: milestones, error } = await supabase
@@ -67,8 +67,8 @@ export function useLaunchZone(
 
       // 2. CHECK CITY_MILESTONES: Match by 2-decimal coords or radius
       const match = milestones.find(m => {
-        const mLatFixed = parseFloat(m.center_lat.toFixed(4));
-        const mLonFixed = parseFloat(m.center_long.toFixed(4));
+        const mLatFixed = parseFloat(m.center_lat.toFixed(9));
+        const mLonFixed = parseFloat(m.center_long.toFixed(9));
         
         // Strict match on the table's latitude and longitude columns
         if (mLatFixed === roundedLat && mLonFixed === roundedLon) return true;
