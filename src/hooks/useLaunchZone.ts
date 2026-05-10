@@ -49,8 +49,8 @@ export function useLaunchZone(
 
     try {
       // 1. PRECISE MATCHING: Round user coords to 2 decimal places
-      const roundedLat = parseFloat(lat.toFixed(2));
-      const roundedLon = parseFloat(lon.toFixed(2));
+      const roundedLat = parseFloat(lat.toFixed(4));
+      const roundedLon = parseFloat(lon.toFixed(4));
 
       // Fetch milestones to find a match in the city_milestones table
       const { data: milestones, error } = await supabase
@@ -67,8 +67,8 @@ export function useLaunchZone(
 
       // 2. CHECK CITY_MILESTONES: Match by 2-decimal coords or radius
       const match = milestones.find(m => {
-        const mLatFixed = parseFloat(m.center_lat.toFixed(2));
-        const mLonFixed = parseFloat(m.center_long.toFixed(2));
+        const mLatFixed = parseFloat(m.center_lat.toFixed(4));
+        const mLonFixed = parseFloat(m.center_long.toFixed(4));
         
         // Strict match on the table's latitude and longitude columns
         if (mLatFixed === roundedLat && mLonFixed === roundedLon) return true;
@@ -84,10 +84,10 @@ export function useLaunchZone(
         // 3. AUTOMATED WAITING ROOM COUNT: Range-based matching
           // This ensures that even if coords are stored with high precision, 
           // they still get counted in the 2-decimal bucket.
-          const latMin = roundedLat - 0.1;
-          const latMax = roundedLat + 0.9;
-          const lonMin = roundedLon - 0.1;
-          const lonMax = roundedLon + 0.9;
+          const latMin = roundedLat - 0.005;
+          const latMax = roundedLat + 0.005;
+          const lonMin = roundedLon - 0.005;
+          const lonMax = roundedLon + 0.005;
           
           const { count, error: countError } = await supabase
             .from('user_locations') 
