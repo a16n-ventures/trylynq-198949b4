@@ -427,6 +427,10 @@ const Feed = () => {
   };
 
   const displayEvents = getFilteredEvents();
+    
+  const handleCityResolved = useCallback((city: string) => {
+    setGeocodedCity(prev => prev === city ? prev : city);
+  }, []);
 
   return (
     <LaunchZoneGuard
@@ -437,7 +441,7 @@ const Feed = () => {
       cityName={launchCityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0}
-      onCityResolved={setGeocodedCity}
+      onCityResolved={handleCityResolved}
     >
       <div className="min-h-screen bg-background pb-24">
         {/* HEADER */}
