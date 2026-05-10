@@ -96,6 +96,11 @@ const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: num
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+const formatTicketPrice = (price: number | null | undefined) => {
+  if (!price || price === 0) return 'Free';
+  return `₦${price.toLocaleString()}`;
+};
+
 const Feed = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
