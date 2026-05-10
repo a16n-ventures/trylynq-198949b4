@@ -183,17 +183,19 @@ function resolveState(
   locationDetected: boolean,
   isWithinCity: boolean, 
   isInLaunchZone: boolean | null,
+  targetCount: number,
   locationError: boolean // Add this
 ): GuardState {
   if (locationError) return 'NO_GPS'; 
   if (isLoading || isInLaunchZone === null) return 'LOADING';
-  if (!locationDetected) return 'NO_GPS';
 
   // Zone is unlocked — let the user in
-  if (isInLaunchZone === true) return 'PASS_THROUGH';
+  if (isInLaunchZone === true) return 'PASS_THROUGH'; 
+  
+  if (!locationDetected) return 'NO_GPS'; 
 
   // User is inside a registered city but it hasn't unlocked yet
-  if (isWithinCity) return 'WAITING_ROOM';
+  if (isWithinCity && targetCount > 0) return 'WAITING_ROOM';
 
   // User is outside every known city
   return 'COMING_SOON';
