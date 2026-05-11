@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
-type UserPath = "personal" | "service" | null;
+type UserPath = "personal" | "business" | null;
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -71,7 +71,7 @@ export default function Onboarding() {
         .upsert(
           {
             user_id: user.id,
-            user_type: path, // "personal" | "service"
+            user_type: path, // "personal" | "business"
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" }
@@ -131,8 +131,8 @@ export default function Onboarding() {
             <InterestSelector onComplete={handleComplete} />
           )}
 
-          {/* ── Step 1b: Service → trade/skill selector ───────────────── */}
-          {userPath === "service" && (
+          {/* ── Step 1b: business → trade/skill selector ───────────────── */}
+          {userPath === "business" && (
             <SkillSelector onComplete={handleComplete} />
           )}
         </CardContent>
@@ -188,9 +188,9 @@ function PathSelection({ onSelect, loading }: PathSelectionProps) {
           <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-1 group-hover:text-primary" />
         </button>
 
-        {/* Service path */}
+        {/* business path */}
         <button
-          onClick={() => onSelect("service")}
+          onClick={() => onSelect("business")}
           disabled={loading}
           className="group relative flex items-start gap-4 rounded-2xl border border-border bg-card p-5 text-left transition-all duration-200 hover:border-primary/60 hover:bg-primary/5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
         >
@@ -198,7 +198,7 @@ function PathSelection({ onSelect, loading }: PathSelectionProps) {
             <Briefcase className="h-6 w-6" />
           </div>
           <div className="flex-1 space-y-1">
-            <p className="font-semibold leading-none">Service Provider</p>
+            <p className="font-semibold leading-none">Business</p>
             <p className="text-sm text-muted-foreground">
               Offer a skill or trade — get discovered by people who need what
               you do.
