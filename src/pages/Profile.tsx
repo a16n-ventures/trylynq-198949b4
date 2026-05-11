@@ -5,9 +5,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Settings, MapPin, Calendar, Grid, Ticket,
+  Settings, MapPin, Calendar, Grid, Ticket, Store as StoreIcon,
   LogOut, Sparkles, QrCode, Share2,
-  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield, ShieldCheck
+  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield, ShieldCheck, Plus, Tag, Truck, Pencil, Map as MapIcon
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,6 +28,10 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useReferrals } from '@/hooks/useReferrals';
+import { useUserCatalog } from '@/hooks/useUserCatalog';
+import { ServiceCard } from '@/components/ServiceCard';
+import StoreFormDialog from '@/components/StoreFormDialog';
+import ItemFormDialog from '@/components/ItemFormDialog';
 
 // --- TYPES ---
 interface ProfileLink {
@@ -305,7 +309,20 @@ const Profile = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('tickets'); 
-  const { shareInvite, referralCode } = useReferrals(); 
+  const { shareInvite, referralCode } = useReferrals();
+
+  // ── Catalog (business users only) ─────────────────────────────────────────
+  const {
+    store: userStore,
+    items: catalogItems,
+    isLoading: catalogLoading,
+    hasStore,
+    deleteItem,
+    toggleAvailability,
+    isDeletingItem,
+  } = useUserCatalog(user?.id);
+  const [editingCatalogItem, setEditingCatalogItem] = useState<any | null>(null);
+  const [catalogSearch, setCatalogSearch] = useState('');
 
   // Local state for smooth slider dragging
   const [localRadius, setLocalRadius] = useState<number>(25);
@@ -946,10 +963,12 @@ const Profile = () => {
           
             {/* Catalog Stat */}
             <button 
-              onClick={() => navigate('/app/marketplace')}
+              onClick={() => setActiveTab(profile.user_type === 'business' ? 'catalog' : 'tickets')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
             >
-              <span className="block font-bold text-lg group-hover:text-primary transition-colors">2</span>
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">
+                {profile.user_type === 'business' ? catalogItems.length : 2}
+              </span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
             </button>
           
@@ -1001,6 +1020,15 @@ const Profile = () => {
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
             >
               <ShieldCheck className="w-4 h-4 mr-2" /> Trust Center
+            </TabsTrigger>
+          )}
+
+          {profile.user_type === 'business' && (
+            <TabsTrigger
+              value="catalog"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+            >
+              <StoreIcon className="w-4 h-4 mr-2" /> Catalog
             </TabsTrigger>
           )}
         </TabsList>
@@ -1111,6 +1139,150 @@ const Profile = () => {
             </Card>
           </TabsContent>
         )}
+        {/* D. CATALOG TAB — business users only ───────────────────────── */}
+        {profile.user_type === 'business' && (
+          <TabsContent value="catalog" className="p-4 space-y-4 min-h-[300px]">
+
+            {/* ── No-store gate ──────────────────────────────────────────── */}
+            {!catalogLoading && !hasStore && (
+              <div className="text-center py-16 bg-muted/20 rounded-3xl border-2 border-dashed border-muted">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <StoreIcon className="w-8 h-8 text-primary/60" />
+                </div>
+                <h3 className="font-semibold text-lg">Create your store first</h3>
+                <p className="text-sm text-muted-foreground mt-1 mb-6 max-w-xs mx-auto">
+                  Set up a store to list your services. Once created, you'll appear
+                  as a discoverable pin on the map.
+                </p>
+                <StoreFormDialog
+                  trigger={
+                    <Button className="gradient-primary text-white shadow-lg">
+                      <Plus className="w-4 h-4 mr-2" /> Create Store
+                    </Button>
+                  }
+                />
+              </div>
+            )}
+
+            {/* ── Store exists — header + item actions ───────────────────── */}
+            {!catalogLoading && hasStore && (
+              <>
+                {/* Store identity strip */}
+                <div className="flex items-center justify-between p-3 bg-muted/40 rounded-2xl border border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center overflow-hidden">
+                      {userStore?.logo_url ? (
+                        <img src={userStore.logo_url} alt="logo" className="w-full h-full object-cover" />
+                      ) : (
+                        <StoreIcon className="w-5 h-5 text-primary" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{userStore?.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{userStore?.category}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <StoreFormDialog
+                      editingStore={userStore}
+                      trigger={
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      }
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => navigate('/app/map?view=services')}
+                    >
+                      <MapIcon className="w-3.5 h-3.5 mr-1" /> View on Map
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Search + Add item row */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      placeholder="Search your items..."
+                      value={catalogSearch}
+                      onChange={(e) => setCatalogSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 h-9 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                  <ItemFormDialog
+                    onSuccess={() => {}}
+                    trigger={
+                      <Button size="sm" className="h-9 gradient-primary text-white shadow-sm">
+                        <Plus className="w-4 h-4 mr-1" /> Add Item
+                      </Button>
+                    }
+                  />
+                </div>
+
+                {/* Items grid */}
+                {catalogLoading ? (
+                  <div className="flex items-center justify-center py-10">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  </div>
+                ) : catalogItems.length === 0 ? (
+                  <div className="text-center py-12 bg-muted/20 rounded-2xl border-2 border-dashed border-muted">
+                    <Tag className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+                    <p className="font-medium">No items yet</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Add your first service or product above.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {catalogItems
+                      .filter((item) =>
+                        !catalogSearch ||
+                        item.name.toLowerCase().includes(catalogSearch.toLowerCase())
+                      )
+                      .map((item) => (
+                        <ServiceCard
+                          key={item.id}
+                          mode="owner"
+                          item={item}
+                          actions={{
+                            onEdit: (i) => setEditingCatalogItem(i),
+                            onDelete: (id) => deleteItem(id),
+                            onToggleAvailability: (id, available) =>
+                              toggleAvailability({ itemId: id, available }),
+                            onViewOnMap: () => navigate('/app/map?view=services'),
+                            isDeleting: isDeletingItem,
+                          }}
+                        />
+                      ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Loading skeleton */}
+            {catalogLoading && (
+              <div className="grid grid-cols-2 gap-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="aspect-[3/4] rounded-2xl bg-muted/40 animate-pulse" />
+                ))}
+              </div>
+            )}
+
+            {/* Edit item dialog — opens when editingCatalogItem is set */}
+            {editingCatalogItem && (
+              <ItemFormDialog
+                editingItem={editingCatalogItem}
+                onSuccess={() => setEditingCatalogItem(null)}
+                trigger={<span className="hidden" />}
+              />
+            )}
+          </TabsContent>
+        )}
+
       </Tabs>
 
       {/* Profile Settings Dialog */}
