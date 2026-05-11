@@ -14,17 +14,27 @@ const INTEREST_TAGS = [...CATEGORIES];
 interface InterestSelectorProps {
   onComplete: () => void;
   initialSelected?: string[];
+  /**
+   * Passed through from Onboarding so that if a personal-path user later
+   * switches or downstream surfaces need to know, the profile write is
+   * consistent.  Defaults to "personal".
+   */
+  userType?: "personal" | "service";
 }
 
-export function InterestSelector({ onComplete, initialSelected = [] }: InterestSelectorProps) {
+export function InterestSelector({
+  onComplete,
+  initialSelected = [],
+  userType = "personal",
+}: InterestSelectorProps) {
   const { user } = useAuth();
   const [selected, setSelected] = useState<string[]>(initialSelected);
   const [loading, setLoading] = useState(false);
 
   const toggleInterest = (interest: string) => {
-    setSelected(prev => 
-      prev.includes(interest) 
-        ? prev.filter(i => i !== interest)
+    setSelected((prev) =>
+      prev.includes(interest)
+        ? prev.filter((i) => i !== interest)
         : [...prev, interest]
     );
   };
@@ -43,27 +53,29 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
     try {
       // Read existing prefs to avoid clobbering them
       const { data: existing } = await supabase
-        .from('profiles')
-        .select('preferences')
-        .eq('user_id', user.id)
+        .from("profiles")
+        .select("preferences")
+        .eq("user_id", user.id)
         .maybeSingle();
 
       const currentPrefs = (existing?.preferences || {}) as Record<string, any>;
       const mergedPrefs = {
         ...currentPrefs,
-        discovery_radius: currentPrefs.discovery_radius ?? 25000, // 25km default
+        discovery_radius: currentPrefs.discovery_radius ?? 25000, // 25 km default
       };
 
       const { data, error } = await supabase
-        .from('profiles')
-        .upsert({
-          user_id: user.id,
-          interests: selected,
-          preferences: mergedPrefs,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id'
-        })
+        .from("profiles")
+        .upsert(
+          {
+            user_id: user.id,
+            interests: selected,
+            preferences: mergedPrefs,
+            user_type: userType, // persist so downstream surfaces can branch
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        )
         .select();
 
       if (error) {
@@ -78,40 +90,38 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
 
       console.log("Save successful:", data);
 
-      // Optional: Trigger AI
+      // Optional: Trigger AI embedding
       try {
-        await supabase.functions.invoke('generate-user-embedding', {
-          body: { user_id: user.id, interests: selected }
+        await supabase.functions.invoke("generate-user-embedding", {
+          body: { user_id: user.id, interests: selected, user_type: userType },
         });
       } catch (aiError) {
-        console.warn("AI embedding generation failed, but interests saved:", aiError);
+        console.warn(
+          "AI embedding generation failed, but interests saved:",
+          aiError
+        );
       }
 
       toast.success("Profile updated!");
       onComplete();
-      
     } catch (err: any) {
       console.error("Full Error Object:", err);
       toast.error(`Failed to save: ${err.message || "Unknown error"}`);
-      setLoading(false); // ✅ Only reset on error
+      setLoading(false); // Only reset on error
     }
-    // ✅ Don't reset loading on success - let the full-screen loader show during navigation
   };
 
-  // ✅ FULL-SCREEN LOADER - Shows while saving and navigating
+  // ── Full-screen saving loader ──────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[500px] p-8 animate-in fade-in zoom-in-95 duration-300">
         <div className="text-center space-y-6">
-          {/* Animated icon */}
           <div className="relative w-20 h-20 mx-auto">
             <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" />
             <div className="relative w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
               <Sparkles className="w-10 h-10 text-primary animate-pulse" />
             </div>
           </div>
-
-          {/* Main message */}
           <div className="space-y-2">
             <h3 className="text-2xl font-bold tracking-tight">
               Setting up your experience...
@@ -120,8 +130,6 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
               We're personalizing your feed based on your interests
             </p>
           </div>
-
-          {/* Loading indicator */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span>This will only take a moment</span>
@@ -131,7 +139,7 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
     );
   }
 
-  // ✅ NORMAL INTEREST SELECTION UI
+  // ── Normal interest-selection UI ───────────────────────────────────────────
   return (
     <div className="flex flex-col h-full max-w-md mx-auto p-6 animate-in fade-in slide-in-from-bottom-4">
       <div className="text-center mb-6 space-y-2">
@@ -140,7 +148,8 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
         </div>
         <h2 className="text-2xl font-bold tracking-tight">What are you into?</h2>
         <p className="text-muted-foreground">
-          Select at least 3 topics. We use these to tailor your event feed and friend suggestions.
+          Select at least 3 topics. We use these to tailor your event feed and
+          friend suggestions.
         </p>
       </div>
 
@@ -154,9 +163,10 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
                 variant={isSelected ? "default" : "outline"}
                 className={`
                   px-4 py-2 text-sm cursor-pointer transition-all duration-200 select-none
-                  ${isSelected 
-                    ? "bg-primary hover:bg-primary/90 shadow-md scale-105" 
-                    : "hover:bg-accent hover:border-primary/50"
+                  ${
+                    isSelected
+                      ? "bg-primary hover:bg-primary/90 shadow-md scale-105"
+                      : "hover:bg-accent hover:border-primary/50"
                   }
                 `}
                 onClick={() => toggleInterest(tag)}
@@ -174,8 +184,8 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
           <span>{selected.length} selected</span>
           <span>Min. 3</span>
         </div>
-        <Button 
-          className="w-full gradient-primary text-white shadow-lg h-12 text-lg" 
+        <Button
+          className="w-full gradient-primary text-white shadow-lg h-12 text-lg"
           onClick={saveInterests}
           disabled={loading || selected.length < 3}
         >
@@ -192,45 +202,3 @@ export function InterestSelector({ onComplete, initialSelected = [] }: InterestS
     </div>
   );
 }
-
-// ============================================================================
-// COMPLETE FLOW SUMMARY
-// ============================================================================
-
-/**
- * ✅ USER EXPERIENCE NOW:
- * 
- * 1. User signs up
- * 2. Lands on /onboarding (no loader)
- * 3. Sees interest selection UI
- * 4. Selects 3+ interests
- * 5. Clicks "Continue"
- * 6. Button shows "Personalizing..." (immediate feedback)
- * 7. Full screen changes to "Setting up your experience..." (this component)
- * 8. Interests save to database
- * 9. onComplete() navigates to /app/discover
- * 10. ProtectedRoute checks interests (finds them)
- * 11. User sees their feed (no loader in ProtectedRoute)
- * 
- * LOADERS:
- * ✅ InterestSelector: "Setting up your experience..." (while saving)
- * ✅ ProtectedRoute: "Loading..." (only during auth check)
- * ❌ ProtectedRoute: NO "Setting up..." on app pages (we removed it)
- */
-
-// ============================================================================
-// KEY CHANGES FROM ORIGINAL
-// ============================================================================
-
-/**
- * CHANGED:
- * 1. Added full-screen loader that replaces entire component when loading=true
- * 2. Moved setLoading(false) to only happen on error (line 68)
- * 3. Don't reset loading on success - let it show during navigation
- * 4. Added animations for smooth transition
- * 
- * RESULT:
- * - User sees clear feedback that something is happening
- * - No blank screen or jarring transitions
- * - "Setting up..." appears ONLY on onboarding, never on /app pages
- */
