@@ -45,7 +45,7 @@ interface UserPreferences {
   [key: string]: any;
 }
 
-type UserType = 'personal' | 'vendor';
+type UserType = 'personal' | 'business';
 type VerificationStatus = 'unverified' | 'pending' | 'verified';
 
 interface ProfileData {
@@ -266,14 +266,16 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
           className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer"
           onClick={() => navigate(`/app/friends`)}
         >
-          <Avatar className="w-10 h-10 border border-border/50">
+          <Avatar className="{`w-10 h-10 border border-border/50 transition-all ${!isPremium ? 'blur-sm select-none pointer-events-none' : ''}`}">
             <AvatarImage src={viewer.profile.avatar_url || undefined} className="object-cover" />
             <AvatarFallback className="bg-muted text-muted-foreground text-sm">
               {viewer.profile.display_name?.[0]?.toUpperCase() || '?'}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate">{isPremium ? viewer.profile.display_name : '••••••'}</p>
+            <p className={`font-semibold text-sm truncate transition-all ${!isPremium ? 'blur-sm select-none' : ''}`}>
+              {viewer.profile.display_name}  {/* always rendered, visually blurred */}
+            </p>
             <p className="text-xs text-muted-foreground">
               {new Date(viewer.viewed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
             </p>
@@ -763,12 +765,26 @@ const Profile = () => {
                       <div>
                         <p className="font-semibold text-sm">Account Path</p>
                         <p className="text-xs text-muted-foreground">
-                          {profile.user_type === 'vendor' ? 'Business / Vendor' : 'Explorer (Social)'}
+                          {profile.user_type === 'business' ? 'Business' : 'Personal (Social)'}
                         </p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => navigate('/vouch-it')}>
-                      {profile.verification_status === 'verified' ? 'Verified' : 'Verify'}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(
+                        profile.user_type === 'business' && profile.verification_status === 'verified'
+                          ? '/app/profile/skills'
+                          : '/vouch-it'
+                      )}
+                    >
+                      {profile.user_type === 'business'
+                        ? profile.verification_status === 'verified'
+                          ? 'Edit Skills'
+                          : 'Verify to unlock'
+                        : profile.verification_status === 'verified'
+                          ? 'Verified ✓'
+                          : 'Verify'}
                     </Button>
                   </div>
 
@@ -971,7 +987,7 @@ const Profile = () => {
           )} 
           
           {/* --- INSERT THIS BLOCK --- */}
-          {profile.user_type === 'vendor' && (
+          {profile.user_type === 'business' && (
             <TabsTrigger
               value="trust"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
