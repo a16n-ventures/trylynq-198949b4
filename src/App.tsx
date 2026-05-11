@@ -19,6 +19,7 @@ import Friends from "./pages/Friends";
 import Profile from "./pages/Profile";
 import CreateEvent from "./pages/CreateEvent";
 import Events from "./pages/Events";
+import Marketplace from "./pages/Marketplace";
 import EventInvite from "./pages/EventInvite";
 import EventDetail from "./pages/EventDetail";
 import Premium from "./pages/Premium";
