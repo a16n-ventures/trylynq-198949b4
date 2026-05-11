@@ -80,15 +80,6 @@ const Friends = () => {
   };
 
   // --- 1. DATA FETCHING ---
-    
-  // 1. Fetch Premium Status (assuming a 'premium' field on profiles)
-  const { data: profile } = useQuery({
-    queryKey: ['my_profile_premium', user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('is_premium').eq('id', user?.id).single();
-      return data;
-    }
-  });
 
   // A. Fetch My Friends (Confirmed)
   const { data: friends = [], isLoading: loadingFriends, error: friendsError } = useQuery({
@@ -233,72 +224,92 @@ const Friends = () => {
     queryKey: ['friend_suggestions', user?.id, location?.latitude],
     queryFn: async () => {
       if (!user?.id) return [];
-  
+
       try {
-        // 1. Fetch my profile to get interests for client-side scoring
-        const { data: me } = await supabase.from('profiles')
-          .select('interests')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        
+        // Fetch my interests + my friends for ranking/exclusion
+        const [{ data: me }, { data: existingFriends }] = await Promise.all([
+          supabase.from('profiles').select('interests').eq('user_id', user.id).maybeSingle(),
+          supabase.from('friendships')
+            .select('requester_id, addressee_id')
+            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`),
+        ]);
         const myInterests: string[] = Array.isArray((me as any)?.interests) ? (me as any).interests : [];
-  
-        // 2. Call the RPC. Note: We pass null for lat/long if not available 
-        // to let the Postgres function decide if it should fallback to city-only or global new users.
-        const { data: rpcData, error: rpcError } = await supabase.rpc('suggest_nearby_friends', {
-          p_user_id: user.id,
-          p_lat: location?.latitude,
-          p_long: location?.longitude,
-          p_city: "current", 
-          p_is_premium: profile?.is_premium || false
-        });
-  
-        if (rpcError) {
-          console.error("RPC 'suggest_nearby_friends' failed:", rpcError);
-          return [];
+        const friendIds = (existingFriends || []).map((f: any) =>
+          f.requester_id === user.id ? f.addressee_id : f.requester_id
+        );
+
+        // 1. Try RPC for nearby (in-city) candidates
+        let candidates: any[] = [];
+        if (location) {
+          const { data: rpcData } = await supabase.rpc('suggest_nearby_friends', {
+            requesting_user_id: user.id,
+            user_lat: location.latitude,
+            user_long: location.longitude,
+            limit_count: 20,
+          });
+          if (rpcData?.length) {
+            candidates = rpcData.map((s: any) => ({
+              user_id: s.friend_id || s.user_id,
+              display_name: s.display_name,
+              username: s.username || 'suggested',
+              avatar_url: s.avatar_url,
+              distance_km: s.distance_km,
+            }));
+          }
         }
-  
-        if (!rpcData || rpcData.length === 0) return [];
-  
-        // 3. Map RPC results to our Suggestion interface
-        const candidates = rpcData.map((s: any) => ({
-          user_id: s.id,
-          display_name: s.display_name,
-          username: s.username,
-          avatar_url: s.avatar_url,
-          distance_km: s.distance_km,
-          mutual_count: s.mutual_count,
-          is_new: s.is_new_user,
-          interests: s.common_interests // Assuming your RPC returns this now
-        }));
-  
-        // 4. Final Scoring & Sorting
+
+        const candidateIds = candidates.map(c => c.user_id);
+        if (candidateIds.length === 0) return [];
+
+        // 3. Enrich with interests + mutuals
+        const { data: candidateProfiles } = await supabase
+          .from('profiles')
+          .select('user_id, interests, created_at')
+          .in('user_id', candidateIds);
+        const profMap = new Map((candidateProfiles || []).map((p: any) => [p.user_id, p]));
+
+        const mutualCounts = new Map<string, number>();
+        if (friendIds.length > 0) {
+          const { data: theirEdges } = await supabase
+            .from('friendships')
+            .select('requester_id, addressee_id, status')
+            .or(`requester_id.in.(${candidateIds.join(',')}),addressee_id.in.(${candidateIds.join(',')})`)
+            .eq('status', 'accepted');
+          (theirEdges || []).forEach((e: any) => {
+            const candidate = candidateIds.includes(e.requester_id) ? e.requester_id : e.addressee_id;
+            const other = e.requester_id === candidate ? e.addressee_id : e.requester_id;
+            if (friendIds.includes(other)) {
+              mutualCounts.set(candidate, (mutualCounts.get(candidate) || 0) + 1);
+            }
+          });
+        }
+
         return candidates.map((c: any) => {
-          const theirInterests: string[] = Array.isArray(c.interests) ? c.interests : [];
-          const sharedInterestsCount = myInterests.filter(i => theirInterests.includes(i)).length;
-  
-          // Priority: 1. Mutuals, 2. Proximity, 3. New Users, 4. Interests
+          const p: any = profMap.get(c.user_id) || {};
+          const theirInterests: string[] = Array.isArray(p.interests) ? p.interests : [];
+          const sharedInterests = myInterests.filter(i => theirInterests.includes(i)).length;
+          const isNew = p.created_at && new Date(p.created_at) > new Date(Date.now() - 7 * 86400000);
+          const mutual_count = mutualCounts.get(c.user_id) || 0;
+          // Composite ranking score: nearby > mutuals > shared interests > new
           const score =
-            (c.mutual_count || 0) * 20 +
-            (c.distance_km != null ? Math.max(0, 50 - c.distance_km) : 0) +
-            (c.is_new ? 15 : 0) + 
-            (sharedInterestsCount * 5);
-  
+            (c.distance_km != null ? Math.max(0, 25 - c.distance_km) * 4 : 0) +
+            mutual_count * 10 +
+            sharedInterests * 5 +
+            (isNew ? 2 : 0);
           return {
             ...c,
-            shared_interests: sharedInterestsCount,
+            mutual_count,
+            shared_interests: sharedInterests,
+            is_new: !!isNew,
             score,
           };
-        }).sort((a, b) => b.score - a.score).slice(0, 10);
-        
+        }).sort((a, b) => b.score - a.score).slice(0, 8);
       } catch (e) {
-        console.error('Personalized suggestion fetch failed', e);
+        console.error('Suggestion fetch failed', e);
         return [];
       }
     },
-    // We removed "!!location" from enabled so it fires even if GPS is slow,
-    // allowing the RPC to handle the "New Users" discovery.
-    enabled: !!user?.id, 
+    enabled: !!user,
   });
 
   // D. Fetch Requests
@@ -516,14 +527,13 @@ const Friends = () => {
                         <h3 className="font-semibold text-sm text-muted-foreground flex items-center gap-1">
                             <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> People nearby
                         </h3>
-                        {profile?.is_premium && <Badge className="bg-amber-500">75km Radius</Badge>}
                     </div>
                     <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">{suggestions.map((s) => (
                         <div key={s.user_id} className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm relative group hover:border-primary/50 transition-all">
                           
                           {/* 🆕 New Account Badge */}
                           {s.is_new && (
-                            <Badge className="absolute -top-3 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
+                            <Badge className="absolute -top-2 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
                               NEW
                             </Badge>
                           )}
