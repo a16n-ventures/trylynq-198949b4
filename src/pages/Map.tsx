@@ -28,8 +28,6 @@ import { useEventFilters } from '@/hooks/useEventFilters';
 import { usePremiumStatus } from '@/hooks/usePremiumStatus';
 import { TicketTierSelector } from '@/components/events/TicketTierSelector';
 import { formatTicketPrice as fmtTicket } from '@/lib/eventFormat';
-import { useUserCatalog } from '@/hooks/useUserCatalog';
-import { ServiceCard } from '@/components/ServiceCard';
 
 type CityMilestone = {
   city_name: string;
@@ -263,15 +261,13 @@ const MapPage = () => {
 
   const events = useMemo(() => applyEventFilters(nearbyEvents as any, filters), [nearbyEvents, filters]);
 
-  // --- 4b. Nearby Business Profiles (services view) ---
-  // useUserCatalog gives us the *current user's* catalog for map preview.
-  // A separate query fetches all nearby verified business profiles for discovery.
-  const { items: ownCatalogItems } = useUserCatalog(user?.id);
-
+  // --- 4b. Nearby Business Profiles (marketplace view) ---
   const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
     queryKey: ['nearby-businesses', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
       if (!location) return [];
+      // Fetch verified business profiles that have a lat/lng within the discovery radius.
+      // We pull from user_locations (same pattern as events) joined to profiles.
       const { data, error } = await supabase
         .from('user_locations')
         .select(`
@@ -310,7 +306,7 @@ const MapPage = () => {
             bio: row.profiles?.bio,
             skills: row.profiles?.skills || [],
             is_premium: row.profiles?.is_premium || false,
-            is_verified: true,
+            is_verified: true, // only verified businesses are fetched
             latitude: row.latitude,
             longitude: row.longitude,
             distanceKm: Number(dist.toFixed(1)),
@@ -319,7 +315,7 @@ const MapPage = () => {
         .filter(Boolean)
         .sort((a: any, b: any) => a.distanceKm - b.distanceKm);
     },
-    enabled: !!location && activeView === 'services',
+    enabled: !!location && activeView === 'marketplace',
     refetchInterval: 60000,
   });
 
@@ -783,20 +779,28 @@ const MapPage = () => {
             {!isNavigating && selectedBusiness && (
               <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400" />
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-12 h-12 border-2 border-background shadow-md">
-                        <AvatarImage src={selectedBusiness.avatar} />
-                        <AvatarFallback>{selectedBusiness.name?.[0]}</AvatarFallback>
-                      </Avatar>
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        <Avatar className="w-16 h-16 border-4 border-background shadow-md">
+                          <AvatarImage src={selectedBusiness.avatar} />
+                          <AvatarFallback>{selectedBusiness.name?.[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="absolute -bottom-1 -right-1 bg-primary rounded-full p-0.5 border-2 border-background">
+                          <ShieldCheck className="w-3 h-3 text-white" />
+                        </div>
+                      </div>
                       <div>
-                        <h3 className="font-bold text-base flex items-center gap-1.5">
+                        <h3 className="font-bold text-xl flex items-center gap-2">
                           {selectedBusiness.name}
-                          <ShieldCheck className="w-4 h-4 text-primary" />
                           {selectedBusiness.is_premium && <PremiumBadge />}
                         </h3>
-                        <p className="text-xs text-muted-foreground">{selectedBusiness.distanceKm}km away</p>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
+                          <span className="flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded-full">
+                            <MapPin className="w-3 h-3" /> {selectedBusiness.distanceKm}km away
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setSelectedBusiness(null)}>
@@ -805,48 +809,34 @@ const MapPage = () => {
                   </div>
 
                   {selectedBusiness.bio && (
-                    <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{selectedBusiness.bio}</p>
+                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{selectedBusiness.bio}</p>
                   )}
 
-                  {/* Show the business's catalog items using ServiceCard in discovery mode */}
-                  {selectedBusiness.catalogItems?.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto mb-3">
-                      {selectedBusiness.catalogItems.slice(0, 4).map((item: any) => (
-                        <ServiceCard
-                          key={item.id}
-                          mode="discovery"
-                          item={item}
-                          actions={{
-                            onContact: (phone) => window.open(`tel:${phone}`),
-                            onDirections: (lat, lng, name) => handleGetDirections(lat, lng, name),
-                          }}
-                        />
+                  {selectedBusiness.skills?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {selectedBusiness.skills.slice(0, 4).map((skill: string) => (
+                        <span key={skill} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                          {skill}
+                        </span>
                       ))}
+                      {selectedBusiness.skills.length > 4 && (
+                        <span className="text-[10px] text-muted-foreground px-2 py-0.5">+{selectedBusiness.skills.length - 4} more</span>
+                      )}
                     </div>
-                  ) : (
-                    selectedBusiness.skills?.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        {selectedBusiness.skills.slice(0, 5).map((skill: string) => (
-                          <span key={skill} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    )
                   )}
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     <Button
-                      className="h-11 rounded-xl text-sm font-semibold bg-primary/10 text-primary hover:bg-primary/20 border-0"
+                      className="h-12 rounded-xl text-base font-semibold bg-primary/10 text-white hover:bg-primary/20 border-0"
                       onClick={() => navigate(`/app/messages?type=dm&id=${selectedBusiness.id}`)}
                     >
-                      <MessageCircle className="w-4 h-4 mr-1.5" /> Message
+                      <MessageCircle className="w-5 h-5 mr-2" /> Message
                     </Button>
                     <Button
-                      className="h-11 rounded-xl text-sm font-semibold shadow-lg bg-primary hover:bg-primary/90 text-white"
+                      className="h-12 rounded-xl text-base font-semibold shadow-lg bg-primary hover:bg-primary/90 text-white"
                       onClick={() => handleGetDirections(selectedBusiness.latitude, selectedBusiness.longitude, selectedBusiness.name)}
                     >
-                      <Navigation className="w-4 h-4 mr-1.5" /> Directions
+                      <Navigation className="w-5 h-5 mr-2" /> Directions
                     </Button>
                   </div>
                 </CardContent>
