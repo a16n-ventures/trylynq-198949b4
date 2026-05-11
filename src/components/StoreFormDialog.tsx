@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Loader2, Upload, X } from 'lucide-react';
+import { Plus, Loader2, Upload, X, MapPin } from 'lucide-react';
 import { Store, STORE_CATEGORIES } from '@/types/marketplace';
 
 interface StoreFormDialogProps {
@@ -30,8 +30,41 @@ export default function StoreFormDialog({ editingStore, onSuccess, trigger }: St
     logo_url: editingStore?.logo_url || '',
     category: editingStore?.category || 'General',
     location: editingStore?.location || '',
-    contact_phone: editingStore?.contact_phone || ''
+    contact_phone: editingStore?.contact_phone || '',
+    latitude: (editingStore as any)?.latitude ?? null as number | null,
+    longitude: (editingStore as any)?.longitude ?? null as number | null,
   });
+
+  // ── Auto-fetch the owner's location when dialog opens ─────────────────────
+  // This seeds lat/lng so the store pin appears on the Map immediately after
+  // creation — no manual coordinate entry needed.
+  const { data: ownerLocation } = useQuery({
+    queryKey: ['store-owner-location'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from('user_locations')
+        .select('latitude, longitude')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: open,
+    staleTime: 30_000,
+  });
+
+  // Pre-fill lat/lng from user_locations when creating a new store
+  useEffect(() => {
+    if (!open || editingStore) return;
+    if (ownerLocation?.latitude && ownerLocation?.longitude) {
+      setStoreForm(prev => ({
+        ...prev,
+        latitude: ownerLocation.latitude,
+        longitude: ownerLocation.longitude,
+      }));
+    }
+  }, [ownerLocation, open, editingStore]);
 
   // Sync state when editingStore changes or dialog opens
   useEffect(() => {
@@ -42,14 +75,16 @@ export default function StoreFormDialog({ editingStore, onSuccess, trigger }: St
         logo_url: editingStore.logo_url || '',
         category: editingStore.category,
         location: editingStore.location || '',
-        contact_phone: editingStore.contact_phone || ''
+        contact_phone: editingStore.contact_phone || '',
+        latitude: (editingStore as any)?.latitude ?? null,
+        longitude: (editingStore as any)?.longitude ?? null,
       });
       setLogoPreview(editingStore.logo_url || '');
     }
   }, [editingStore, open]);
 
   const resetForm = () => {
-    setStoreForm({ name: '', description: '', logo_url: '', category: 'General', location: '', contact_phone: '' });
+    setStoreForm({ name: '', description: '', logo_url: '', category: 'General', location: '', contact_phone: '', latitude: null, longitude: null });
     setLogoFile(null);
     setLogoPreview('');
   };
@@ -226,6 +261,24 @@ export default function StoreFormDialog({ editingStore, onSuccess, trigger }: St
           <div className="space-y-2">
             <Label>Contact Phone</Label>
             <Input value={storeForm.contact_phone} onChange={(e) => setStoreForm({ ...storeForm, contact_phone: e.target.value })} placeholder="+234..." />
+          </div>
+
+          {/* ── Map pin read-out ── */}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+            <MapPin className="w-3.5 h-3.5 shrink-0 text-primary" />
+            {storeForm.latitude && storeForm.longitude ? (
+              <span>
+                Location captured — your store will appear as a pin on the map
+                <span className="font-mono ml-1 text-[10px]">
+                  ({storeForm.latitude.toFixed(4)}, {storeForm.longitude.toFixed(4)})
+                </span>
+              </span>
+            ) : (
+              <span>
+                Location not detected. Enable location sharing in Settings so
+                your store appears on the map.
+              </span>
+            )}
           </div>
         </div>
         <DialogFooter>
