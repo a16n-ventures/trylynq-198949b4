@@ -220,96 +220,105 @@ const Friends = () => {
   });
 
   // C. Fetch Smart Suggestions (Nearby + Mutual + Shared interests)
-  const { data: suggestions = [] } = useQuery({
-    queryKey: ['friend_suggestions', user?.id, location?.latitude],
+  // Resolved city name for the RPC — reverse-geocoded lazily when GPS is ready
+  const [resolvedCity, setResolvedCity] = useState<string>('');
+  useEffect(() => {
+    if (!location?.latitude || !location?.longitude || resolvedCity) return;
+    let cancelled = false;
+    fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.latitude}&lon=${location.longitude}`,
+      { headers: { 'User-Agent': 'Ahmia-App' } }
+    )
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        const city =
+          d?.address?.city || d?.address?.town || d?.address?.county || d?.address?.state || '';
+        setResolvedCity(city);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [location?.latitude, location?.longitude]);
+
+  const { data: suggestions = [], isLoading: loadingSuggestions } = useQuery({
+    queryKey: ['friend_suggestions', user?.id, location?.latitude, location?.longitude, resolvedCity],
     queryFn: async () => {
       if (!user?.id) return [];
 
       try {
-        // Fetch my interests + my friends for ranking/exclusion
-        const [{ data: me }, { data: existingFriends }] = await Promise.all([
-          supabase.from('profiles').select('interests').eq('user_id', user.id).maybeSingle(),
-          supabase.from('friendships')
-            .select('requester_id, addressee_id')
-            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`),
-        ]);
-        const myInterests: string[] = Array.isArray((me as any)?.interests) ? (me as any).interests : [];
-        const friendIds = (existingFriends || []).map((f: any) =>
-          f.requester_id === user.id ? f.addressee_id : f.requester_id
-        );
-
-        // 1. Try RPC for nearby (in-city) candidates
-        let candidates: any[] = [];
-        if (location) {
-          const { data: rpcData } = await supabase.rpc('suggest_nearby_friends', {
-            requesting_user_id: user.id,
-            user_lat: location.latitude,
-            user_long: location.longitude,
-            limit_count: 20,
+        // ── Path A: GPS available — call the RPC which handles proximity,
+        //   mutual count, new-user flag, and common interests in one query.
+        if (location?.latitude && location?.longitude) {
+          const { data: rpcData, error: rpcError } = await supabase.rpc('suggest_nearby_friends', {
+            p_user_id:   user.id,
+            p_lat:       location.latitude,
+            p_long:      location.longitude,
+            p_city:      resolvedCity || '',
+            p_is_premium: false, // TODO: wire up real premium status
           });
-          if (rpcData?.length) {
-            candidates = rpcData.map((s: any) => ({
-              user_id: s.friend_id || s.user_id,
-              display_name: s.display_name,
-              username: s.username || 'suggested',
-              avatar_url: s.avatar_url,
-              distance_km: s.distance_km,
-            }));
+
+          if (rpcError) {
+            console.error('[Suggestions] RPC error:', rpcError);
+            // Fall through to Path B below
+          } else if (rpcData?.length) {
+            // RPC already returns ranked rows — map directly to Suggestion shape
+            return (rpcData as any[]).map(s => ({
+              user_id:       s.id,           // RPC returns `id`, not `friend_id`
+              display_name:  s.display_name || 'User',
+              username:      s.username || 'user',
+              avatar_url:    s.avatar_url ?? null,
+              distance_km:   typeof s.distance_km === 'number' ? s.distance_km : undefined,
+              mutual_count:  Number(s.mutual_count ?? 0),
+              is_new:        !!s.is_new_user,
+              common_interests: Array.isArray(s.common_interests) ? s.common_interests : [],
+              // Client-side composite score for display ordering — mirrors DB ORDER BY
+              score:
+                (typeof s.distance_km === 'number' ? Math.max(0, 25 - s.distance_km) * 4 : 0) +
+                Number(s.mutual_count ?? 0) * 10 +
+                (Array.isArray(s.common_interests) ? s.common_interests.length * 5 : 0) +
+                (s.is_new_user ? 2 : 0),
+            } as Suggestion & { score: number; common_interests: string[] }))
+              .slice(0, 8);
           }
         }
 
-        const candidateIds = candidates.map(c => c.user_id);
-        if (candidateIds.length === 0) return [];
+        // ── Path B: No GPS (or RPC failed) — pull a lightweight fallback:
+        //   profiles that are not yet friends, ordered by join date so new
+        //   users still surface even without location data.
+        const { data: existingFriends } = await supabase
+          .from('friendships')
+          .select('requester_id, addressee_id')
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
 
-        // 3. Enrich with interests + mutuals
-        const { data: candidateProfiles } = await supabase
+        const excludeIds = new Set([
+          user.id,
+          ...(existingFriends || []).map((f: any) =>
+            f.requester_id === user.id ? f.addressee_id : f.requester_id
+          ),
+        ]);
+
+        const { data: fallback } = await supabase
           .from('profiles')
-          .select('user_id, interests, created_at')
-          .in('user_id', candidateIds);
-        const profMap = new Map((candidateProfiles || []).map((p: any) => [p.user_id, p]));
+          .select('user_id, display_name, username, avatar_url, created_at')
+          .not('user_id', 'in', `(${Array.from(excludeIds).join(',')})`)
+          .order('created_at', { ascending: false })
+          .limit(8);
 
-        const mutualCounts = new Map<string, number>();
-        if (friendIds.length > 0) {
-          const { data: theirEdges } = await supabase
-            .from('friendships')
-            .select('requester_id, addressee_id, status')
-            .or(`requester_id.in.(${candidateIds.join(',')}),addressee_id.in.(${candidateIds.join(',')})`)
-            .eq('status', 'accepted');
-          (theirEdges || []).forEach((e: any) => {
-            const candidate = candidateIds.includes(e.requester_id) ? e.requester_id : e.addressee_id;
-            const other = e.requester_id === candidate ? e.addressee_id : e.requester_id;
-            if (friendIds.includes(other)) {
-              mutualCounts.set(candidate, (mutualCounts.get(candidate) || 0) + 1);
-            }
-          });
-        }
-
-        return candidates.map((c: any) => {
-          const p: any = profMap.get(c.user_id) || {};
-          const theirInterests: string[] = Array.isArray(p.interests) ? p.interests : [];
-          const sharedInterests = myInterests.filter(i => theirInterests.includes(i)).length;
-          const isNew = p.created_at && new Date(p.created_at) > new Date(Date.now() - 7 * 86400000);
-          const mutual_count = mutualCounts.get(c.user_id) || 0;
-          // Composite ranking score: nearby > mutuals > shared interests > new
-          const score =
-            (c.distance_km != null ? Math.max(0, 25 - c.distance_km) * 4 : 0) +
-            mutual_count * 10 +
-            sharedInterests * 5 +
-            (isNew ? 2 : 0);
-          return {
-            ...c,
-            mutual_count,
-            shared_interests: sharedInterests,
-            is_new: !!isNew,
-            score,
-          };
-        }).sort((a, b) => b.score - a.score).slice(0, 8);
+        return (fallback || []).map(p => ({
+          user_id:      p.user_id,
+          display_name: p.display_name || 'User',
+          username:     p.username || 'user',
+          avatar_url:   p.avatar_url ?? null,
+          is_new:       new Date(p.created_at) > new Date(Date.now() - 7 * 86400000),
+        } as Suggestion));
       } catch (e) {
-        console.error('Suggestion fetch failed', e);
+        console.error('[Suggestions] Fetch failed:', e);
         return [];
       }
     },
-    enabled: !!user,
+    // Re-run when city resolves so the RPC gets the right p_city value
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000, // 5 min — location doesn't change that fast
   });
 
   // D. Fetch Requests
@@ -367,24 +376,30 @@ const Friends = () => {
   // --- 2. ACTIONS ---
 
   const handleConnect = useMutation({
+    onMutate: (targetId: string) => {
+      // Optimistic: mark as pending immediately so button updates without waiting for DB
+      setPendingConnectIds(prev => new Set(prev).add(targetId));
+    },
     mutationFn: async (targetId: string) => {
-        setPendingConnectIds(prev => new Set(prev).add(targetId));
-        const { error } = await supabase.from('friendships').insert({
-            requester_id: user?.id,
-            addressee_id: targetId,
-            status: 'pending'
-        });
-        if (error) throw error;
+      const { error } = await supabase.from('friendships').insert({
+        requester_id: user?.id,
+        addressee_id: targetId,
+        status: 'pending',
+      });
+      if (error) throw error;
     },
     onSuccess: (_data, targetId) => {
-        toast.success("Friend request sent!");
-        queryClient.invalidateQueries({ queryKey: ['friend_suggestions'] });
-        queryClient.invalidateQueries({ queryKey: ['app_contacts'] });
+      toast.success('Friend request sent!');
+      // Keep the sent state in pendingConnectIds so button stays 'Sent ✓' until
+      // suggestions list refreshes and this user disappears from it.
+      queryClient.invalidateQueries({ queryKey: ['friend_suggestions'] });
+      queryClient.invalidateQueries({ queryKey: ['app_contacts'] });
     },
     onError: (err: Error, targetId) => {
+      // Roll back optimistic state
       setPendingConnectIds(prev => { const s = new Set(prev); s.delete(targetId); return s; });
-      toast.error(err.message || "Could not send request");
-    }
+      toast.error(err.message || 'Could not send request');
+    },
   });
 
   const handleAccept = useMutation({
@@ -520,59 +535,93 @@ const Friends = () => {
           {/* MY CIRCLE TAB */}
           <TabsContent value="circle" className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             
-            {/* 1. SUGGESTIONS (Only show if suggestions exist) */}
-            {suggestions.length > 0 && (
-                <div className="mb-6">
-                    <div className="flex items-center justify-between mb-3 px-1">
-                        <h3 className="font-semibold text-sm text-muted-foreground flex items-center gap-1">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> People nearby
-                        </h3>
-                    </div>
-                    <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">{suggestions.map((s) => (
-                        <div key={s.user_id} className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm relative group hover:border-primary/50 transition-all">
-                          
-                          {/* 🆕 New Account Badge */}
-                          {s.is_new && (
-                            <Badge className="absolute -top-2 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
-                              NEW
-                            </Badge>
-                          )}
-                      
-                          <Avatar className="h-16 w-16 mb-2 border-2 border-background shadow-md">
-                            <AvatarImage src={s.avatar_url || undefined} />
-                            <AvatarFallback>{s.display_name?.[0]}</AvatarFallback>
-                          </Avatar>
-                      
-                          <h4 className="font-bold text-sm truncate w-full">{s.display_name}</h4>
-                          
-                          {/* Prioritize Distance Display */}
-                          {s.distance_km ? (
-                            <p className="text-[10px] font-bold text-primary flex items-center gap-1 mb-1">
-                              <MapPin className="w-2.5 h-2.5" /> {s.distance_km.toFixed(1)}km away
-                            </p>
-                          ) : null}
-                      
-                          {/* Secondary: Mutual Count */}
-                          {s.mutual_count > 0 && (
-                            <p className="text-[9px] text-muted-foreground mb-3">
-                              {s.mutual_count} mutual friend{s.mutual_count > 1 ? 's' : ''}
-                            </p>
-                          )}
-                          {!s.distance_km && !s.mutual_count && (
-                            <p className="text-[10px] text-muted-foreground mb-3">Suggested</p>
-                          )}
-                                <Button 
-                                    size="sm" 
-                                    className="w-full h-8 text-xs rounded-lg"
-                                    onClick={() => handleConnect.mutate(s.user_id)}
-                                    disabled={pendingConnectIds.has(s.user_id)}
-                                >
-                                    {pendingConnectIds.has(s.user_id) ? 'Sent ✓' : 'Connect'}
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
+            {/* 1. SUGGESTIONS */}
+            {(loadingSuggestions || suggestions.length > 0) && (
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h3 className="font-semibold text-sm text-muted-foreground flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                    {location ? 'People nearby' : 'Suggested for you'}
+                  </h3>
                 </div>
+
+                <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
+                  {loadingSuggestions
+                    ? /* Skeleton cards while loading */
+                      Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm animate-pulse">
+                          <div className="h-16 w-16 rounded-full bg-muted mb-2" />
+                          <div className="h-3 w-20 bg-muted rounded mb-1" />
+                          <div className="h-2 w-12 bg-muted rounded mb-3" />
+                          <div className="h-8 w-full bg-muted rounded-lg" />
+                        </div>
+                      ))
+                    : suggestions.map((s) => {
+                        const sent = pendingConnectIds.has(s.user_id);
+                        const commonInterests = (s as any).common_interests as string[] | undefined;
+                        return (
+                          <div
+                            key={s.user_id}
+                            className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm relative hover:border-primary/50 transition-all"
+                          >
+                            {/* New account badge */}
+                            {s.is_new && (
+                              <Badge className="absolute -top-2 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
+                                NEW
+                              </Badge>
+                            )}
+
+                            <Avatar className="h-16 w-16 mb-2 border-2 border-background shadow-md">
+                              <AvatarImage src={s.avatar_url || undefined} />
+                              <AvatarFallback>{s.display_name?.[0] ?? '?'}</AvatarFallback>
+                            </Avatar>
+
+                            <h4 className="font-bold text-sm truncate w-full">{s.display_name}</h4>
+                            <p className="text-[10px] text-muted-foreground truncate w-full mb-1">@{s.username}</p>
+
+                            {/* Distance — explicit null/undefined check so 0.0km still shows */}
+                            {s.distance_km != null && (
+                              <p className="text-[10px] font-bold text-primary flex items-center gap-1">
+                                <MapPin className="w-2.5 h-2.5" /> {s.distance_km.toFixed(1)}km away
+                              </p>
+                            )}
+
+                            {/* Mutuals */}
+                            {(s.mutual_count ?? 0) > 0 && (
+                              <p className="text-[9px] text-muted-foreground">
+                                {s.mutual_count} mutual {s.mutual_count === 1 ? 'friend' : 'friends'}
+                              </p>
+                            )}
+
+                            {/* Common interests chips (up to 2) */}
+                            {commonInterests && commonInterests.length > 0 && (
+                              <div className="flex flex-wrap justify-center gap-1 mt-1">
+                                {commonInterests.slice(0, 2).map(tag => (
+                                  <span key={tag} className="text-[9px] bg-primary/10 text-primary rounded-full px-1.5 py-0.5 font-medium">
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Fallback label when no signal at all */}
+                            {s.distance_km == null && !(s.mutual_count ?? 0) && !(commonInterests?.length) && (
+                              <p className="text-[10px] text-muted-foreground">Suggested</p>
+                            )}
+
+                            <Button
+                              size="sm"
+                              className="w-full h-8 text-xs rounded-lg mt-3"
+                              onClick={() => !sent && handleConnect.mutate(s.user_id)}
+                              disabled={sent}
+                            >
+                              {sent ? 'Sent ✓' : 'Connect'}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                </div>
+              </div>
             )}
 
             {/* 2. MAIN LIST */}
