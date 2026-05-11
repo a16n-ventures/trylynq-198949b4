@@ -65,7 +65,7 @@ export const ProtectedRoute = ({
 
         // ── Onboarding completeness rules ───────────────────────────────────
         // personal: must have interests + discovery_radius
-        // service:  must have skills (or interests as fallback) + discovery_radius
+        // business:  must have skills (or interests as fallback) + discovery_radius
         //           — skips Vouch-it entirely; no extra check needed here
         // no user_type yet: treat as not started → send to onboarding
         // ────────────────────────────────────────────────────────────────────
@@ -76,11 +76,11 @@ export const ProtectedRoute = ({
           const hasInterests =
             Array.isArray(profile?.interests) && profile!.interests.length > 0;
           onboardingComplete = hasInterests && hasRadius;
-        } else if (userType === "service") {
+        } else if (userType === "business") {
           const hasSkills =
             Array.isArray((profile as any)?.skills) &&
             (profile as any).skills.length > 0;
-          // Fallback: some early service signups may have written to interests
+          // Fallback: some early business signups may have written to interests
           const hasInterestsFallback =
             Array.isArray(profile?.interests) && profile!.interests.length > 0;
           onboardingComplete = (hasSkills || hasInterestsFallback) && hasRadius;
