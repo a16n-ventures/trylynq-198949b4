@@ -235,80 +235,70 @@ const Friends = () => {
       if (!user?.id) return [];
   
       try {
-        // 1. Fetch my data for ranking
-        const [{ data: me }, { data: existingFriends }] = await Promise.all([
-          supabase.from('profiles').select('interests').eq('user_id', user.id).maybeSingle(),
-          supabase.from('friendships')
-            .select('requester_id, addressee_id')
-            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`),
-        ]);
+        // 1. Fetch my profile to get interests for client-side scoring
+        const { data: me } = await supabase.from('profiles')
+          .select('interests')
+          .eq('user_id', user.id)
+          .maybeSingle();
         
         const myInterests: string[] = Array.isArray((me as any)?.interests) ? (me as any).interests : [];
-        const friendIds = (existingFriends || []).map((f: any) =>
-          f.requester_id === user.id ? f.addressee_id : f.requester_id
-        );
   
-        // 2. ONLY use the specialized RPC for candidates (Proximity/Personalized)
-        let candidates: any[] = [];
-        if (location) {
-          const { data: rpcData } = await supabase.rpc('get_nearby_users', {
-            p_user_id: user.id,
-            p_lat: location.latitude,
-            p_long: location.longitude,
-            p_city: "current", // Optional geocoded city
-            p_is_premium: profile?.is_premium || false
-          });
+        // 2. Call the RPC. Note: We pass null for lat/long if not available 
+        // to let the Postgres function decide if it should fallback to city-only or global new users.
+        const { data: rpcData, error: rpcError } = await supabase.rpc('suggest_nearby_friends', {
+          p_user_id: user.id,
+          p_lat: location?.latitude,
+          p_long: location?.longitude,
+          p_city: "current", 
+          p_is_premium: profile?.is_premium || false
+        });
   
-          if (rpcData?.length) {
-            candidates = rpcData.map((s: any) => ({
-              user_id: s.id,
-              display_name: s.display_name,
-              username: s.username,
-              avatar_url: s.avatar_url,
-              distance_km: s.distance_km,
-              mutual_count: s.mutual_count,
-              is_new: s.is_new_user
-            }));
-          }
+        if (rpcError) {
+          console.error("RPC 'suggest_nearby_friends' failed:", rpcError);
+          return [];
         }
   
-        // If no personalized candidates are found, return empty (removes random fallback)
-        if (candidates.length === 0) return [];
+        if (!rpcData || rpcData.length === 0) return [];
   
-        const candidateIds = candidates.map(c => c.user_id);
+        // 3. Map RPC results to our Suggestion interface
+        const candidates = rpcData.map((s: any) => ({
+          user_id: s.id,
+          display_name: s.display_name,
+          username: s.username,
+          avatar_url: s.avatar_url,
+          distance_km: s.distance_km,
+          mutual_count: s.mutual_count,
+          is_new: s.is_new_user,
+          interests: s.common_interests // Assuming your RPC returns this now
+        }));
   
-        // 3. Enrich with interests for final personalized scoring
-        const { data: candidateProfiles } = await supabase
-          .from('profiles')
-          .select('user_id, interests')
-          .in('user_id', candidateIds);
-          
-        const profMap = new Map((candidateProfiles || []).map((p: any) => [p.user_id, p]));
-  
+        // 4. Final Scoring & Sorting
         return candidates.map((c: any) => {
-          const p: any = profMap.get(c.user_id) || {};
-          const theirInterests: string[] = Array.isArray(p.interests) ? p.interests : [];
+          const theirInterests: string[] = Array.isArray(c.interests) ? c.interests : [];
           const sharedInterestsCount = myInterests.filter(i => theirInterests.includes(i)).length;
   
-          // Composite ranking score focused on actual connection points
+          // Priority: 1. Mutuals, 2. Proximity, 3. New Users, 4. Interests
           const score =
-            (c.distance_km != null ? Math.max(0, 25 - c.distance_km) * 4 : 0) +
-            (c.mutual_count || 0) * 10 +
-            sharedInterestsCount * 5 +
-            (c.is_new ? 2 : 0);
+            (c.mutual_count || 0) * 20 +
+            (c.distance_km != null ? Math.max(0, 50 - c.distance_km) : 0) +
+            (c.is_new ? 15 : 0) + 
+            (sharedInterestsCount * 5);
   
           return {
             ...c,
             shared_interests: sharedInterestsCount,
             score,
           };
-        }).sort((a, b) => b.score - a.score).slice(0, 8);
+        }).sort((a, b) => b.score - a.score).slice(0, 10);
+        
       } catch (e) {
         console.error('Personalized suggestion fetch failed', e);
         return [];
       }
     },
-    enabled: !!user && !!location, // Only run when we have location to ensure personalization
+    // We removed "!!location" from enabled so it fires even if GPS is slow,
+    // allowing the RPC to handle the "New Users" discovery.
+    enabled: !!user?.id, 
   });
 
   // D. Fetch Requests
