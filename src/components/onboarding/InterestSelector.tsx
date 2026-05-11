@@ -19,7 +19,7 @@ interface InterestSelectorProps {
    * switches or downstream surfaces need to know, the profile write is
    * consistent.  Defaults to "personal".
    */
-  userType?: "personal" | "service";
+  userType?: "personal" | "business";
 }
 
 export function InterestSelector({
