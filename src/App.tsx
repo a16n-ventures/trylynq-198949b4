@@ -23,7 +23,6 @@ import EventInvite from "./pages/EventInvite";
 import EventDetail from "./pages/EventDetail";
 import Premium from "./pages/Premium";
 import Notifications from "./pages/Notifications";
-import Marketplace from "./pages/Marketplace";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
