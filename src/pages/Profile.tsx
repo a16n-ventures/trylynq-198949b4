@@ -266,7 +266,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
           className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer"
           onClick={() => navigate(`/app/friends`)}
         >
-          <Avatar className="{`w-10 h-10 border border-border/50 transition-all ${!isPremium ? 'blur-sm select-none pointer-events-none' : ''}`}">
+          <Avatar className={`w-10 h-10 border border-border/50 transition-all ${!isPremium ? 'blur-sm select-none pointer-events-none' : ''}`}>
             <AvatarImage src={viewer.profile.avatar_url || undefined} className="object-cover" />
             <AvatarFallback className="bg-muted text-muted-foreground text-sm">
               {viewer.profile.display_name?.[0]?.toUpperCase() || '?'}
