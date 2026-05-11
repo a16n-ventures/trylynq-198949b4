@@ -80,6 +80,15 @@ const Friends = () => {
   };
 
   // --- 1. DATA FETCHING ---
+    
+  // 1. Fetch Premium Status (assuming a 'premium' field on profiles)
+  const { data: profile } = useQuery({
+    queryKey: ['my_profile_premium', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('is_premium').eq('id', user?.id).single();
+      return data;
+    }
+  });
 
   // A. Fetch My Friends (Confirmed)
   const { data: friends = [], isLoading: loadingFriends, error: friendsError } = useQuery({
@@ -539,13 +548,14 @@ const Friends = () => {
                         <h3 className="font-semibold text-sm text-muted-foreground flex items-center gap-1">
                             <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> People nearby
                         </h3>
+                        {profile?.is_premium && <Badge className="bg-amber-500">75km Radius</Badge>}
                     </div>
                     <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">{suggestions.map((s) => (
                         <div key={s.user_id} className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm relative group hover:border-primary/50 transition-all">
                           
                           {/* 🆕 New Account Badge */}
                           {s.is_new && (
-                            <Badge className="absolute -top-2 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
+                            <Badge className="absolute -top-1 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
                               NEW
                             </Badge>
                           )}
