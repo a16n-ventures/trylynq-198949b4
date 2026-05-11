@@ -919,7 +919,7 @@ const Profile = () => {
           </div>
 
           {/* STATS CONTROL PANEL */}
-          <div className="mt-6 grid grid-cols-4 gap-4 max-w-2xl bg-muted/30 backdrop-blur-sm rounded-2xl p-1 mx-auto border border-border/40 shadow-sm justify-items-center">
+          <div className="mt-6 inline-flex items-center bg-muted/30 backdrop-blur-sm rounded-2xl p-1 border border-border/40 shadow-sm">
             {/* Friends Stat */}
             <button 
               onClick={() => navigate('/app/friends')}
@@ -944,13 +944,13 @@ const Profile = () => {
             {/* Vertical Divider */}
             <div className="w-[1px] h-8 bg-border/60" />
           
-            {/* Catalogue Stat */}
+            {/* Catalog Stat */}
             <button 
               onClick={() => navigate('/app/marketplace')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
             >
               <span className="block font-bold text-lg group-hover:text-primary transition-colors">2</span>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalogue</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
             </button>
           
             {/* Vertical Divider */}
