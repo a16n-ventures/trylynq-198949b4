@@ -93,7 +93,7 @@ const MapPage = () => {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<any | null>(null);
   const [isGhostMode, setIsGhostMode] = useState(false);
-  const [activeView, setActiveView] = useState<'friends' | 'events' | 'businesses'>('friends');
+  const [activeView, setActiveView] = useState<'friends' | 'events' | 'marketplace'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [filters, setFilters] = useEventFilters();
   const { isPremium } = usePremiumStatus(user?.id);
@@ -261,7 +261,7 @@ const MapPage = () => {
 
   const events = useMemo(() => applyEventFilters(nearbyEvents as any, filters), [nearbyEvents, filters]);
 
-  // --- 4b. Nearby Business Profiles (businesses view) ---
+  // --- 4b. Nearby Business Profiles (marketplace view) ---
   const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
     queryKey: ['nearby-businesses', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
@@ -315,7 +315,7 @@ const MapPage = () => {
         .filter(Boolean)
         .sort((a: any, b: any) => a.distanceKm - b.distanceKm);
     },
-    enabled: !!location && activeView === 'businesses',
+    enabled: !!location && activeView === 'marketplace',
     refetchInterval: 60000,
   });
 
@@ -344,7 +344,7 @@ const MapPage = () => {
   }, [nearbyBusinesses]);
 
   const handleMarkerSelect = (id: string, markerType?: 'friend' | 'event') => {
-    if (activeView === 'businesses') {
+    if (activeView === 'marketplace') {
       const biz = nearbyBusinesses.find((b: any) => b.id === id);
       if (biz) {
         setSelectedFriend(null);
@@ -456,7 +456,7 @@ const MapPage = () => {
 
   const filteredList = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    const list = activeView === 'friends' ? friendsMapped : activeView === 'businesses' ? nearbyBusinesses : events;
+    const list = activeView === 'friends' ? friendsMapped : activeView === 'marketplace' ? nearbyBusinesses : events;
     if (!q) return list;
     return list.filter((item: any) => (item.name || item.title).toLowerCase().includes(q));
   }, [searchQuery, friendsMapped, events, nearbyBusinesses, activeView]);
@@ -483,8 +483,8 @@ const MapPage = () => {
           <LeafletMap
             ref={mapRef}
             userLocation={location}
-            friendsLocations={activeView === 'friends' ? friendsMapped : activeView === 'businesses' ? nearbyBusinessesForMap : nearbyEventsForMap}
-            loading={locationLoading || (activeView === 'events' && eventsLoading) || (activeView === 'businesses' && businessesLoading)}
+            friendsLocations={activeView === 'friends' ? friendsMapped : activeView === 'marketplace' ? nearbyBusinessesForMap : nearbyEventsForMap}
+            loading={locationLoading || (activeView === 'events' && eventsLoading) || (activeView === 'marketplace' && businessesLoading)}
             error={locationError}
             mapStyle={mapStyle} 
             onMarkerSelect={handleMarkerSelect}
@@ -503,7 +503,7 @@ const MapPage = () => {
                   <div className="relative flex-1 h-12 bg-background/80 backdrop-blur-xl border border-white/20 rounded-2xl shadow-lg flex items-center px-4">
                     <Search className="w-5 h-5 text-muted-foreground mr-3" />
                     <Input 
-                      placeholder={activeView === 'friends' ? "Find friends..." : activeView === 'businesses' ? "Find a service..." : "Find vibes..."}
+                      placeholder={activeView === 'friends' ? "Find friends..." : activeView === 'marketplace' ? "Find a service..." : "Find vibes..."}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="flex-1 bg-transparent border-0 h-full focus-visible:ring-0 p-0 text-base"
@@ -520,7 +520,7 @@ const MapPage = () => {
                 </div>
 
                   <div className="flex justify-between items-center w-full">
-                    <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-full p-1 flex shadow-lg">
+                    <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-full p-1 flex items-center shadow-lg">
                       <button 
                         onClick={() => setActiveView('friends')}
                         className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'friends' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
@@ -534,10 +534,10 @@ const MapPage = () => {
                         {userProfile?.user_type === 'business' ? 'Marketplace' : 'Events'}
                       </button>
                       <button
-                        onClick={() => setActiveView('businesses')}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'businesses' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
+                        onClick={() => setActiveView('marketplace')}
+                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'marketplace' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
                       >
-                        Businesses
+                        Marketplace
                       </button>
                     </div>
     
@@ -861,13 +861,13 @@ const MapPage = () => {
                   </div>
                 )}
                 
-                {(activeView === 'friends' ? friendsMapped : activeView === 'businesses' ? nearbyBusinesses : events).map((item: any) => (
+                {(activeView === 'friends' ? friendsMapped : activeView === 'marketplace' ? nearbyBusinesses : events).map((item: any) => (
                   <div
                     key={item.id}
                     className="flex-shrink-0 w-36 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-start flex flex-col items-center justify-center gap-2 text-center"
                     onClick={() => {
                       if (activeView === 'friends') setSelectedFriend(item);
-                      else if (activeView === 'businesses') setSelectedBusiness(item);
+                      else if (activeView === 'marketplace') setSelectedBusiness(item);
                       else setSelectedEvent(item);
                     }}
                   >
@@ -879,21 +879,21 @@ const MapPage = () => {
                       {activeView === 'friends' && item.status === 'online' && (
                         <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
                       )}
-                      {activeView === 'businesses' && (
+                      {activeView === 'marketplace' && (
                         <div className="absolute -bottom-1 -right-1 bg-primary rounded-full p-0.5 border-2 border-background">
                           <ShieldCheck className="w-2.5 h-2.5 text-white" />
                         </div>
                       )}
                     </div>
                     <div className="w-full px-1">
-                      <h4 className="font-bold text-sm truncate">{item.name || item.title} {item.is_verified && activeView !== 'businesses' && <ShieldCheck className="w-3 h-3 text-primary" />}</h4>
+                      <h4 className="font-bold text-sm truncate">{item.name || item.title} {item.is_verified && activeView !== 'marketplace' && <ShieldCheck className="w-3 h-3 text-primary" />}</h4>
                       <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1 truncate">
                         <MapPin className="w-3 h-3" /> {activeView === 'events' ? item.location : `${item.distanceKm}km`}
                       </p>
                       {activeView === 'events' && (
                         <p className="text-[10px] font-bold text-primary">{item.distanceKm}km • {formatTicketPrice(item.ticket_price)}</p>
                       )}
-                      {activeView === 'businesses' && item.skills?.length > 0 && (
+                      {activeView === 'marketplace' && item.skills?.length > 0 && (
                         <p className="text-[10px] text-primary font-medium truncate">{item.skills[0]}</p>
                       )}
                     </div>
