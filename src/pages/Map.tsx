@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
   Crosshair, MapPin, Search, Plus, Eye, EyeOff, Navigation,
   MessageCircle, Calendar, Users, Loader2, X, Ticket,
-  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Rocket, Flame, ShieldCheck
+  Globe, Layers, Radar, CornerUpRight, Sparkles, UserPlus, Rocket, Flame, ShieldCheck, Briefcase, Star
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -91,8 +91,9 @@ const MapPage = () => {
   const [showContactImport, setShowContactImport] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<FriendOnMap | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
+  const [selectedBusiness, setSelectedBusiness] = useState<any | null>(null);
   const [isGhostMode, setIsGhostMode] = useState(false);
-  const [activeView, setActiveView] = useState<'friends' | 'events'>('friends');
+  const [activeView, setActiveView] = useState<'friends' | 'events' | 'businesses'>('friends');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [filters, setFilters] = useEventFilters();
   const { isPremium } = usePremiumStatus(user?.id);
@@ -260,6 +261,64 @@ const MapPage = () => {
 
   const events = useMemo(() => applyEventFilters(nearbyEvents as any, filters), [nearbyEvents, filters]);
 
+  // --- 4b. Nearby Business Profiles (businesses view) ---
+  const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
+    queryKey: ['nearby-businesses', location?.latitude, location?.longitude, discoveryRadiusKm],
+    queryFn: async () => {
+      if (!location) return [];
+      // Fetch verified business profiles that have a lat/lng within the discovery radius.
+      // We pull from user_locations (same pattern as events) joined to profiles.
+      const { data, error } = await supabase
+        .from('user_locations')
+        .select(`
+          user_id,
+          latitude,
+          longitude,
+          updated_at,
+          profiles!inner (
+            display_name,
+            avatar_url,
+            bio,
+            user_type,
+            verification_status,
+            skills,
+            is_premium
+          )
+        `)
+        .eq('profiles.user_type', 'business')
+        .eq('profiles.verification_status', 'verified')
+        .eq('is_sharing_location', true);
+
+      if (error || !data) return [];
+
+      return data
+        .map((row: any) => {
+          const dist = distanceKm(
+            location.latitude, location.longitude,
+            row.latitude, row.longitude
+          );
+          if (dist > discoveryRadiusKm) return null;
+          return {
+            id: row.user_id,
+            user_id: row.user_id,
+            name: row.profiles?.display_name || 'Business',
+            avatar: row.profiles?.avatar_url,
+            bio: row.profiles?.bio,
+            skills: row.profiles?.skills || [],
+            is_premium: row.profiles?.is_premium || false,
+            is_verified: true, // only verified businesses are fetched
+            latitude: row.latitude,
+            longitude: row.longitude,
+            distanceKm: Number(dist.toFixed(1)),
+          };
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => a.distanceKm - b.distanceKm);
+    },
+    enabled: !!location && activeView === 'businesses',
+    refetchInterval: 60000,
+  });
+
   const nearbyEventsForMap = useMemo(() => {
     return events.map((e: any) => ({
       user_id: e.id, 
@@ -272,11 +331,33 @@ const MapPage = () => {
     }));
   }, [events]);
 
+  const nearbyBusinessesForMap = useMemo(() => {
+    return nearbyBusinesses.map((b: any) => ({
+      user_id: b.id,
+      latitude: b.latitude,
+      longitude: b.longitude,
+      markerType: 'event' as const, // reuse event pin style; LeafletMap already handles this
+      is_sharing: true,
+      updated_at: new Date().toISOString(),
+      profiles: { display_name: b.name, avatar_url: b.avatar }
+    }));
+  }, [nearbyBusinesses]);
+
   const handleMarkerSelect = (id: string, markerType?: 'friend' | 'event') => {
+    if (activeView === 'businesses') {
+      const biz = nearbyBusinesses.find((b: any) => b.id === id);
+      if (biz) {
+        setSelectedFriend(null);
+        setSelectedEvent(null);
+        setSelectedBusiness(biz);
+      }
+      return;
+    }
     if (markerType === 'event' || activeView === 'events') {
       const event = events.find((e: any) => e.id === id);
       if (event) {
         setSelectedFriend(null);
+        setSelectedBusiness(null);
         setSelectedEvent(event);
       }
       return;
@@ -284,6 +365,7 @@ const MapPage = () => {
     const friend = friendsMapped.find((f) => f.id === id || f.user_id === id);
     if (friend) {
       setSelectedEvent(null);
+      setSelectedBusiness(null);
       setSelectedFriend(friend);
     }
   };
@@ -374,10 +456,10 @@ const MapPage = () => {
 
   const filteredList = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    const list = activeView === 'friends' ? friendsMapped : events;
+    const list = activeView === 'friends' ? friendsMapped : activeView === 'businesses' ? nearbyBusinesses : events;
     if (!q) return list;
     return list.filter((item: any) => (item.name || item.title).toLowerCase().includes(q));
-  }, [searchQuery, friendsMapped, events, activeView]); 
+  }, [searchQuery, friendsMapped, events, nearbyBusinesses, activeView]);
   
   const handleCityResolved = useCallback((city: string) => {
     setGeocodedCity(prev => prev === city ? prev : city);
@@ -401,8 +483,8 @@ const MapPage = () => {
           <LeafletMap
             ref={mapRef}
             userLocation={location}
-            friendsLocations={activeView === 'friends' ? friendsMapped : nearbyEventsForMap}
-            loading={locationLoading || (activeView === 'events' && eventsLoading)}
+            friendsLocations={activeView === 'friends' ? friendsMapped : activeView === 'businesses' ? nearbyBusinessesForMap : nearbyEventsForMap}
+            loading={locationLoading || (activeView === 'events' && eventsLoading) || (activeView === 'businesses' && businessesLoading)}
             error={locationError}
             mapStyle={mapStyle} 
             onMarkerSelect={handleMarkerSelect}
@@ -421,7 +503,7 @@ const MapPage = () => {
                   <div className="relative flex-1 h-12 bg-background/80 backdrop-blur-xl border border-white/20 rounded-2xl shadow-lg flex items-center px-4">
                     <Search className="w-5 h-5 text-muted-foreground mr-3" />
                     <Input 
-                      placeholder={activeView === 'friends' ? "Find friends..." : "Find vibes..."}
+                      placeholder={activeView === 'friends' ? "Find friends..." : activeView === 'businesses' ? "Find a service..." : "Find vibes..."}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="flex-1 bg-transparent border-0 h-full focus-visible:ring-0 p-0 text-base"
@@ -443,13 +525,19 @@ const MapPage = () => {
                         onClick={() => setActiveView('friends')}
                         className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'friends' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
                       >
-                        {userProfile?.user_type === 'vendor' ? 'Customer Heatmap' : 'Friends'}
+                        {userProfile?.user_type === 'business' ? 'Customer Heatmap' : 'Friends'}
                       </button>
                       <button 
                         onClick={() => setActiveView('events')}
                         className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'events' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
                       >
-                        {userProfile?.user_type === 'vendor' ? 'Marketplace' : 'Events'}
+                        {userProfile?.user_type === 'business' ? 'Marketplace' : 'Events'}
+                      </button>
+                      <button
+                        onClick={() => setActiveView('businesses')}
+                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'businesses' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
+                      >
+                        Businesses
                       </button>
                     </div>
     
@@ -687,8 +775,76 @@ const MapPage = () => {
               </Card>
             )}
 
+            {/* 3b. BUSINESS CARD */}
+            {!isNavigating && selectedBusiness && (
+              <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400" />
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        <Avatar className="w-16 h-16 border-4 border-background shadow-md">
+                          <AvatarImage src={selectedBusiness.avatar} />
+                          <AvatarFallback>{selectedBusiness.name?.[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="absolute -bottom-1 -right-1 bg-primary rounded-full p-0.5 border-2 border-background">
+                          <ShieldCheck className="w-3 h-3 text-white" />
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-xl flex items-center gap-2">
+                          {selectedBusiness.name}
+                          {selectedBusiness.is_premium && <PremiumBadge />}
+                        </h3>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
+                          <span className="flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded-full">
+                            <MapPin className="w-3 h-3" /> {selectedBusiness.distanceKm}km away
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setSelectedBusiness(null)}>
+                      <X className="w-5 h-5" />
+                    </Button>
+                  </div>
+
+                  {selectedBusiness.bio && (
+                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{selectedBusiness.bio}</p>
+                  )}
+
+                  {selectedBusiness.skills?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {selectedBusiness.skills.slice(0, 4).map((skill: string) => (
+                        <span key={skill} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                          {skill}
+                        </span>
+                      ))}
+                      {selectedBusiness.skills.length > 4 && (
+                        <span className="text-[10px] text-muted-foreground px-2 py-0.5">+{selectedBusiness.skills.length - 4} more</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      className="h-12 rounded-xl text-base font-semibold bg-primary/10 text-white hover:bg-primary/20 border-0"
+                      onClick={() => navigate(`/app/messages?type=dm&id=${selectedBusiness.id}`)}
+                    >
+                      <MessageCircle className="w-5 h-5 mr-2" /> Message
+                    </Button>
+                    <Button
+                      className="h-12 rounded-xl text-base font-semibold shadow-lg bg-primary hover:bg-primary/90 text-white"
+                      onClick={() => handleGetDirections(selectedBusiness.latitude, selectedBusiness.longitude, selectedBusiness.name)}
+                    >
+                      <Navigation className="w-5 h-5 mr-2" /> Directions
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* 4. DEFAULT LIST */}
-            {!isNavigating && !selectedFriend && !selectedEvent && (
+            {!isNavigating && !selectedFriend && !selectedEvent && !selectedBusiness && (
               <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
                 {activeView === 'friends' && (
                   <div className="flex-shrink-0 w-36 snap-start">
@@ -705,14 +861,17 @@ const MapPage = () => {
                   </div>
                 )}
                 
-                {(activeView === 'friends' ? friendsMapped : events).map((item: any) => (
+                {(activeView === 'friends' ? friendsMapped : activeView === 'businesses' ? nearbyBusinesses : events).map((item: any) => (
                   <div
                     key={item.id}
                     className="flex-shrink-0 w-36 h-40 p-3 rounded-3xl bg-background/90 backdrop-blur-xl border border-white/10 shadow-lg cursor-pointer hover:scale-105 transition-transform snap-start flex flex-col items-center justify-center gap-2 text-center"
-                    onClick={() => activeView === 'friends' ? setSelectedFriend(item) : setSelectedEvent(item)}
+                    onClick={() => {
+                      if (activeView === 'friends') setSelectedFriend(item);
+                      else if (activeView === 'businesses') setSelectedBusiness(item);
+                      else setSelectedEvent(item);
+                    }}
                   >
                     <div className="relative">
-                    {/* --- ADDED: Orange Pulse Ring if is_vibe is true --- */}
                       <Avatar className={`w-14 h-14 shadow-md ${item.is_vibe ? 'ring-2 ring-orange-500 ring-offset-2 animate-pulse' : ''}`}>
                         <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
                         <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
@@ -720,14 +879,22 @@ const MapPage = () => {
                       {activeView === 'friends' && item.status === 'online' && (
                         <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
                       )}
+                      {activeView === 'businesses' && (
+                        <div className="absolute -bottom-1 -right-1 bg-primary rounded-full p-0.5 border-2 border-background">
+                          <ShieldCheck className="w-2.5 h-2.5 text-white" />
+                        </div>
+                      )}
                     </div>
                     <div className="w-full px-1">
-                      <h4 className="font-bold text-sm truncate">{item.name || item.title} {item.is_verified && <ShieldCheck className="w-3 h-3 text-primary" />}</h4>
+                      <h4 className="font-bold text-sm truncate">{item.name || item.title} {item.is_verified && activeView !== 'businesses' && <ShieldCheck className="w-3 h-3 text-primary" />}</h4>
                       <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1 truncate">
                         <MapPin className="w-3 h-3" /> {activeView === 'events' ? item.location : `${item.distanceKm}km`}
                       </p>
                       {activeView === 'events' && (
                         <p className="text-[10px] font-bold text-primary">{item.distanceKm}km • {formatTicketPrice(item.ticket_price)}</p>
+                      )}
+                      {activeView === 'businesses' && item.skills?.length > 0 && (
+                        <p className="text-[10px] text-primary font-medium truncate">{item.skills[0]}</p>
                       )}
                     </div>
                   </div>
