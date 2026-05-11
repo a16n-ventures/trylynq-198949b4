@@ -632,7 +632,7 @@ const Profile = () => {
   // --- 2. ACTIONS ---
   const handleLogout = async () => {
     await signOut();
-    navigate('/ahmia', { replace: true });
+    navigate('/', { replace: true });
   };
 
   const updatePreference = async (key: string, value: any) => {
@@ -939,23 +939,31 @@ const Profile = () => {
             >
               <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.events}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Events</span>
+            </button> 
+            
+            {/* Vertical Divider */}
+            <div className="w-[1px] h-8 bg-border/60" />
+          
+            {/* Marketplace Stat */}
+            <button 
+              onClick={() => navigate('/app/marketplace')}
+              className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+            >
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">4</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalogue</span>
             </button>
           
-            {profile.is_premium && (
-              <>
-                {/* Vertical Divider */}
-                <div className="w-[1px] h-8 bg-border/60" />
-          
-                {/* Views Stat */}
-                <button 
-                  onClick={() => setActiveTab('views')}
-                  className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
-                >
-                  <span className="block font-bold text-lg group-hover:text-primary transition-colors">{profile.profile_views_30d || 0}</span>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Views</span>
-                </button>
-              </>
-            )}
+            {/* Vertical Divider */}
+            <div className="w-[1px] h-8 bg-border/60" />
+      
+            {/* Views Stat */}
+            <button 
+              onClick={() => setActiveTab('views')}
+              className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+            >
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{profile.profile_views_30d || 0}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Views</span>
+            </button>
           </div>
         </div>
       </div>
