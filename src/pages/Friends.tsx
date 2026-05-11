@@ -566,7 +566,7 @@ const Friends = () => {
                           >
                             {/* New account badge */}
                             {s.is_new && (
-                              <Badge className="absolute -top-2 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
+                              <Badge className="absolute -top-1 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
                                 NEW
                               </Badge>
                             )}
