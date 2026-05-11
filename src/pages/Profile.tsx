@@ -919,7 +919,7 @@ const Profile = () => {
           </div>
 
           {/* STATS CONTROL PANEL */}
-          <div className="mt-6 inline-flex items-center bg-muted/30 backdrop-blur-sm rounded-2xl p-1 mx-auto border border-border/40 shadow-sm">
+          <div className="mt-6 grid grid-cols-4 gap-4 max-w-2xl bg-muted/30 backdrop-blur-sm rounded-2xl p-1 mx-auto border border-border/40 shadow-sm justify-items-center">
             {/* Friends Stat */}
             <button 
               onClick={() => navigate('/app/friends')}
