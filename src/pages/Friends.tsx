@@ -562,7 +562,7 @@ const Friends = () => {
                         return (
                           <div
                             key={s.user_id}
-                            className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm relative hover:border-primary/50 transition-all"
+                            className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm relative hover:border-primary/50 transition-all mt-3"
                           >
                             {/* New account badge */}
                             {s.is_new && (
