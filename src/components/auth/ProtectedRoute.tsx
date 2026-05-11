@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext'; 
+import { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
@@ -9,52 +9,44 @@ interface ProtectedRouteProps {
   requireInterests?: boolean;
 }
 
-export const ProtectedRoute = ({ 
-  children, 
-  requireInterests = true 
+export const ProtectedRoute = ({
+  children,
+  requireInterests = true,
 }: ProtectedRouteProps) => {
   const { user, loading: authLoading } = useAuth();
   const [isChecking, setIsChecking] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
-  useEffect(() => { 
-    // Wait for auth to initialize
+  useEffect(() => {
     if (authLoading) return;
-    
-    // Not logged in - redirect to home
+
     if (!user) {
-      navigate('/ahmia', { replace: true });
+      navigate("/ahmia", { replace: true });
       return;
     }
 
     const checkOnboardingStatus = async () => {
       const currentPath = location.pathname.toLowerCase().replace(/\/$/, "");
-      const isOnboardingPage = currentPath.includes('onboarding');
-      const isAppPage = currentPath.includes('/app');
+      const isOnboardingPage = currentPath.includes("onboarding");
+      const isAppPage = currentPath.includes("/app");
 
-      // ✅ CRITICAL: Skip check entirely if already on onboarding page
-      if (isOnboardingPage) {
-        return;
-      }
+      // Already on onboarding — don't interfere
+      if (isOnboardingPage) return;
 
-      // ✅ Skip check if route doesn't require interests
-      if (!requireInterests) {
-        return;
-      }
+      // Route doesn't need onboarding check
+      if (!requireInterests) return;
 
-      // ✅ ONLY check interests for app pages (silently redirect, no loader)
-      if (!isAppPage) {
-        return;
-      }
+      // Only guard /app/* routes
+      if (!isAppPage) return;
 
       setIsChecking(true);
 
       try {
         const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('interests, preferences')
-          .eq('user_id', user.id)
+          .from("profiles")
+          .select("interests, skills, preferences, user_type")
+          .eq("user_id", user.id)
           .maybeSingle();
 
         if (error) {
@@ -63,12 +55,43 @@ export const ProtectedRoute = ({
           return;
         }
 
-        const hasInterests = Array.isArray(profile?.interests) && profile!.interests.length > 0;
-        const prefs = (profile?.preferences || {}) as { discovery_radius?: number };
-        const hasRadius = typeof prefs.discovery_radius === 'number' && prefs.discovery_radius > 0;
+        const prefs = (profile?.preferences || {}) as {
+          discovery_radius?: number;
+        };
+        const hasRadius =
+          typeof prefs.discovery_radius === "number" && prefs.discovery_radius > 0;
 
-        if (!hasInterests || !hasRadius) {
-          console.log("Onboarding incomplete, redirecting...", { hasInterests, hasRadius });
+        const userType: string = profile?.user_type ?? "personal";
+
+        // ── Onboarding completeness rules ───────────────────────────────────
+        // personal: must have interests + discovery_radius
+        // service:  must have skills (or interests as fallback) + discovery_radius
+        //           — skips Vouch-it entirely; no extra check needed here
+        // no user_type yet: treat as not started → send to onboarding
+        // ────────────────────────────────────────────────────────────────────
+
+        let onboardingComplete = false;
+
+        if (userType === "personal") {
+          const hasInterests =
+            Array.isArray(profile?.interests) && profile!.interests.length > 0;
+          onboardingComplete = hasInterests && hasRadius;
+        } else if (userType === "service") {
+          const hasSkills =
+            Array.isArray((profile as any)?.skills) &&
+            (profile as any).skills.length > 0;
+          // Fallback: some early service signups may have written to interests
+          const hasInterestsFallback =
+            Array.isArray(profile?.interests) && profile!.interests.length > 0;
+          onboardingComplete = (hasSkills || hasInterestsFallback) && hasRadius;
+        }
+        // If user_type is null/unknown they haven't picked a path yet → redirect
+
+        if (!onboardingComplete) {
+          console.log("Onboarding incomplete, redirecting…", {
+            userType,
+            onboardingComplete,
+          });
           navigate("/onboarding", { replace: true });
           return;
         }
@@ -78,11 +101,11 @@ export const ProtectedRoute = ({
         setIsChecking(false);
       }
     };
-    
+
     checkOnboardingStatus();
   }, [user, authLoading, navigate, location.pathname, requireInterests]);
 
-  // ✅ ONLY show loading during initial auth check
+  // Only block on initial auth load
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -94,64 +117,8 @@ export const ProtectedRoute = ({
     );
   }
 
-  // ✅ REMOVED: No "Setting up your experience" loader anywhere
-  // The redirect happens silently in the background
-
-  // ✅ Safety check: Don't render if no user
   if (!user) return null;
 
-  // ✅ Render children immediately (even during interest check - it redirects silently)
+  // Render immediately; interest/skill check redirects silently in background
   return <>{children}</>;
 };
-
-// ============================================================================
-// WHAT CHANGED - CRITICAL FIX
-// ============================================================================
-
-/**
- * ❌ OLD BEHAVIOR (WRONG):
- * - Shows "Setting up your experience..." loader on /app pages
- * - Blocks user from seeing content while checking interests
- * 
- * ✅ NEW BEHAVIOR (CORRECT):
- * - NO loader on app pages
- * - NO loader on onboarding page
- * - Silently redirects from /app → /onboarding if no interests
- * - Only shows loader during initial authentication
- * 
- * REMOVED THIS ENTIRE BLOCK:
- * ```
- * if (isChecking && isAppPage && requireInterests) {
- *   return <div>"Setting up your experience..."</div>
- * }
- * ```
- * 
- * NOW:
- * - User goes to /app/discover
- * - Route guard checks interests in background
- * - If no interests → navigate("/onboarding") happens silently
- * - User sees nothing (instant redirect)
- * - Onboarding page loads normally without any loader
- */
-
-// ============================================================================
-// IF YOU WANT A LOADER, IT SHOULD BE IN THE ONBOARDING COMPONENT ITSELF
-// ============================================================================
-
-/**
- * If you want "Setting up your experience" to show anywhere,
- * put it in your Onboarding.tsx component while interests are being saved:
- * 
- * const [isSaving, setIsSaving] = useState(false);
- * 
- * const handleComplete = async () => {
- *   setIsSaving(true);
- *   // Save interests...
- *   setIsSaving(false);
- *   navigate('/app/discover');
- * };
- * 
- * if (isSaving) {
- *   return <div>"Setting up your experience..."</div>
- * }
- */
