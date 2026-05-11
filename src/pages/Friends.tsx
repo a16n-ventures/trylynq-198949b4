@@ -251,7 +251,7 @@ const Friends = () => {
         // 2. ONLY use the specialized RPC for candidates (Proximity/Personalized)
         let candidates: any[] = [];
         if (location) {
-          const { data: rpcData } = await supabase.rpc('suggest_nearby_friends', {
+          const { data: rpcData } = await supabase.rpc('get_nearby_users', {
             p_user_id: user.id,
             p_lat: location.latitude,
             p_long: location.longitude,
