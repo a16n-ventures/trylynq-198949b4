@@ -957,20 +957,6 @@ const Profile = () => {
               <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.events}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Events</span>
             </button> 
-            
-            {/* Vertical Divider */}
-            <div className="w-[1px] h-8 bg-border/60" />
-          
-            {/* Catalog Stat */}
-            <button 
-              onClick={() => setActiveTab(profile.user_type === 'business' ? 'catalog' : 'tickets')}
-              className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
-            >
-              <span className="block font-bold text-lg group-hover:text-primary transition-colors">
-                {profile.user_type === 'business' ? catalogItems.length : 2}
-              </span>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
-            </button>
           
             {/* Vertical Divider */}
             <div className="w-[1px] h-8 bg-border/60" />
@@ -982,7 +968,23 @@ const Profile = () => {
             >
               <span className="block font-bold text-lg group-hover:text-primary transition-colors">{profile.profile_views_30d || 0}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Views</span>
+            </button> 
+            
+            {/* Vertical Divider */}
+            <div className="w-[1px] h-8 bg-border/60" />
+          
+            {/* Catalog Stat */}
+            {profile.user_type === 'business' && (
+            <button 
+              onClick={() => setActiveTab('catalog')}
+              className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+            >
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">
+                {profile.user_type === 'business' ? catalogItems.length : 0}
+              </span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
             </button>
+            )}
           </div>
         </div>
       </div>
@@ -1003,6 +1005,15 @@ const Profile = () => {
           >
             <Grid className="w-4 h-4 mr-2" /> Views
           </TabsTrigger>
+          
+          {profile.user_type === 'business' && (
+            <TabsTrigger
+              value="catalog"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+            >
+              <StoreIcon className="w-4 h-4 mr-2" /> Catalog
+            </TabsTrigger>
+          )}
 
           {profile.is_premium && (
             <TabsTrigger
@@ -1012,25 +1023,6 @@ const Profile = () => {
               <Sparkles className="w-4 h-4 mr-2" /> Insights
             </TabsTrigger>
           )} 
-          
-          {/* --- INSERT THIS BLOCK --- */}
-          {profile.user_type === 'business' && (
-            <TabsTrigger
-              value="trust"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
-            >
-              <ShieldCheck className="w-4 h-4 mr-2" /> Trust Center
-            </TabsTrigger>
-          )}
-
-          {profile.user_type === 'business' && (
-            <TabsTrigger
-              value="catalog"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
-            >
-              <StoreIcon className="w-4 h-4 mr-2" /> Catalog
-            </TabsTrigger>
-          )}
         </TabsList>
 
         {/* A. MY TICKETS (Wallet View) */}
