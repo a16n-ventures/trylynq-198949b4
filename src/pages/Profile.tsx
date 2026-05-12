@@ -1006,15 +1006,6 @@ const Profile = () => {
             <Grid className="w-4 h-4 mr-2" /> Views
           </TabsTrigger>
           
-          {profile.user_type === 'business' && (
-            <TabsTrigger
-              value="catalog"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
-            >
-              <StoreIcon className="w-4 h-4 mr-2" /> Catalog
-            </TabsTrigger>
-          )}
-
           {profile.is_premium && (
             <TabsTrigger
               value="analytics"
@@ -1023,6 +1014,15 @@ const Profile = () => {
               <Sparkles className="w-4 h-4 mr-2" /> Insights
             </TabsTrigger>
           )} 
+          
+          {profile.user_type === 'business' && (
+            <TabsTrigger
+              value="catalog"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+            >
+              <StoreIcon className="w-4 h-4 mr-2" /> Catalog
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* A. MY TICKETS (Wallet View) */}
