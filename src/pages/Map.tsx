@@ -263,7 +263,7 @@ const MapPage = () => {
 
   const events = useMemo(() => applyEventFilters(nearbyEvents as any, filters), [nearbyEvents, filters]);
 
-  // --- 4b. Nearby Business Profiles (services view) ---
+  // --- 4b. Nearby Business Profiles (marketplace view) ---
   // useUserCatalog gives us the *current user's* catalog for map preview.
   // A separate query fetches all nearby verified business profiles for discovery.
   const { items: ownCatalogItems } = useUserCatalog(user?.id);
@@ -319,7 +319,7 @@ const MapPage = () => {
         .filter(Boolean)
         .sort((a: any, b: any) => a.distanceKm - b.distanceKm);
     },
-    enabled: !!location && activeView === 'services',
+    enabled: !!location && activeView === 'marketplace',
     refetchInterval: 60000,
   });
 
@@ -535,7 +535,7 @@ const MapPage = () => {
                         onClick={() => setActiveView('events')}
                         className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'events' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
                       >
-                        {userProfile?.user_type === 'business' ? 'Marketplace' : 'Events'}
+                        {userProfile?.user_type === 'business' ? 'Events' : 'Events'}
                       </button>
                       <button
                         onClick={() => setActiveView('marketplace')}
