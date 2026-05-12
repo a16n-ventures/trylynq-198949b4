@@ -959,16 +959,16 @@ const Profile = () => {
             </button> 
           
             {/* Vertical Divider */}
-            <div className="w-[1px] h-8 bg-border/60" />
+            {/* <div className="w-[1px] h-8 bg-border/60" /> */}
       
             {/* Views Stat */}
-            <button 
+            {/* <button 
               onClick={() => setActiveTab('views')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
             >
               <span className="block font-bold text-lg group-hover:text-primary transition-colors">{profile.profile_views_30d || 0}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Views</span>
-            </button> 
+            </button> */}
             
             {/* Vertical Divider */}
             <div className="w-[1px] h-8 bg-border/60" />
