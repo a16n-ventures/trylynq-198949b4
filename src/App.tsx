@@ -20,6 +20,7 @@ import Profile from "./pages/Profile";
 import CreateEvent from "./pages/CreateEvent";
 import Events from "./pages/Events";
 import Marketplace from "./pages/Marketplace";
+import TrustCenter from "./pages/TrustCenter";
 import EventInvite from "./pages/EventInvite";
 import EventDetail from "./pages/EventDetail";
 import Premium from "./pages/Premium";
@@ -97,6 +98,8 @@ const App = () => {
                   <Route path="profile" element={<Profile />} />
                   <Route path="notifications" element={<Notifications />} />
                   <Route path="marketplace" element={<Marketplace />} />
+                </Route>
+                <Route path="trust-center" element={<TrustCenter />} />
                 </Route>
 
                 {/* --- Standalone Protected Routes --- */}
