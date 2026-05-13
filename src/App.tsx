@@ -98,8 +98,7 @@ const App = () => {
                   <Route path="profile" element={<Profile />} />
                   <Route path="notifications" element={<Notifications />} />
                   <Route path="marketplace" element={<Marketplace />} />
-                </Route>
-                <Route path="trust-center" element={<TrustCenter />} />
+                  <Route path="trust-center" element={<TrustCenter />} />
                 </Route>
 
                 {/* --- Standalone Protected Routes --- */}
