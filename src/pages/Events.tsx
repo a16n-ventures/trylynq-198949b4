@@ -646,7 +646,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             </div>
             
             {/* --- MODIFIED: Performance-First View for Builders --- */}
-            {type === 'mine' && (userProfile?.user_type === 'business' || userProfile?.user_type === 'vendor') ? (
+            {type === 'mine' && (userProfile?.user_type === 'business' || userProfile?.user_type === 'personal') ? (
               <div className="flex items-center gap-3 mt-1">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Users className="w-3 h-3" /> {event.attendee_count || 0} {isEventPast ? 'attended' : 'attending'}
@@ -750,7 +750,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
           <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
             {/* --- MODIFIED: Dynamic Dashboard Tab --- */}
             <TabsTrigger value="my" className="rounded-lg text-xs">
-              {userProfile?.user_type === 'business' || userProfile?.user_type === 'vendor' ? 'Dashboard' : 'Hosted'}
+              {userProfile?.user_type === 'business' || userProfile?.user_type === 'personal' ? 'Dashboard' : 'Hosted'}
             </TabsTrigger>
             <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
@@ -938,7 +938,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             )}
             
             {/* PAYOUT WALLET CARD — ticket sellers AND business service providers */}
-            {(userProfile?.user_type === 'business' || userProfile?.user_type === 'vendor') && (
+            {(userProfile?.user_type === 'business' || userProfile?.user_type === 'personal') && (
               <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-lg overflow-hidden relative mt-3">
                 <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
                 <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
@@ -1067,6 +1067,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
         </Tabs>
 
         {/* --- PAYOUT MODAL --- */}

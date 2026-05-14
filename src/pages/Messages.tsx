@@ -51,7 +51,7 @@ interface ChatItem {
   meta?: any;
   partner_id?: string;
   is_verified?: boolean;
-  user_type?: 'personal' | 'business' | 'vendor';
+  user_type?: 'personal' | 'business';
 }
 
 export default function Messages() {
