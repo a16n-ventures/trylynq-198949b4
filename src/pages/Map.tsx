@@ -661,14 +661,15 @@ const MapPage = () => {
 
             {/* 3. EVENT CARD */}
             {!isNavigating && selectedEvent && (
-              <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
+              <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden max-h-[82vh] flex flex-col">
                 
-                <div className="relative w-full" style={{ aspectRatio: '16/7' }}>
+                {/* Banner — padding-top % trick: parent is position:relative, no absolute child needed */}
+                <div className="relative w-full shrink-0" style={{ paddingTop: '44%' }}>
                   <img
                     src={selectedEvent.image_url || '/placeholder.jpg'}
-                    className="absolute inset-0 w-full h-full object-cover object-center"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, var(--background) 0%, transparent 60%)' }} />
                   
                   {selectedEvent.is_vibe && (
                     <Badge className="absolute top-2 left-2 bg-orange-500 text-white animate-pulse border-0 shadow-lg">
@@ -681,7 +682,7 @@ const MapPage = () => {
                   </Button>
                 </div>
                 
-                <CardContent className="p-5 pt-2 overflow-y-auto flex-1">
+                <CardContent className="p-5 pt-2 overflow-y-auto flex-1 min-h-0">
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <Badge variant="secondary" className="mb-2 bg-primary/10 text-primary hover:bg-primary/20 border-0">
