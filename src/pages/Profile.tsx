@@ -956,7 +956,7 @@ const Profile = () => {
             <Grid className="w-4 h-4 mr-2" /> Views
           </TabsTrigger>
           
-          {(profile.is_premium || profile.user_type === 'business') && (
+          {profile.is_premium && (
             <TabsTrigger
               value="analytics"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
