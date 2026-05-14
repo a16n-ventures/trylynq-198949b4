@@ -523,7 +523,7 @@ const MapPage = () => {
                   </Button>
                 </div>
 
-                  <div className="flex justify-center items-center w-full relative">
+                  <div className="flex justify-between items-center w-full">
                     <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-full p-1 flex items-center shadow-lg">
                       <button 
                         onClick={() => setActiveView('friends')}
@@ -548,7 +548,7 @@ const MapPage = () => {
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="absolute right-0 h-9 w-9 rounded-full bg-background/60 backdrop-blur-md shadow-sm border border-white/10"
+                      className="h-9 w-9 rounded-full bg-background/60 backdrop-blur-md shadow-sm border border-white/10"
                       onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
                     >
                       {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
@@ -893,7 +893,7 @@ const MapPage = () => {
                       )}
                     </div>
                     <div className="w-full px-1">
-                      <h4 className="font-bold text-sm truncate">{item.name || item.title} {item.is_verified && activeView !== 'marketplace' && <ShieldCheck className="w-3 h-3 text-primary" />}</h4>
+                      <h4 className="font-bold text-sm truncate">{item.name || item.title}</h4>
                       <p className="text-[10px] text-muted-foreground font-medium flex items-center justify-center gap-1 truncate">
                         <MapPin className="w-3 h-3" /> {activeView === 'events' ? item.location : `${item.distanceKm}km`}
                       </p>
