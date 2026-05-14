@@ -12,7 +12,8 @@ import {
   Search, Send, ArrowLeft, Plus, Users, 
   MessageSquare, X, Loader2, Info, 
   Image as ImageIcon, Calendar, MapPin, Ticket,
-  Check, Crown, Lock, ShieldCheck
+  Check, Crown, Lock, ShieldCheck, Briefcase,
+  CreditCard, CheckCircle2, Clock, AlertCircle, Package
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,19 +39,19 @@ import { CommunityModerationDialog } from '@/components/messages/CommunityModera
 import { Settings, Shield } from 'lucide-react';
 
 // --- TYPES ---
-type ChatType = 'dm' | 'community' | 'event';
+type ChatType = 'dm' | 'community' | 'event' | 'service';
 
 interface ChatItem {
   id: string;
   type: ChatType;
   name: string;
   avatar?: string;
-  subtitle?: string; // Last message or date
-  badge?: string | number; // Unread count
-  meta?: any; // Extra data (event date, role, etc)
-  partner_id?: string; // For DMs
-  is_verified?: boolean; 
-  user_type?: 'personal' | 'vendor';
+  subtitle?: string;
+  badge?: string | number;
+  meta?: any;
+  partner_id?: string;
+  is_verified?: boolean;
+  user_type?: 'personal' | 'business' | 'vendor';
 }
 
 export default function Messages() {
@@ -112,6 +113,22 @@ export default function Messages() {
       const { data } = await supabase.from('communities').select('*').eq('id', id).single();
       return data ? {
         id: data.id, type: 'community', name: data.name, avatar: data.cover_url
+      } : null;
+    } else if (type === 'service') {
+      // id = business user_id; fetch their profile + store
+      const { data: profile } = await supabase
+        .from('profiles').select('*').eq('user_id', id).single();
+      const { data: store } = await (supabase.from('stores') as any)
+        .select('id, name, category').eq('owner_id', id).eq('is_active', true).maybeSingle();
+      return profile ? {
+        id,
+        type: 'service',
+        name: profile.display_name || 'Business',
+        avatar: profile.avatar_url,
+        partner_id: id,
+        is_verified: profile.verification_status === 'verified',
+        user_type: 'business',
+        meta: { store_id: store?.id, store_name: store?.name, store_category: store?.category }
       } : null;
     } else {
       const { data } = await supabase.from('profiles').select('*').eq('user_id', id).single();
@@ -272,7 +289,55 @@ export default function Messages() {
     enabled: !!user && activeTab === 'event'
   });
 
-  // --- 3. MESSAGES QUERY (Unified) ---
+  // D. SERVICE CHATS
+  const { data: serviceList = [], refetch: refetchServices } = useQuery({
+    queryKey: ['service_list_chat', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      // Fetch service_requests where I am buyer OR seller
+      const { data } = await (supabase.from('service_requests') as any)
+        .select(`
+          id, status, amount, created_at,
+          item:store_items(name, image_url),
+          buyer:profiles!buyer_id(user_id, display_name, avatar_url),
+          seller:profiles!seller_id(user_id, display_name, avatar_url, verification_status)
+        `)
+        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
+        .order('created_at', { ascending: false });
+
+      return (data || []).map((r: any) => {
+        const isBuyer = r.buyer?.user_id === user.id;
+        const partner = isBuyer ? r.seller : r.buyer;
+        const statusLabel: Record<string, string> = {
+          pending: '⏳ Pending',
+          accepted: '✅ Accepted',
+          in_progress: '🔧 In Progress',
+          completed: '🎉 Done',
+          disputed: '⚠️ Disputed',
+          cancelled: '✗ Cancelled',
+        };
+        return {
+          id: r.id,
+          type: 'service' as const,
+          name: partner?.display_name || 'Unknown',
+          avatar: partner?.avatar_url,
+          subtitle: `${r.item?.name || 'Service'} · ${statusLabel[r.status] || r.status}`,
+          partner_id: partner?.user_id,
+          is_verified: partner?.verification_status === 'verified',
+          user_type: 'business' as const,
+          meta: {
+            request_id: r.id,
+            status: r.status,
+            amount: r.amount,
+            item_name: r.item?.name,
+            item_image: r.item?.image_url,
+            is_buyer: isBuyer,
+          }
+        };
+      }) as ChatItem[];
+    },
+    enabled: !!user && activeTab === 'service'
+  });
   const { data: messages = [], refetch: refetchMessages } = useQuery({
     queryKey: ['messages', selectedChat?.type, selectedChat?.id],
     queryFn: async () => {
@@ -283,6 +348,11 @@ export default function Messages() {
         query = supabase.from('messages')
           .select('*')
           .or(`and(sender_id.eq.${user.id},receiver_id.eq.${selectedChat.partner_id}),and(sender_id.eq.${selectedChat.partner_id},receiver_id.eq.${user.id})`);
+      } else if (selectedChat.type === 'service') {
+        // Service chats reuse the messages table, scoped by a request_id stored in meta
+        query = supabase.from('messages')
+          .select('*')
+          .eq('request_id', selectedChat.meta?.request_id);
       } else if (selectedChat.type === 'community') {
         query = supabase.from('community_messages')
           .select(`*, sender:profiles!sender_id(*)`)
@@ -333,12 +403,21 @@ export default function Messages() {
       if (!user || !selectedChat || !messageInput.trim()) return;
       
       const text = messageInput.trim();
-      setMessageInput(''); // Optimistic clear
+      setMessageInput('');
 
       let error;
       if (selectedChat.type === 'dm') {
         const { error: e } = await supabase.from('messages').insert({
           sender_id: user.id, receiver_id: selectedChat.partner_id, content: text
+        });
+        error = e;
+      } else if (selectedChat.type === 'service') {
+        // Service messages scoped to request_id
+        const { error: e } = await supabase.from('messages').insert({
+          sender_id: user.id,
+          receiver_id: selectedChat.partner_id,
+          content: text,
+          request_id: selectedChat.meta?.request_id
         });
         error = e;
       } else if (selectedChat.type === 'community') {
@@ -347,7 +426,6 @@ export default function Messages() {
         });
         error = e;
       } else {
-        // NEW: Event Chats
         const { error: e } = await supabase.from('event_chats').insert({
           event_id: selectedChat.id, user_id: user.id, message: text
         });
@@ -357,6 +435,99 @@ export default function Messages() {
       if (error) throw error;
       refetchMessages();
     }
+  });
+
+  // --- 4b. SERVICE REQUEST MUTATIONS ---
+
+  // Create a new service request (buyer initiates from map/profile)
+  const createServiceRequest = useMutation({
+    mutationFn: async ({
+      seller_id, item_id, item_name, amount, description
+    }: { seller_id: string; item_id: string; item_name: string; amount: number; description?: string }) => {
+      if (!user) throw new Error('Not authenticated');
+      const { data, error } = await (supabase.from('service_requests') as any).insert({
+        buyer_id: user.id,
+        seller_id,
+        item_id,
+        item_name,
+        amount,
+        description: description || '',
+        status: 'pending',
+        escrow_status: 'awaiting_payment',
+      }).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service_list_chat', user?.id] });
+      // Open the new service chat
+      setSelectedChat({
+        id: data.id,
+        type: 'service',
+        name: selectedChat?.name || 'Business',
+        avatar: selectedChat?.avatar,
+        partner_id: data.seller_id,
+        is_verified: true,
+        user_type: 'business',
+        meta: {
+          request_id: data.id,
+          status: 'pending',
+          amount: data.amount,
+          item_name: data.item_name,
+          is_buyer: true,
+        }
+      });
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to create request'),
+  });
+
+  // Accept a service request (seller accepts, moves to in_progress)
+  const acceptServiceRequest = useMutation({
+    mutationFn: async (requestId: string) => {
+      const { error } = await (supabase.from('service_requests') as any)
+        .update({ status: 'accepted', accepted_at: new Date().toISOString() })
+        .eq('id', requestId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['service_list_chat', user?.id] });
+      refetchMessages();
+      toast.success('Request accepted — escrow is holding payment');
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  // Mark as complete (seller) — releases escrow to seller
+  const completeServiceRequest = useMutation({
+    mutationFn: async (requestId: string) => {
+      const { error } = await (supabase.from('service_requests') as any)
+        .update({ status: 'completed', completed_at: new Date().toISOString(), escrow_status: 'released' })
+        .eq('id', requestId);
+      if (error) throw error;
+      // TODO: trigger Flutterwave payout to seller via Supabase edge function
+      await supabase.functions.invoke('release-escrow', { body: { request_id: requestId } });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['service_list_chat', user?.id] });
+      refetchMessages();
+      toast.success('Payment released to service provider 🎉');
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  // Raise a dispute
+  const disputeServiceRequest = useMutation({
+    mutationFn: async (requestId: string) => {
+      const { error } = await (supabase.from('service_requests') as any)
+        .update({ status: 'disputed', disputed_at: new Date().toISOString() })
+        .eq('id', requestId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['service_list_chat', user?.id] });
+      toast.warning('Dispute raised — our team will review within 24 hours');
+    },
+    onError: (err: any) => toast.error(err.message),
   });
 
   // Scroll to bottom on new messages
@@ -419,14 +590,17 @@ export default function Messages() {
             </div>
           </div>
 
-          {/* TABS (The Clyx 3-Pillar Nav) */}
+          {/* TABS */}
           <div className="px-2 pt-2">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChatType)} className="w-full">
-              <TabsList className="w-full bg-muted/50 p-1 rounded-xl grid grid-cols-3">
+              <TabsList className="w-full bg-muted/50 p-1 rounded-xl grid grid-cols-4">
                 <TabsTrigger value="dm" className="rounded-lg text-xs">Direct</TabsTrigger>
                 <TabsTrigger value="community" className="rounded-lg text-xs">Community</TabsTrigger>
                 <TabsTrigger value="event" className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                   Vibe Checks
+                   Vibes
+                </TabsTrigger>
+                <TabsTrigger value="service" className="rounded-lg text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-white">
+                  <Briefcase className="w-3 h-3 mr-1" />Services
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -517,6 +691,18 @@ export default function Messages() {
                  <p className="text-sm">RSVP to events to join their Vibe Check chats!</p>
               </div>
             )}
+
+            {activeTab === 'service' && serviceList.length > 0 ? (
+              serviceList.map(chat => (
+                <ChatListItem key={chat.id} chat={chat} isSelected={selectedChat?.id === chat.id} onClick={() => setSelectedChat(chat)} />
+              ))
+            ) : activeTab === 'service' && (
+              <div className="p-8 text-center text-muted-foreground">
+                <Briefcase className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                <p className="text-sm font-medium">No service requests yet</p>
+                <p className="text-xs mt-1">Discover businesses on the map and tap "Message" to start a service request.</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -530,6 +716,10 @@ export default function Messages() {
           messages={messages}
           scrollRef={scrollRef}
           user={user}
+          onAcceptRequest={(id) => acceptServiceRequest.mutate(id)}
+          onCompleteRequest={(id) => completeServiceRequest.mutate(id)}
+          onDisputeRequest={(id) => disputeServiceRequest.mutate(id)}
+          isActionPending={acceptServiceRequest.isPending || completeServiceRequest.isPending || disputeServiceRequest.isPending}
         />
 
         {/* --- MODALS --- */}
@@ -557,11 +747,15 @@ export default function Messages() {
   );
 }
 
-// --- ChatView: Extracted to use hooks at top level ---
-function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput, sendMessage, messages, scrollRef, user }: {
+// --- ChatView ---
+function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput, sendMessage, messages, scrollRef, user, onAcceptRequest, onCompleteRequest, onDisputeRequest, isActionPending }: {
   selectedChat: ChatItem | null; setSelectedChat: (c: ChatItem | null) => void;
   messageInput: string; setMessageInput: (v: string) => void; sendMessage: any;
   messages: any[]; scrollRef: any; user: any;
+  onAcceptRequest?: (id: string) => void;
+  onCompleteRequest?: (id: string) => void;
+  onDisputeRequest?: (id: string) => void;
+  isActionPending?: boolean;
 }) {
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
@@ -623,17 +817,20 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
           <div>
             <h2 className="font-bold text-sm">{selectedChat.name}</h2>
             {/* Find the header area and insert this below the title/status info */}
-            {selectedChat.type === 'dm' && selectedChat.user_type === 'vendor' && selectedChat.is_verified && (
-              <div className="bg-primary/5 border-t border-primary/10 px-4 py-2 flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-primary fill-primary/10" />
-                  <p className="text-[10px] text-primary/80 font-bold leading-none uppercase">
-                    Ahmia-Verified Vendor • Payments Protected by Escrow
-                  </p>
-                </div>
-                <Button size="sm" variant="ghost" className="h-6 text-[9px] font-black uppercase tracking-tighter" onClick={() => navigate('/app/#')}>
-                  Learn More
-                </Button>
+            {selectedChat.type === 'service' && selectedChat.is_verified && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <ShieldCheck className="w-3 h-3 text-cyan-500" />
+                <p className="text-[10px] text-cyan-600 dark:text-cyan-400 font-semibold">
+                  Verified Business · Escrow Protected
+                </p>
+              </div>
+            )}
+            {selectedChat.type === 'dm' && selectedChat.user_type === 'business' && selectedChat.is_verified && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <ShieldCheck className="w-3 h-3 text-primary" />
+                <p className="text-[10px] text-primary/80 font-semibold">
+                  Verified Business
+                </p>
               </div>
             )}
 
@@ -702,7 +899,20 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
       </div>
 
       {/* INPUT AREA */}
-      <ChatInputArea selectedChat={selectedChat} messageInput={messageInput} setMessageInput={setMessageInput} sendMessage={sendMessage} />
+      {selectedChat.type === 'service'
+        ? <ServiceChatInputArea
+            selectedChat={selectedChat}
+            messageInput={messageInput}
+            setMessageInput={setMessageInput}
+            sendMessage={sendMessage}
+            onAccept={() => onAcceptRequest?.(selectedChat.meta?.request_id)}
+            onComplete={() => onCompleteRequest?.(selectedChat.meta?.request_id)}
+            onDispute={() => onDisputeRequest?.(selectedChat.meta?.request_id)}
+            isActionPending={isActionPending}
+            currentUserId={user?.id}
+          />
+        : <ChatInputArea selectedChat={selectedChat} messageInput={messageInput} setMessageInput={setMessageInput} sendMessage={sendMessage} />
+      }
 
       {/* COMMUNITY SETTINGS DIALOG */}
       {selectedChat.type === 'community' && communityMeta && (
@@ -829,6 +1039,146 @@ function ChatInputArea({ selectedChat, messageInput, setMessageInput, sendMessag
              <Send className="w-4 h-4" />
           </Button>
        </div>
+    </div>
+  );
+}
+
+// --- Service Chat Input Area (escrow lifecycle) ---
+function ServiceChatInputArea({
+  selectedChat, messageInput, setMessageInput, sendMessage,
+  onAccept, onComplete, onDispute, isActionPending, currentUserId
+}: {
+  selectedChat: ChatItem; messageInput: string;
+  setMessageInput: (v: string) => void; sendMessage: any;
+  onAccept?: () => void; onComplete?: () => void; onDispute?: () => void;
+  isActionPending?: boolean; currentUserId?: string;
+}) {
+  const meta = selectedChat.meta as any;
+  const status: string = meta?.status || 'pending';
+  const isBuyer: boolean = meta?.is_buyer ?? true;
+  const amount: number = meta?.amount || 0;
+  const requestId: string = meta?.request_id;
+
+  const formatNGN = (n: number) =>
+    new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(n);
+
+  // Escrow status banner
+  const escrowBanner: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
+    pending: {
+      color: 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300',
+      icon: <Clock className="w-4 h-4 shrink-0" />,
+      text: isBuyer ? `Awaiting acceptance · ${formatNGN(amount)} held in escrow` : `New request · ${formatNGN(amount)} · Accept to begin`,
+    },
+    accepted: {
+      color: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300',
+      icon: <Package className="w-4 h-4 shrink-0" />,
+      text: `In progress · ${formatNGN(amount)} in escrow · Released on completion`,
+    },
+    in_progress: {
+      color: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300',
+      icon: <Package className="w-4 h-4 shrink-0" />,
+      text: `In progress · ${formatNGN(amount)} in escrow`,
+    },
+    completed: {
+      color: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300',
+      icon: <CheckCircle2 className="w-4 h-4 shrink-0" />,
+      text: `Completed · ${formatNGN(amount)} released to provider`,
+    },
+    disputed: {
+      color: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300',
+      icon: <AlertCircle className="w-4 h-4 shrink-0" />,
+      text: 'Dispute raised · Team reviewing within 24h · Funds frozen',
+    },
+    cancelled: {
+      color: 'bg-muted border-border text-muted-foreground',
+      icon: <X className="w-4 h-4 shrink-0" />,
+      text: 'Request cancelled',
+    },
+  };
+
+  const banner = escrowBanner[status] || escrowBanner.pending;
+  const isDone = status === 'completed' || status === 'cancelled' || status === 'disputed';
+
+  return (
+    <div className="border-t bg-background space-y-0">
+      {/* Escrow status banner */}
+      <div className={`flex items-center gap-2 px-4 py-2 border-b text-xs font-medium ${banner.color}`}>
+        {banner.icon}
+        <span className="flex-1">{banner.text}</span>
+        {amount > 0 && !isDone && (
+          <span className="flex items-center gap-1 font-bold">
+            <CreditCard className="w-3 h-3" /> {formatNGN(amount)}
+          </span>
+        )}
+      </div>
+
+      {/* CTA action row — context-sensitive */}
+      {!isDone && (
+        <div className="px-4 py-2 flex gap-2 border-b">
+          {/* SELLER: pending → Accept */}
+          {!isBuyer && status === 'pending' && (
+            <Button size="sm" className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white h-9 text-xs font-bold"
+              onClick={onAccept} disabled={isActionPending}>
+              {isActionPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+              Accept & Hold Escrow
+            </Button>
+          )}
+          {/* SELLER: accepted/in_progress → Mark Complete (releases escrow) */}
+          {!isBuyer && (status === 'accepted' || status === 'in_progress') && (
+            <>
+              <Button size="sm" className="flex-1 bg-green-500 hover:bg-green-600 text-white h-9 text-xs font-bold"
+                onClick={onComplete} disabled={isActionPending}>
+                {isActionPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                Mark Complete
+              </Button>
+              <Button size="sm" variant="outline" className="h-9 text-xs text-destructive border-destructive/30"
+                onClick={onDispute} disabled={isActionPending}>
+                <AlertCircle className="w-3.5 h-3.5 mr-1" /> Dispute
+              </Button>
+            </>
+          )}
+          {/* BUYER: accepted/in_progress → Confirm + Dispute */}
+          {isBuyer && (status === 'accepted' || status === 'in_progress') && (
+            <>
+              <Button size="sm" className="flex-1 bg-green-500 hover:bg-green-600 text-white h-9 text-xs font-bold"
+                onClick={onComplete} disabled={isActionPending}>
+                {isActionPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                Confirm & Release Payment
+              </Button>
+              <Button size="sm" variant="outline" className="h-9 text-xs text-destructive border-destructive/30"
+                onClick={onDispute} disabled={isActionPending}>
+                <AlertCircle className="w-3.5 h-3.5 mr-1" /> Dispute
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Text input — available in all non-cancelled states */}
+      {status !== 'cancelled' && (
+        <div className="p-4">
+          <div className="flex items-end gap-2 bg-muted/50 p-2 rounded-3xl border focus-within:border-primary/50 transition-colors">
+            <Textarea
+              value={messageInput}
+              onChange={(e) => setMessageInput(e.target.value)}
+              placeholder={isDone ? 'Chat closed' : `Message ${selectedChat.name}...`}
+              disabled={isDone}
+              className="flex-1 min-h-[40px] max-h-32 bg-transparent border-0 focus-visible:ring-0 resize-none py-2.5"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage.mutate();
+                }
+              }}
+            />
+            <Button size="icon" className="rounded-full h-10 w-10 shrink-0"
+              disabled={!messageInput.trim() || isDone}
+              onClick={() => sendMessage.mutate()}>
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
