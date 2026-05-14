@@ -841,7 +841,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                       <Check className="w-5 h-5 text-cyan-600" />
                     </div>
                     <span className="text-3xl font-extrabold tracking-tight">{stats?.jobsCompleted || 0}</span>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">Jobs Done</span>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-1">Services Done</span>
                   </CardContent>
                 </Card>
 
@@ -951,7 +951,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                       <h3 className="font-bold text-foreground">Earnings Wallet</h3>
                       <p className="text-xs text-muted-foreground">
                         {userProfile?.user_type === 'business'
-                          ? 'Ticket sales + completed service jobs'
+                          ? 'Ticket sales + completed services'
                           : 'Available for withdrawal'}
                       </p>
                     </div>
@@ -965,7 +965,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                   {userProfile?.user_type === 'business' && (stats?.serviceRevenue || 0) > 0 && (
                     <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
                       <Check className="w-3 h-3 text-green-500" />
-                      Includes ₦{(stats?.serviceRevenue || 0).toLocaleString()} from {stats?.jobsCompleted} completed {stats?.jobsCompleted === 1 ? 'job' : 'jobs'}
+                      Includes ₦{(stats?.serviceRevenue || 0).toLocaleString()} from {stats?.jobsCompleted} completed {stats?.jobsCompleted === 1 ? 'service' : 'services'}
                     </p>
                   )}
                 </div>
@@ -1013,7 +1013,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                 {userProfile?.user_type === 'business' ? (
                   <>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Jobs Completed</span>
+                      <span className="text-muted-foreground">Services Completed</span>
                       <span className="font-bold">{stats?.jobsCompleted || 0}</span>
                     </div>
                     <div className="flex justify-between text-sm">
