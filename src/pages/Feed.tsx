@@ -496,7 +496,7 @@ const Feed = () => {
                       communities.length === 0 ? <div className="text-center py-16 flex flex-col items-center gap-4"><div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center"><Users className="w-8 h-8 text-muted-foreground/40" /></div><div><p className="font-semibold">No communities yet in {milestone?.zone_name}</p></div><Button className="rounded-full px-6 gap-2 shadow-md" onClick={() => navigate('/app/messages')}><Plus className="w-4 h-4" /> Create Community</Button></div> :
                       communities.map(c => (
                         <div key={c.id} className="flex items-center gap-4 p-4 bg-card rounded-xl border shadow-sm cursor-pointer hover:bg-accent/50" onClick={() => setSelectedCommunity(c)}>
-                          <Avatar className="h-auto w-full rounded-xl border"><AvatarImage src={c.avatar_url || undefined} className="object-cover" /><AvatarFallback>{c.name[0]}</AvatarFallback></Avatar>
+                          <Avatar className="h-full w-full object-cover rounded-xl border"><AvatarImage src={c.avatar_url || undefined} className="object-cover" /><AvatarFallback>{c.name[0]}</AvatarFallback></Avatar>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2"><h4 className="font-bold truncate">{c.name}</h4>{c.is_premium && <Badge className="bg-amber-500 text-white border-0 text-[10px]">Exclusive</Badge>}</div>
                             <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
