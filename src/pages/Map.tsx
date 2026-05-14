@@ -340,7 +340,7 @@ const MapPage = () => {
       user_id: b.id,
       latitude: b.latitude,
       longitude: b.longitude,
-      markerType: 'event' as const, // reuse event pin style; LeafletMap already handles this
+      markerType: 'business' as const,
       is_sharing: true,
       updated_at: new Date().toISOString(),
       profiles: { display_name: b.name, avatar_url: b.avatar }
@@ -523,7 +523,7 @@ const MapPage = () => {
                   </Button>
                 </div>
 
-                  <div className="flex justify-between items-center w-full">
+                  <div className="flex justify-center items-center w-full relative">
                     <div className="bg-background/80 backdrop-blur-xl border border-white/10 rounded-full p-1 flex items-center shadow-lg">
                       <button 
                         onClick={() => setActiveView('friends')}
@@ -535,7 +535,7 @@ const MapPage = () => {
                         onClick={() => setActiveView('events')}
                         className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'events' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
                       >
-                        {userProfile?.user_type === 'business' ? 'Events' : 'Events'}
+                        Events
                       </button>
                       <button
                         onClick={() => setActiveView('marketplace')}
@@ -548,7 +548,7 @@ const MapPage = () => {
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-9 w-9 rounded-full bg-background/60 backdrop-blur-md shadow-sm border border-white/10"
+                      className="absolute right-0 h-9 w-9 rounded-full bg-background/60 backdrop-blur-md shadow-sm border border-white/10"
                       onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
                     >
                       {mapStyle === 'standard' ? <Globe className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
@@ -663,11 +663,13 @@ const MapPage = () => {
             {!isNavigating && selectedEvent && (
               <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
                 
-                <div className="relative h-32 w-full">
-                  <img src={selectedEvent.image_url || '/placeholder.jpg'} className="w-full h-full object-cover" />
+                <div className="relative w-full" style={{ paddingTop: '42%' }}>
+                  <img
+                    src={selectedEvent.image_url || '/placeholder.jpg'}
+                    className="absolute inset-0 w-full h-full object-cover object-center"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
                   
-                  {/* --- ADDED: High Vibe Pulse Badge --- */}
                   {selectedEvent.is_vibe && (
                     <Badge className="absolute top-2 left-2 bg-orange-500 text-white animate-pulse border-0 shadow-lg">
                       <Flame className="w-3 h-3 mr-1" /> HIGH VIBE
