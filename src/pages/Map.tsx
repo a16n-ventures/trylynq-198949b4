@@ -755,27 +755,21 @@ const MapPage = () => {
                     >
                       <MessageCircle className="w-4 h-4 mr-1" /> Chat
                     </Button>
-                    <Button
-                      className="h-11 rounded-xl text-xs font-semibold shadow-lg bg-primary hover:bg-primary/90 text-white"
+                    <Button 
+                      variant="outline"
+                      className="h-11 rounded-xl text-xs font-semibold"
                       onClick={() => handleGetDirections(selectedEvent.latitude, selectedEvent.longitude, selectedEvent.title)}
                     >
                       <Navigation className="w-4 h-4 mr-1" /> Go
                     </Button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="text-center">
                     <Button
                       variant={selectedEvent.is_attending ? 'success' : 'outline'}
-                      className="h-12 rounded-xl font-bold"
+                      className="h-12 w-full rounded-xl font-bold"
                       onClick={() => handleToggleRSVP(selectedEvent)}
                     >
                       {selectedEvent.is_attending ? '✓ Going' : 'RSVP'}
-                    </Button>
-                    <Button
-                      className="h-12 rounded-xl shadow-lg bg-primary hover:bg-primary/90 text-white font-bold"
-                      onClick={() => { setSelectedTierId(null); setTierSheetOpen(true); }}
-                    >
-                      <Ticket className="w-5 h-5 mr-2" />
-                      {(selectedEvent.ticket_price ?? 0) > 0 ? formatTicketPrice(selectedEvent.ticket_price) : 'Free'}
                     </Button>
                   </div>
                 </CardContent>
