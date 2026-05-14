@@ -11,7 +11,7 @@ interface FriendLocation {
   user_id: string;
   latitude?: string | number | null;
   longitude?: string | number | null;
-  markerType?: 'friend' | 'event';
+  markerType?: 'friend' | 'event' | 'business';
   profiles?: {
     display_name?: string | null;
     avatar_url?: string | null;
@@ -24,7 +24,7 @@ interface LeafletMapProps {
   loading?: boolean;
   error?: string | null;
   mapStyle?: 'standard' | 'satellite';
-  onMarkerSelect?: (id: string, markerType?: 'friend' | 'event') => void;
+  onMarkerSelect?: (id: string, markerType?: 'friend' | 'event' | 'business') => void;
   routeCoordinates?: [number, number][] | null; // ✅ Added prop for navigation route
 }
 
@@ -173,26 +173,34 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
       
         if (lat && lng) {
           const isEventMarker = friend.markerType === 'event';
+          const isBusinessMarker = friend.markerType === 'business';
           const avatar = friend.profiles?.avatar_url || "https://github.com/shadcn.png";
-          const statusBubble = (friend as any).status_bubble; // Access the new status
+          const statusBubble = (friend as any).status_bubble;
       
           const icon = L.divIcon({
             className: 'bg-transparent border-0',
-            html: `
+            html: isEventMarker ? `
+              <div style="
+                width: 14px; height: 14px;
+                background: radial-gradient(circle, rgba(139,92,246,0.95) 0%, rgba(139,92,246,0.35) 65%, transparent 100%);
+                border-radius: 50%;
+                box-shadow: 0 0 0 5px rgba(139,92,246,0.12), 0 0 14px rgba(139,92,246,0.45);
+              "></div>
+            ` : isBusinessMarker ? `
+              <div style="
+                width: 14px; height: 14px;
+                background: radial-gradient(circle, rgba(6,182,212,0.95) 0%, rgba(6,182,212,0.35) 65%, transparent 100%);
+                border-radius: 50%;
+                box-shadow: 0 0 0 5px rgba(6,182,212,0.12), 0 0 14px rgba(6,182,212,0.45);
+              "></div>
+            ` : `
               <div class="relative flex flex-col items-center">
-                ${isEventMarker ? `
-                  <div class="relative flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground border-[3px] border-background shadow-xl">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 1 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                    <span class="absolute inset-0 rounded-full bg-primary opacity-30 animate-ping"></span>
-                  </div>
-                ` : `
                 ${statusBubble ? `
                   <div class="absolute -top-10 bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded-2xl shadow-xl animate-bounce whitespace-nowrap border-2 border-background z-50">
                     ${statusBubble}
                     <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rotate-45 border-r-2 border-b-2 border-background"></div>
                   </div>
                 ` : ''}
-                
                 <div style="
                   width: 44px; height: 44px; 
                   border-radius: 50%; 
@@ -202,11 +210,10 @@ const LeafletMap = forwardRef<LeafletMapHandle, LeafletMapProps>(({
                   box-shadow: 0 8px 15px rgba(0,0,0,0.2);
                   background-color: #e2e8f0;
                 "></div>
-                `}
               </div>
             `,
-            iconSize: [120, 120], // Increased size to prevent clipping the bubble
-            iconAnchor: [60, 60], // Centered
+            iconSize: isEventMarker || isBusinessMarker ? [14, 14] : [120, 120],
+            iconAnchor: isEventMarker || isBusinessMarker ? [7, 7] : [60, 60],
           });
       
           const m = L.marker([lat, lng], { icon }).addTo(map);
