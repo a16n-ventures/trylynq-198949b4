@@ -664,7 +664,7 @@ const MapPage = () => {
               <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden max-h-[82vh] flex flex-col">
                 
                 {/* Banner — padding-top % trick: parent is position:relative, no absolute child needed */}
-                <div className="relative w-full shrink-0">
+                <div className="relative w-full shrink-0" style={{ paddingTop: '44%' }}>
                   <img
                     src={selectedEvent.image_url || '/placeholder.jpg'}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
