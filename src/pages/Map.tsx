@@ -663,7 +663,7 @@ const MapPage = () => {
             {!isNavigating && selectedEvent && (
               <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
                 
-                <div className="relative w-full" style={{ paddingTop: '42%' }}>
+                <div className="relative w-full" style={{ aspectRatio: '16/7' }}>
                   <img
                     src={selectedEvent.image_url || '/placeholder.jpg'}
                     className="absolute inset-0 w-full h-full object-cover object-center"
@@ -681,7 +681,7 @@ const MapPage = () => {
                   </Button>
                 </div>
                 
-                <CardContent className="p-5 pt-2">
+                <CardContent className="p-5 pt-2 overflow-y-auto flex-1">
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <Badge variant="secondary" className="mb-2 bg-primary/10 text-primary hover:bg-primary/20 border-0">
@@ -783,7 +783,7 @@ const MapPage = () => {
 
             {/* 3b. BUSINESS CARD */}
             {!isNavigating && selectedBusiness && (
-              <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden">
+              <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden max-h-[82vh] flex flex-col">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-400" />
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-3">
