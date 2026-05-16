@@ -7,23 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   MessageSquare, MapPin, UserMinus, Ban, Flag, Clock,
-  Link2, Globe, Instagram, Twitter, Linkedin, Github,
   ShieldCheck, Briefcase, Store, ArrowRight, Heart
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import type { Profile } from "@/hooks/useFriends";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ProfileLink {
-  id: string;
-  title: string;
-  url: string;
-}
 
 interface FriendProfilePreviewProps {
   profile: Profile | null;
@@ -34,22 +23,6 @@ interface FriendProfilePreviewProps {
   onBlockUser?: (userId: string) => void;
   onReportUser?: (userId: string) => void;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-const getLinkIcon = (url: string) => {
-  if (url.includes('instagram.com')) return Instagram;
-  if (url.includes('twitter.com') || url.includes('x.com')) return Twitter;
-  if (url.includes('linkedin.com')) return Linkedin;
-  if (url.includes('github.com')) return Github;
-  return Globe;
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function FriendProfilePreview({
   profile,
@@ -63,7 +36,6 @@ export function FriendProfilePreview({
   const navigate = useNavigate();
   const [confirmAction, setConfirmAction] = useState<'remove' | 'block' | null>(null);
 
-  // Record profile view when dialog opens
   useEffect(() => {
     if (open && profile?.user_id) {
       (supabase.rpc as any)('record_profile_view', { target_user_id: profile.user_id })
@@ -71,13 +43,12 @@ export function FriendProfilePreview({
     }
   }, [open, profile?.user_id]);
 
-  // ── Data fetch ─────────────────────────────────────────────────────────────
   const { data: fullProfile, isLoading } = useQuery({
     queryKey: ['friendProfile', profile?.user_id],
     queryFn: async () => {
       if (!profile?.user_id) return null;
       try {
-        const [profileRes, locationRes, premiumRes, subRes, linksRes, storeRes] = await Promise.all([
+        const [profileRes, locationRes, premiumRes, subRes] = await Promise.all([
           supabase.from('profiles').select('*').eq('user_id', profile.user_id).single(),
           supabase.from('user_locations').select('*').eq('user_id', profile.user_id).maybeSingle(),
           supabase
@@ -92,36 +63,26 @@ export function FriendProfilePreview({
             .select('status')
             .eq('user_id', profile.user_id)
             .maybeSingle(),
-          supabase
-            .from('profile_links')
-            .select('*')
-            .eq('user_id', profile.user_id)
-            .order('sort_order', { ascending: true }),
-          // Store info for business users
-          (supabase.from('stores') as any)
-            .select('id, name, category, logo_url')
-            .eq('owner_id', profile.user_id)
-            .eq('is_active', true)
-            .maybeSingle(),
         ]);
 
         const isPremium = !!premiumRes.data || subRes.data?.status === 'active';
 
-        // Links: DB first, fallback to legacy preferences
-        let links: ProfileLink[] = [];
-        if (linksRes.data && linksRes.data.length > 0) {
-          links = linksRes.data.map((l: any) => ({ id: l.id, title: l.title, url: l.url }));
-        } else {
-          const preferences = profileRes.data?.preferences as { links?: ProfileLink[] } | null;
-          links = preferences?.links || [];
-        }
+        // Store fetched separately — failure cannot crash the whole preview
+        let storeData = null;
+        try {
+          const { data } = await (supabase.from('stores') as any)
+            .select('id, name, category')
+            .eq('owner_id', profile.user_id)
+            .eq('is_active', true)
+            .maybeSingle();
+          storeData = data;
+        } catch (_) {}
 
         return {
           ...profileRes.data,
           location: locationRes.data,
           isPremium,
-          links,
-          store: storeRes.data || null,
+          store: storeData,
         };
       } catch (error) {
         console.error('Error fetching friend profile:', error);
@@ -131,7 +92,6 @@ export function FriendProfilePreview({
     enabled: open && !!profile?.user_id,
   });
 
-  // ── Derived values ─────────────────────────────────────────────────────────
   const isBusinessUser  = fullProfile?.user_type === 'business';
   const isVerified      = fullProfile?.verification_status === 'verified';
   const skills: string[]    = fullProfile?.skills    || [];
@@ -141,7 +101,6 @@ export function FriendProfilePreview({
     ? formatDistanceToNow(new Date(fullProfile.location.last_seen), { addSuffix: true })
     : null;
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleAction = (action: 'remove' | 'block') => {
     if (confirmAction === action) {
       if (action === 'remove' && friendshipId && onRemoveFriend) {
@@ -155,13 +114,11 @@ export function FriendProfilePreview({
     }
   };
 
-  // Correct deep-link format that Messages.tsx useEffect expects
   const handleMessage = () => {
     navigate(`/app/messages?type=dm&id=${profile?.user_id}`);
     onClose();
   };
 
-  // Opens escrow-protected service chat (Messages.tsx Gap 5)
   const handleRequestService = () => {
     navigate(`/app/messages?type=service&id=${profile?.user_id}`);
     onClose();
@@ -177,7 +134,6 @@ export function FriendProfilePreview({
     onClose();
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-[420px] max-w-[calc(100vw-2rem)] my-auto mx-auto max-h-[90vh] overflow-y-auto p-0">
@@ -185,7 +141,6 @@ export function FriendProfilePreview({
           <DialogTitle className="sr-only">Profile Preview</DialogTitle>
         </DialogHeader>
 
-        {/* ── Loading ────────────────────────────────────────────────────── */}
         {isLoading && (
           <div className="flex flex-col items-center gap-4 p-8">
             <Skeleton className="w-24 h-24 rounded-full" />
@@ -195,25 +150,22 @@ export function FriendProfilePreview({
           </div>
         )}
 
-        {/* ── Not found ──────────────────────────────────────────────────── */}
         {!isLoading && !fullProfile && (
           <div className="py-12 text-center text-muted-foreground p-6">
             <p className="text-sm">Profile not found</p>
           </div>
         )}
 
-        {/* ── Main content ───────────────────────────────────────────────── */}
         {!isLoading && fullProfile && (
           <div className="flex flex-col">
 
-            {/* ── Header band ─────────────────────────────────────────────── */}
+            {/* Header band */}
             <div className={`relative px-6 pt-8 pb-5 flex flex-col items-center text-center
               ${isBusinessUser
                 ? 'bg-gradient-to-b from-cyan-500/10 via-cyan-500/5 to-transparent'
                 : 'bg-gradient-to-b from-primary/8 via-primary/4 to-transparent'
               }`}>
 
-              {/* Verified ribbon — top right, business only */}
               {isBusinessUser && isVerified && (
                 <div className="absolute top-3 right-4 flex items-center gap-1 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-700 rounded-full px-2.5 py-1">
                   <ShieldCheck className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
@@ -221,7 +173,6 @@ export function FriendProfilePreview({
                 </div>
               )}
 
-              {/* Avatar */}
               <div className="relative mb-3">
                 <Avatar className="w-24 h-24 border-4 border-background shadow-lg">
                   <AvatarImage src={fullProfile.avatar_url || undefined} className="object-cover" />
@@ -236,7 +187,6 @@ export function FriendProfilePreview({
                 )}
               </div>
 
-              {/* Name + premium badge */}
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="text-xl font-bold">{fullProfile.display_name || 'Unknown User'}</h3>
                 {fullProfile.isPremium && (
@@ -246,7 +196,6 @@ export function FriendProfilePreview({
                 )}
               </div>
 
-              {/* Store name — business only */}
               {isBusinessUser && fullProfile.store && (
                 <p className="text-xs text-cyan-600 dark:text-cyan-400 font-medium flex items-center gap-1 mb-1">
                   <Store className="w-3 h-3" />
@@ -254,14 +203,12 @@ export function FriendProfilePreview({
                 </p>
               )}
 
-              {/* Bio */}
               {fullProfile.bio && (
                 <p className="text-sm text-muted-foreground max-w-xs leading-relaxed mt-1">
                   {fullProfile.bio}
                 </p>
               )}
 
-              {/* Business: skill pills */}
               {isBusinessUser && skills.length > 0 && (
                 <div className="flex flex-wrap justify-center gap-1.5 mt-3">
                   {skills.slice(0, 5).map((skill) => (
@@ -278,7 +225,6 @@ export function FriendProfilePreview({
                 </div>
               )}
 
-              {/* Personal: interest pills */}
               {!isBusinessUser && interests.length > 0 && (
                 <div className="flex flex-wrap justify-center gap-1.5 mt-3">
                   {interests.slice(0, 5).map((interest) => (
@@ -297,51 +243,25 @@ export function FriendProfilePreview({
               )}
             </div>
 
-            {/* ── Body ──────────────────────────────────────────────────────── */}
+            {/* Body */}
             <div className="px-5 pb-5 space-y-4">
 
-              {/* Location row */}
+              {/* Location — centered */}
               {fullProfile.location?.is_sharing_location && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 px-3 py-2 rounded-xl">
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground bg-muted/40 px-3 py-2 rounded-xl">
                   <MapPin className="w-3.5 h-3.5 text-green-500 shrink-0" />
                   <span>Sharing location</span>
                   {lastSeen && (
                     <>
                       <span className="text-muted-foreground/40">·</span>
                       <Clock className="w-3 h-3 shrink-0" />
-                      <span className="truncate text-xs">{lastSeen}</span>
+                      <span className="text-xs">{lastSeen}</span>
                     </>
                   )}
                 </div>
               )}
 
-              {/* Profile links */}
-              {fullProfile.links && fullProfile.links.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-2">
-                    <Link2 className="w-3 h-3" /> Links
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {fullProfile.links.slice(0, 4).map((link: ProfileLink) => {
-                      const LinkIcon = getLinkIcon(link.url);
-                      return (
-                        <a key={link.id} href={link.url} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/40 hover:bg-muted/70 transition-all text-xs font-medium">
-                          <LinkIcon className="w-3 h-3 text-primary" />
-                          <span className="truncate max-w-[80px]">{link.title}</span>
-                        </a>
-                      );
-                    })}
-                    {fullProfile.links.length > 4 && (
-                      <span className="text-[10px] text-muted-foreground self-center">
-                        +{fullProfile.links.length - 4} more
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* ── CTAs ──────────────────────────────────────────────────── */}
+              {/* CTAs */}
               {isBusinessUser ? (
                 <div className="space-y-2">
                   <Button
@@ -376,7 +296,7 @@ export function FriendProfilePreview({
                 </div>
               )}
 
-              {/* ── Danger zone ────────────────────────────────────────────── */}
+              {/* Danger zone */}
               {(friendshipId || onBlockUser || onReportUser) && (
                 <div className="pt-3 border-t border-border/50 space-y-2">
                   {friendshipId && onRemoveFriend && (
