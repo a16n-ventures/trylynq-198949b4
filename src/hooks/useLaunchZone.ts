@@ -81,32 +81,26 @@ export function useLaunchZone(
       if (match) {
         cityRef.current = match.city_name;
         
-        // 3. AUTOMATED WAITING ROOM COUNT: Range-based matching
-          // This ensures that even if coords are stored with high precision, 
-          // they still get counted in the 2-decimal bucket.
-          const latMin = roundedLat - 0.09;
-          const latMax = roundedLat + 0.89;
-          const lonMin = roundedLon - 0.09;
-          const lonMax = roundedLon + 0.89;
+        // 3. COUNT: Use city_pioneers table — the authoritative source for
+        //    users who actually signed up within this city's radius.
+        //    This replaces the broken user_locations bounding-box query
+        //    which had an asymmetric range (+0.89 instead of +0.09) that
+        //    was scooping up users from neighbouring cities.
+        const { count, error: countError } = await supabase
+          .from('city_pioneers')
+          .select('*', { count: 'exact', head: true })
+          .eq('city_name', match.city_name);
           
-          const { count, error: countError } = await supabase
-            .from('user_locations') 
-            .select('*', { count: 'exact', head: true })
-            .gte('latitude', latMin)
-            .lte('latitude', latMax)
-            .gte('longitude', lonMin)
-            .lte('longitude', lonMax);
+        if (countError) console.error("Count Error:", countError);
           
-          if (countError) console.error("Count Error:", countError);
-          
-          setResult({
-            isInLaunchZone: match.is_unlocked === true,
-            isWithinCity: true,
-            cityName: match.city_name,
-            currentCount: count || 0, 
-            targetCount: match.target_count || 500,
-            isLoading: false,
-          });
+        setResult({
+          isInLaunchZone: match.is_unlocked === true,
+          isWithinCity: true,
+          cityName: match.city_name,
+          currentCount: count || 0, 
+          targetCount: match.target_count || 500,
+          isLoading: false,
+        });
         return;
       }
 
@@ -143,9 +137,9 @@ export function useLaunchZone(
     const cancelled = { current: false };
     checkZone(cancelled);
 
-    // 5. REAL-TIME UPDATES: Listen for new users and milestone changes
-    const locationChannel = supabase.channel('location-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_locations' }, () => checkZone(cancelled))
+    // 5. REAL-TIME UPDATES: Watch city_pioneers (authoritative count) and milestones
+    const pioneersChannel = supabase.channel('pioneers-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'city_pioneers' }, () => checkZone(cancelled))
       .subscribe();
 
     const milestoneChannel = supabase.channel('milestone-updates')
@@ -167,7 +161,7 @@ export function useLaunchZone(
 
     return () => {
       cancelled.current = true;
-      supabase.removeChannel(locationChannel);
+      supabase.removeChannel(pioneersChannel);
       supabase.removeChannel(milestoneChannel);
       if (waitlistChannel) supabase.removeChannel(waitlistChannel);
     };
