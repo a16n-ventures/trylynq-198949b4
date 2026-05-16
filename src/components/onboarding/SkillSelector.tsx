@@ -152,7 +152,7 @@ export function SkillSelector({
       // Optional: trigger AI embedding with skills context
       try {
         await supabase.functions.invoke("generate-user-embedding", {
-          body: { user_id: user.id, interests: selected, user_type: "service" },
+          body: { user_id: user.id, interests: selected, user_type: "business" },
         });
       } catch (aiError) {
         console.warn("AI embedding failed, skills saved:", aiError);
