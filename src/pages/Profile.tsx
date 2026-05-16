@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Settings, MapPin, Calendar, Grid, Ticket, Store as StoreIcon,
   LogOut, Sparkles, QrCode, Share2,
-  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield, ShieldCheck, Plus
+  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield, ShieldCheck, Plus, Briefcase, X
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -309,6 +309,58 @@ const Profile = () => {
 
   // Local state for smooth slider dragging
   const [localRadius, setLocalRadius] = useState<number>(25);
+
+  // ── Account type + skills editor state ────────────────────────────────────
+  const [showSkillsEditor, setShowSkillsEditor] = useState(false);
+  const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+
+  const SKILL_TAGS = [
+    'Graphic Design','Video Editing','Photography','Social Media Management','Content Writing',
+    'Web Design','Animation','Music Production','Voiceover','Illustration',
+    'Web Development','Mobile App Development','Data Analysis','IT Support','Cybersecurity',
+    'UI/UX Design','SEO & Marketing','AI / Automation',
+    'Electrical Work','Plumbing','Carpentry','Painting & Decorating','AC Repair',
+    'Generator Repair','Tiling','Masonry','Cleaning Services','Landscaping','Moving & Hauling',
+    'Hair Styling','Makeup Artist','Nail Technician','Barbing','Personal Training',
+    'Massage Therapy','Spa Services',
+    'Event Planning','Catering','DJ / Music','MC / Host','Decoration','Security / Ushering',
+    'Tutoring','Legal Services','Accounting / Bookkeeping','Business Consulting',
+    'Translation','Driving / Logistics','Tailoring / Fashion','Laundry Services',
+  ];
+
+  const updateAccountTypeMutation = useMutation({
+    mutationFn: async ({ userType, skills }: { userType: 'personal' | 'business'; skills?: string[] }) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      const update: Record<string, any> = { user_type: userType, updated_at: new Date().toISOString() };
+      if (skills) update.skills = skills;
+      const { error } = await supabase.from('profiles').update(update).eq('user_id', user.id);
+      if (error) throw error;
+    },
+    onSuccess: (_, vars) => {
+      toast.success(vars.userType === 'business' ? 'Switched to Business account' : 'Switched to Personal account');
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
+      setShowSkillsEditor(false);
+      setPendingUserType(null);
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update account type'),
+  });
+
+  const saveSkillsMutation = useMutation({
+    mutationFn: async (skills: string[]) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      const { error } = await supabase.from('profiles')
+        .update({ skills, updated_at: new Date().toISOString() })
+        .eq('user_id', user.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Skills updated');
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
+      setShowSkillsEditor(false);
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update skills'),
+  });
 
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
@@ -757,6 +809,108 @@ const Profile = () => {
                     </div>
                     <Button variant="outline" size="sm" onClick={() => navigate('/premium')}>Manage</Button>
                   </div>
+
+                  {/* ── Account Type ──────────────────────────────────────── */}
+                  <div className="p-3 bg-muted/50 rounded-xl space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                        {profile.user_type === 'business'
+                          ? <Briefcase className="w-5 h-5" />
+                          : <User className="w-5 h-5" />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm">Account Type</p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {profile.user_type === 'business' ? 'Business' : 'Personal'}
+                        </p>
+                      </div>
+                    </div>
+                    {/* Toggle pill */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          if (profile.user_type !== 'personal') {
+                            updateAccountTypeMutation.mutate({ userType: 'personal' });
+                          }
+                        }}
+                        disabled={updateAccountTypeMutation.isPending}
+                        className={`flex items-center justify-center gap-2 h-9 rounded-xl text-xs font-semibold border transition-all ${
+                          profile.user_type !== 'business'
+                            ? 'bg-primary text-white border-primary shadow-sm'
+                            : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                        }`}
+                      >
+                        <User className="w-3.5 h-3.5" /> Personal
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (profile.user_type !== 'business') {
+                            // Pre-fill skills from existing profile before opening editor
+                            setSelectedSkills((profile as any).skills || []);
+                            setPendingUserType('business');
+                            setShowSkillsEditor(true);
+                          }
+                        }}
+                        disabled={updateAccountTypeMutation.isPending}
+                        className={`flex items-center justify-center gap-2 h-9 rounded-xl text-xs font-semibold border transition-all ${
+                          profile.user_type === 'business'
+                            ? 'bg-cyan-500 text-white border-cyan-500 shadow-sm'
+                            : 'bg-background text-muted-foreground border-border hover:border-cyan-400'
+                        }`}
+                      >
+                        <Briefcase className="w-3.5 h-3.5" /> Business
+                      </button>
+                    </div>
+                    {profile.user_type === 'business' && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Business accounts appear on the map and can receive service requests with escrow-protected payments.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ── Skills Editor (business only) ────────────────────── */}
+                  {profile.user_type === 'business' && (
+                    <div className="p-3 bg-muted/50 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-600">
+                            <ShieldCheck className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-sm">Skills & Services</p>
+                            <p className="text-xs text-muted-foreground">
+                              {((profile as any).skills?.length || 0)} selected
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm" variant="outline" className="h-8 text-xs"
+                          onClick={() => {
+                            setSelectedSkills((profile as any).skills || []);
+                            setShowSkillsEditor(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      </div>
+                      {/* Current skill pills */}
+                      {((profile as any).skills?.length > 0) && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {((profile as any).skills as string[]).slice(0, 6).map((skill) => (
+                            <Badge key={skill} variant="secondary"
+                              className="text-[10px] bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200">
+                              {skill}
+                            </Badge>
+                          ))}
+                          {(profile as any).skills?.length > 6 && (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                              +{(profile as any).skills.length - 6} more
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   <div className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
                     <div className="flex items-center gap-3">
@@ -1253,6 +1407,95 @@ const Profile = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Skills Editor Dialog ─────────────────────────────────────────── */}
+      <Dialog open={showSkillsEditor} onOpenChange={(open) => {
+        if (!open) { setShowSkillsEditor(false); setPendingUserType(null); }
+      }}>
+        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Briefcase className="w-5 h-5 text-cyan-500" />
+              {pendingUserType === 'business' ? 'Set Up Business Profile' : 'Edit Skills & Services'}
+            </DialogTitle>
+            <DialogDescription>
+              {pendingUserType === 'business'
+                ? 'Select at least 1 skill. This is how clients discover and hire you on the map.'
+                : 'Update the skills and services you offer.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Selected count */}
+          <div className="flex items-center justify-between text-sm px-1">
+            <span className="text-muted-foreground">{selectedSkills.length} selected</span>
+            {selectedSkills.length > 0 && (
+              <button
+                onClick={() => setSelectedSkills([])}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {/* Currently selected pills */}
+          {selectedSkills.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-1 py-2 bg-muted/30 rounded-xl border border-border/50">
+              {selectedSkills.map((skill) => (
+                <button
+                  key={skill}
+                  onClick={() => setSelectedSkills(prev => prev.filter(s => s !== skill))}
+                  className="flex items-center gap-1 text-[11px] font-semibold bg-cyan-500 text-white px-2.5 py-1 rounded-full hover:bg-cyan-600 transition-colors"
+                >
+                  {skill} <X className="w-3 h-3" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Scrollable skill picker */}
+          <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">
+            <div className="flex flex-wrap gap-2 py-2">
+              {SKILL_TAGS.filter(s => !selectedSkills.includes(s)).map((skill) => (
+                <button
+                  key={skill}
+                  onClick={() => setSelectedSkills(prev => [...prev, skill])}
+                  className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-border bg-background hover:border-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 transition-all"
+                >
+                  {skill}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter className="pt-3 border-t gap-2">
+            <Button variant="outline" onClick={() => { setShowSkillsEditor(false); setPendingUserType(null); }}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-cyan-500 hover:bg-cyan-600 text-white flex-1"
+              disabled={selectedSkills.length === 0 || updateAccountTypeMutation.isPending || saveSkillsMutation.isPending}
+              onClick={() => {
+                if (pendingUserType === 'business') {
+                  // Switching to business: write user_type + skills together
+                  updateAccountTypeMutation.mutate({ userType: 'business', skills: selectedSkills });
+                } else {
+                  // Already business: just update skills
+                  saveSkillsMutation.mutate(selectedSkills);
+                }
+              }}
+            >
+              {(updateAccountTypeMutation.isPending || saveSkillsMutation.isPending)
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</>
+                : pendingUserType === 'business'
+                  ? 'Switch to Business'
+                  : 'Save Skills'
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 };
