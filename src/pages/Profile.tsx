@@ -385,58 +385,6 @@ const Profile = () => {
   // Local state for smooth slider dragging
   const [localRadius, setLocalRadius] = useState<number>(25);
 
-  // ── Account type + skills editor state ────────────────────────────────────
-  const [showSkillsEditor, setShowSkillsEditor] = useState(false);
-  const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-
-  const SKILL_TAGS = [
-    'Graphic Design','Video Editing','Photography','Social Media Management','Content Writing',
-    'Web Design','Animation','Music Production','Voiceover','Illustration',
-    'Web Development','Mobile App Development','Data Analysis','IT Support','Cybersecurity',
-    'UI/UX Design','SEO & Marketing','AI / Automation',
-    'Electrical Work','Plumbing','Carpentry','Painting & Decorating','AC Repair',
-    'Generator Repair','Tiling','Masonry','Cleaning Services','Landscaping','Moving & Hauling',
-    'Hair Styling','Makeup Artist','Nail Technician','Barbing','Personal Training',
-    'Massage Therapy','Spa Services',
-    'Event Planning','Catering','DJ / Music','MC / Host','Decoration','Security / Ushering',
-    'Tutoring','Legal Services','Accounting / Bookkeeping','Business Consulting',
-    'Translation','Driving / Logistics','Tailoring / Fashion','Laundry Services',
-  ];
-
-  const updateAccountTypeMutation = useMutation({
-    mutationFn: async ({ userType, skills }: { userType: 'personal' | 'business'; skills?: string[] }) => {
-      if (!user?.id) throw new Error('Not authenticated');
-      const update: Record<string, any> = { user_type: userType, updated_at: new Date().toISOString() };
-      if (skills) update.skills = skills;
-      const { error } = await supabase.from('profiles').update(update).eq('user_id', user.id);
-      if (error) throw error;
-    },
-    onSuccess: (_, vars) => {
-      toast.success(vars.userType === 'business' ? 'Switched to Business account' : 'Switched to Personal account');
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
-      setShowSkillsEditor(false);
-      setPendingUserType(null);
-    },
-    onError: (err: any) => toast.error(err.message || 'Failed to update account type'),
-  });
-
-  const saveSkillsMutation = useMutation({
-    mutationFn: async (skills: string[]) => {
-      if (!user?.id) throw new Error('Not authenticated');
-      const { error } = await supabase.from('profiles')
-        .update({ skills, updated_at: new Date().toISOString() })
-        .eq('user_id', user.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success('Skills updated');
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
-      setShowSkillsEditor(false);
-    },
-    onError: (err: any) => toast.error(err.message || 'Failed to update skills'),
-  });
-
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   // Profile Settings Dialog State
