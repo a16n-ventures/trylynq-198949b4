@@ -482,7 +482,7 @@ const Feed = () => {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h1 className="text-xl font-bold flex items-center gap-2">
-                    Discover <span className="text-primary">{locationName && locationName !== 'Detecting...' ? locationName : (milestone?.zone_name || 'Nearby')}</span>
+                    Discover <span className="text-primary">{launchCityName || (locationName !== 'Detecting...' ? locationName : 'Nearby')}</span>
                   </h1>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <MapPin className="w-3 h-3" /> {geocodedCity || "Detecting location..."}
