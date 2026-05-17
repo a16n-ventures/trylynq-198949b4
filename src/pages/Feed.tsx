@@ -158,12 +158,13 @@ const Feed = () => {
     if (prev && lat && lng) {
       const dLat = Math.abs(lat - prev.lat);
       const dLng = Math.abs(lng - prev.lng);
-      // ~0.005 degrees ≈ 0.5km
       if (dLat < 0.005 && dLng < 0.005 && hasFetchedRef.current) return;
     }
 
     if (lat && lng) {
       lastFetchedLocationRef.current = { lat, lng };
+      // Geocode separately — never blocks the feed
+      geocodeLocation(lat, lng);
     }
     hasFetchedRef.current = true;
 
@@ -236,29 +237,62 @@ const Feed = () => {
     setIsPremium(!!subData || (featureData && featureData.length > 0));
   };
   
+  // Stable geocoding — runs once per significant location change, isolated
+  // from the feed fetch so a Nominatim failure never kills the feed.
+  const geocodeLocation = useCallback(async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      if (!res.ok) return; // rate-limited or offline — silently skip
+      const data = await res.json();
+      const addr = data.address || {};
+
+      // Zone name = most specific populated place (shown in "Discover X")
+      // Priority: suburb > neighbourhood > quarter > village > town > city
+      const zoneName =
+        addr.suburb       ||
+        addr.neighbourhood||
+        addr.quarter      ||
+        addr.village      ||
+        addr.town         ||
+        addr.city         ||
+        addr.county       ||
+        addr.state        ||
+        'Nearby';
+
+      // City name = broader administrative area (shown in the muted subline)
+      const cityName =
+        addr.city         ||
+        addr.county       ||
+        addr.state_district||
+        addr.state        ||
+        zoneName;
+
+      setLocationName(zoneName);
+      setGeocodedCity(cityName);
+    } catch {
+      // Geocoding is non-critical — feed still loads without it
+    }
+  }, []);
+
   // 1. In your Feed component, use the geocoded name for the RPC
   const fetchSmartFeed = async () => {
     setLoading(true);
     try {
       const currentLat = location?.latitude;
       const currentLong = location?.longitude;
-      
-      // Use the name resolved by the geocoder
-      let city = 'Detecting...';
-      if (currentLat && currentLong) {
-         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLong}`);
-         const data = await res.json();
-         // Prioritize broader city name
-         city = data.address.city || data.address.town || data.address.state || "Nearby";
-         setLocationName(city); // Update the UI
-      }
-  
+
+      // Pass whatever we already geocoded — don't block the feed on geocoding
+      const city = geocodedCity || locationName || 'Nearby';
+
       // Pass this specific city name to the backend
       const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
         p_user_id: user?.id,
         p_user_lat: currentLat,
         p_user_long: currentLong,
-        p_city: city // This ensures the feed matches the geocoded city
+        p_city: city
       });
 
       if (error) throw error;
@@ -448,10 +482,10 @@ const Feed = () => {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h1 className="text-xl font-bold flex items-center gap-2">
-                    Discover <span className="text-primary">{milestone?.zone_name}</span>
+                    Discover <span className="text-primary">{locationName && locationName !== 'Detecting...' ? locationName : (milestone?.zone_name || 'Nearby')}</span>
                   </h1>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> City: {geocodedCity || "Detecting..."}
+                    <MapPin className="w-3 h-3" /> {geocodedCity || "Detecting location..."}
                   </p>
                 </div>
                 <div className="flex items-center gap-2"> 
