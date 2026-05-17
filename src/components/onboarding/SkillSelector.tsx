@@ -171,7 +171,7 @@ export function SkillSelector({
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[500px] p-8 animate-in fade-in zoom-in-95 duration-300">
-        <div className="text-center space-y-6">
+        <div className="text-center justify-center space-y-6">
           <div className="relative w-20 h-20 mx-auto">
             <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" />
             <div className="relative w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
