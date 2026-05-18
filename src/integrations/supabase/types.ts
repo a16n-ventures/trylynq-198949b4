@@ -3774,7 +3774,7 @@ export type Database = {
       }
     }
     Enums: {
-      account_type: "personal" | "vendor"
+      account_type: "personal" | "business"
       app_role: "user" | "moderator" | "admin" | "super_admin"
       "Event Boost": "event_boost"
       "Full Package": "full_package"
@@ -3924,7 +3924,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      account_type: ["personal", "vendor"],
+      account_type: ["personal", "business"],
       app_role: ["user", "moderator", "admin", "super_admin"],
       "Event Boost": ["event_boost"],
       "Full Package": ["full_package"],
