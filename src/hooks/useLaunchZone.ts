@@ -2,10 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface LaunchZoneResult {
-  isInLaunchZone: boolean | null; // null = still loading
-  isWithinCity: boolean;          // true = user is inside a registered city
-  cityName: string | null;        // Enforced as the strict narrow location name (e.g., Kubwa)
-  parentCity: string | null;      // The overarching capital/state text (e.g., Federal Capital Territory)
+  isInLaunchZone: boolean | null; 
+  isWithinCity: boolean;          
+  cityName: string | null;        
   currentCount: number;
   targetCount: number;
   isLoading: boolean;
@@ -29,10 +28,9 @@ export function useLaunchZone(
   const [result, setResult] = useState<LaunchZoneResult>({
     isInLaunchZone: null,
     isWithinCity: false,
-    cityName: null,
-    parentCity: null,
+    cityName: 'Detecting...', // Safe fallback text
     currentCount: 0,
-    targetCount: 0,
+    targetCount: 500,
     isLoading: true,
   });
 
@@ -49,20 +47,15 @@ export function useLaunchZone(
     if (lat == null || lon == null) return;
 
     try {
-      // 1. Fetch precise reverse geocoded entries down to actual coordinates
       let detectedZone = 'Nearby';
-      let detectedParent = 'Capital City';
       
       try {
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`);
         if (res.ok) {
           const data = await res.json();
           const addr = data.address || {};
-          
-          // CRITICAL: Strictly prioritize the precise residential region first
+          // Narrowest accurate coordinate match
           detectedZone = addr.suburb || addr.neighbourhood || addr.quarter || addr.village || addr.town || addr.city || 'Nearby';
-          // Extract macro capital layer
-          detectedParent = addr.city || addr.county || addr.state_district || addr.state || 'Capital City';
         }
       } catch (e) {
         console.error("Reverse geocoding error:", e);
@@ -70,7 +63,6 @@ export function useLaunchZone(
 
       if (cancelled.current) return;
 
-      // 2. PRECISE MATCHING: Round user coords to 2 decimal places
       const roundedLat = parseFloat(lat.toFixed(2));
       const roundedLon = parseFloat(lon.toFixed(2));
 
@@ -86,7 +78,6 @@ export function useLaunchZone(
         return;
       }
 
-      // 3. CHECK CITY_MILESTONES
       const match = milestones.find(m => {
         const mLatFixed = parseFloat(m.center_lat.toFixed(2));
         const mLonFixed = parseFloat(m.center_long.toFixed(2));
@@ -99,18 +90,15 @@ export function useLaunchZone(
       if (match) {
         cityRef.current = match.city_name;
         
-        const { count, error: countError } = await supabase
+        const { count } = await supabase
           .from('city_pioneers')
           .select('*', { count: 'exact', head: true })
           .eq('city_name', match.city_name);
           
-        if (countError) console.error("Count Error:", countError);
-          
         setResult({
           isInLaunchZone: match.is_unlocked === true,
           isWithinCity: true,
-          cityName: detectedZone, // Enforce the narrow geocoded locality across pages
-          parentCity: detectedParent, // Stored to display as the soft subtext
+          cityName: detectedZone, // Forced narrow coordinate identity
           currentCount: count || 0, 
           targetCount: match.target_count || 500,
           isLoading: false,
@@ -118,10 +106,8 @@ export function useLaunchZone(
         return;
       }
 
-      // 4. COMING SOON FALLBACK
-      cityRef.current = null;
+      // Waiting list fallback block
       let waitlistCount = 0;
-
       if (detectedZone) {
         const { count } = await supabase
           .from('waitlist')
@@ -134,9 +120,8 @@ export function useLaunchZone(
         isInLaunchZone: false,
         isWithinCity: false,
         cityName: detectedZone,
-        parentCity: detectedParent,
         currentCount: waitlistCount,
-        targetCount: 0,
+        targetCount: 500,
         isLoading: false,
       });
 
