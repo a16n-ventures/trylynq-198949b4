@@ -170,9 +170,8 @@ export default function Events() {
   const userId = user?.id;
   const queryClient = useQueryClient();
   const { location, isLoading: locationLoading } = useGeolocation();
-  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
-  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
-  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity); 
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName, parentCity }
+  = useLaunchZone(location?.latitude, location?.longitude); 
   
   const [milestone, setMilestone] = useState<{ current: number; target: number; is_unlocked: boolean; zone_name?: string } | null>(null);
   const [locationName, setLocationName] = useState("Detecting..."); 
@@ -714,10 +713,6 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
   const myPastEvents = filteredMyEvents.filter(e => !isEventActive(e.start_date));
   
   const filteredAttendingEvents = filterEvents(attendingEvents); 
-  
-  const handleCityResolved = useCallback((city: string) => {
-    setGeocodedCity(prev => prev === city ? prev : city);
-  }, []);
 
   return (
     <LaunchZoneGuard
@@ -728,11 +723,10 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
       cityName={launchCityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0}
-      onCityResolved={handleCityResolved}
     >
       <div className="container-mobile py-4 space-y-6 pb-24">
         <div className="flex items-center justify-between px-1">
-          <h1 className="text-2xl font-bold tracking-tight">Events in <span className="text-primary">{launchCityName}</span></h1>
+          <h1 className="text-2xl font-bold tracking-tight">Events in <span className="text-primary">{isLoading ? "Detecting..." : cityName}</span></h1>
         </div>
 
         <div className="relative">
