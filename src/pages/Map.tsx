@@ -82,9 +82,8 @@ const MapPage = () => {
   
   // Global State
   const { location, requestLocation, isLoading: locationLoading, error: locationError } = useGeolocation();
-  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
-  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
-  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName }
+  = useLaunchZone(location?.latitude, location?.longitude);
   const { friends = [] } = useFriends(user?.id);
 
   // Local State
@@ -464,21 +463,16 @@ const MapPage = () => {
     if (!q) return list;
     return list.filter((item: any) => (item.name || item.title).toLowerCase().includes(q));
   }, [searchQuery, friendsMapped, events, nearbyBusinesses, activeView]);
-  
-  const handleCityResolved = useCallback((city: string) => {
-    setGeocodedCity(prev => prev === city ? prev : city);
-  }, []);
 
   return (
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={!!launchCityName}
+      isWithinCity={cityName}
       isInLaunchZone={isInLaunchZone}
-      cityName={launchCityName}
+      cityName={cityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0} 
-      onCityResolved={handleCityResolved}
     >
       <div className="relative h-screen w-screen overflow-hidden bg-background">
         
