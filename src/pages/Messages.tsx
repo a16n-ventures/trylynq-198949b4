@@ -60,9 +60,8 @@ export default function Messages() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { location, isLoading: locationLoading } = useGeolocation();
-  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
-  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
-  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName }
+  = useLaunchZone(location?.latitude, location?.longitude);
 
   // State
   const [activeTab, setActiveTab] = useState<ChatType>('dm');
@@ -550,22 +549,17 @@ export default function Messages() {
         break;
     }
   }; 
-  
-  const handleCityResolved = useCallback((city: string) => {
-    setGeocodedCity(prev => prev === city ? prev : city);
-  }, []);
 
   // --- RENDER ---
   return (
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={!!launchCityName}
+      isWithinCity={isWithinCity}
       isInLaunchZone={isInLaunchZone}
-      cityName={launchCityName}
+      cityName={cityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0} 
-      onCityResolved={handleCityResolved} 
     >
       <div className="flex h-screen bg-background overflow-hidden">
         
@@ -574,7 +568,7 @@ export default function Messages() {
           {/* Header */}
           <div className="p-4 border-b bg-background/50 backdrop-blur-sm sticky top-0 z-10">
             <div className="flex items-center justify-between mb-4">
-               <h1 className="text-xl font-bold">Messages in <span className="text-primary">{launchCityName}</span></h1>
+               <h1 className="text-xl font-bold">Messages in <span className="text-primary">{launchZoneLoading ? "Detecting..." : (cityName || "Nearby")}</span></h1>
                <Button size="icon" variant="ghost" className="rounded-full bg-primary/10 text-primary hover:bg-primary/20" onClick={handleAddNew}>
                   <Plus className="w-5 h-5" />
                </Button>
