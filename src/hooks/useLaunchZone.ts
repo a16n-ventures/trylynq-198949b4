@@ -4,7 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 export interface LaunchZoneResult {
   isInLaunchZone: boolean | null; // null = still loading
   isWithinCity: boolean;          // true = user is inside a registered city
-  cityName: string | null;
+  cityName: string | null;        // Enforced as the strict narrow location name (e.g., Kubwa)
+  parentCity: string | null;      // The overarching capital/state text (e.g., Federal Capital Territory)
   currentCount: number;
   targetCount: number;
   isLoading: boolean;
@@ -23,13 +24,13 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 
 export function useLaunchZone(
   latitude: number | null | undefined,
-  longitude: number | null | undefined,
-  resolvedCityName?: string | null,
+  longitude: number | null | undefined
 ): LaunchZoneResult {
   const [result, setResult] = useState<LaunchZoneResult>({
     isInLaunchZone: null,
     isWithinCity: false,
     cityName: null,
+    parentCity: null,
     currentCount: 0,
     targetCount: 0,
     isLoading: true,
@@ -48,11 +49,31 @@ export function useLaunchZone(
     if (lat == null || lon == null) return;
 
     try {
-      // 1. PRECISE MATCHING: Round user coords to 2 decimal places
+      // 1. Fetch precise reverse geocoded entries down to actual coordinates
+      let detectedZone = 'Nearby';
+      let detectedParent = 'Capital City';
+      
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`);
+        if (res.ok) {
+          const data = await res.json();
+          const addr = data.address || {};
+          
+          // CRITICAL: Strictly prioritize the precise residential region first
+          detectedZone = addr.suburb || addr.neighbourhood || addr.quarter || addr.village || addr.town || addr.city || 'Nearby';
+          // Extract macro capital layer
+          detectedParent = addr.city || addr.county || addr.state_district || addr.state || 'Capital City';
+        }
+      } catch (e) {
+        console.error("Reverse geocoding error:", e);
+      }
+
+      if (cancelled.current) return;
+
+      // 2. PRECISE MATCHING: Round user coords to 2 decimal places
       const roundedLat = parseFloat(lat.toFixed(2));
       const roundedLon = parseFloat(lon.toFixed(2));
 
-      // Fetch milestones to find a match in the city_milestones table
       const { data: milestones, error } = await supabase
         .from('city_milestones')
         .select('*')
@@ -65,15 +86,12 @@ export function useLaunchZone(
         return;
       }
 
-      // 2. CHECK CITY_MILESTONES: Match by 2-decimal coords or radius
+      // 3. CHECK CITY_MILESTONES
       const match = milestones.find(m => {
         const mLatFixed = parseFloat(m.center_lat.toFixed(2));
         const mLonFixed = parseFloat(m.center_long.toFixed(2));
-        
-        // Strict match on the table's latitude and longitude columns
         if (mLatFixed === roundedLat && mLonFixed === roundedLon) return true;
         
-        // Fallback radius match from original file
         const dist = haversineKm(lat, lon, m.center_lat, m.center_long);
         return dist <= (m.radius_km ?? 25);
       });
@@ -81,11 +99,6 @@ export function useLaunchZone(
       if (match) {
         cityRef.current = match.city_name;
         
-        // 3. COUNT: Use city_pioneers table — the authoritative source for
-        //    users who actually signed up within this city's radius.
-        //    This replaces the broken user_locations bounding-box query
-        //    which had an asymmetric range (+0.89 instead of +0.09) that
-        //    was scooping up users from neighbouring cities.
         const { count, error: countError } = await supabase
           .from('city_pioneers')
           .select('*', { count: 'exact', head: true })
@@ -96,7 +109,8 @@ export function useLaunchZone(
         setResult({
           isInLaunchZone: match.is_unlocked === true,
           isWithinCity: true,
-          cityName: match.city_name,
+          cityName: detectedZone, // Enforce the narrow geocoded locality across pages
+          parentCity: detectedParent, // Stored to display as the soft subtext
           currentCount: count || 0, 
           targetCount: match.target_count || 500,
           isLoading: false,
@@ -104,23 +118,23 @@ export function useLaunchZone(
         return;
       }
 
-      // 4. COMING SOON UI: Fallback for unmatched cities
+      // 4. COMING SOON FALLBACK
       cityRef.current = null;
-      const geocodedCity = resolvedCityName?.toLowerCase().trim() ?? null;
       let waitlistCount = 0;
 
-      if (geocodedCity) {
+      if (detectedZone) {
         const { count } = await supabase
           .from('waitlist')
           .select('*', { count: 'exact', head: true })
-          .ilike('city', geocodedCity);
+          .ilike('city', detectedZone);
         if (!cancelled.current) waitlistCount = count ?? 0;
       }
 
       setResult({
         isInLaunchZone: false,
         isWithinCity: false,
-        cityName: geocodedCity,
+        cityName: detectedZone,
+        parentCity: detectedParent,
         currentCount: waitlistCount,
         targetCount: 0,
         isLoading: false,
@@ -130,14 +144,13 @@ export function useLaunchZone(
       console.error('[LaunchZone] Error:', err);
       setResult(prev => ({ ...prev, isLoading: false }));
     }
-  }, [resolvedCityName]);
+  }, []);
 
   useEffect(() => {
     if (latitude == null || longitude == null) return;
     const cancelled = { current: false };
     checkZone(cancelled);
 
-    // 5. REAL-TIME UPDATES: Watch city_pioneers (authoritative count) and milestones
     const pioneersChannel = supabase.channel('pioneers-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'city_pioneers' }, () => checkZone(cancelled))
       .subscribe();
@@ -146,26 +159,12 @@ export function useLaunchZone(
       .on('postgres_changes', { event: '*', schema: 'public', table: 'city_milestones' }, () => checkZone(cancelled))
       .subscribe();
 
-    // 6. WAITLIST REAL-TIME: Restored from original file
-    const waitlistChannel = resolvedCityName 
-      ? supabase.channel('waitlist-updates')
-          .on('postgres_changes', 
-            { event: 'INSERT', schema: 'public', table: 'waitlist', filter: `city=eq.${resolvedCityName.toLowerCase().trim()}` },
-            () => {
-              if (!cityRef.current) {
-                setResult(prev => ({ ...prev, currentCount: prev.currentCount + 1 }));
-              }
-            }
-          ).subscribe()
-      : null;
-
     return () => {
       cancelled.current = true;
       supabase.removeChannel(pioneersChannel);
       supabase.removeChannel(milestoneChannel);
-      if (waitlistChannel) supabase.removeChannel(waitlistChannel);
     };
-  }, [latitude, longitude, resolvedCityName, checkZone]);
+  }, [latitude, longitude, checkZone]);
 
   return result;
 }
