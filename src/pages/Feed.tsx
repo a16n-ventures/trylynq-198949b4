@@ -115,9 +115,8 @@ const Feed = () => {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const { location, isLoading: locationLoading } = useGeolocation();
   const [locationName, setLocationName] = useState("Detecting...");
-  const [geocodedCity, setGeocodedCity] = useState<string | null>(null); 
-  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName: launchCityName }
-  = useLaunchZone(location?.latitude, location?.longitude, geocodedCity);
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName, parentCity }
+  = useLaunchZone(location?.latitude, location?.longitude);
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
@@ -261,20 +260,6 @@ const Feed = () => {
         addr.county       ||
         addr.state        ||
         'Nearby';
-
-      // City name = broader administrative area (shown in the muted subline)
-      const cityName =
-        addr.city         ||
-        addr.county       ||
-        addr.state_district||
-        addr.state        ||
-        zoneName;
-
-      setLocationName(zoneName);
-      setGeocodedCity(cityName);
-    } catch {
-      // Geocoding is non-critical — feed still loads without it
-    }
   }, []);
 
   // 1. In your Feed component, use the geocoded name for the RPC
@@ -285,7 +270,7 @@ const Feed = () => {
       const currentLong = location?.longitude;
 
       // Pass whatever we already geocoded — don't block the feed on geocoding
-      const city = geocodedCity || locationName || 'Nearby';
+      const city = cityName || 'Nearby';
 
       // Pass this specific city name to the backend
       const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
@@ -459,10 +444,6 @@ const Feed = () => {
   };
 
   const displayEvents = getFilteredEvents();
-    
-  const handleCityResolved = useCallback((city: string) => {
-    setGeocodedCity(prev => prev === city ? prev : city);
-  }, []);
 
   return (
     <LaunchZoneGuard
@@ -470,10 +451,9 @@ const Feed = () => {
       locationDetected={!!location}
       isWithinCity={isWithinCity}
       isInLaunchZone={isInLaunchZone}
-      cityName={launchCityName}
+      cityName={cityName}
       currentCount={currentCount || 0}
       targetCount={targetCount || 0}
-      onCityResolved={handleCityResolved}
     >
       <div className="min-h-screen bg-background pb-24">
         {/* HEADER */}
@@ -482,10 +462,10 @@ const Feed = () => {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h1 className="text-xl font-bold flex items-center gap-2">
-                    Discover <span className="text-primary">{launchCityName || (locationName !== 'Detecting...' ? locationName : 'Nearby')}</span>
+                    Discover <span className="text-primary">{launchZoneLoading ? "Detecting..." : (cityName || "Nearby")}</span>
                   </h1>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> {geocodedCity || "Detecting location..."}
+                    <MapPin className="w-3 h-3" /> {parentCity}
                   </p>
                 </div>
                 <div className="flex items-center gap-2"> 

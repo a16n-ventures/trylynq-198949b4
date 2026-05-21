@@ -718,7 +718,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     <LaunchZoneGuard
       isLoading={locationLoading || launchZoneLoading}
       locationDetected={!!location}
-      isWithinCity={!!cityName}
+      isWithinCity={isWithinCity}
       isInLaunchZone={isInLaunchZone}
       cityName={cityName}
       currentCount={currentCount || 0}
