@@ -726,7 +726,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
     >
       <div className="container-mobile py-4 space-y-6 pb-24">
         <div className="flex items-center justify-between px-1">
-          <h1 className="text-2xl font-bold tracking-tight">Events in <span className="text-primary">{isLoading ? "Detecting..." : cityName}</span></h1>
+          <h1 className="text-2xl font-bold tracking-tight">Events in <span className="text-primary">{launchZoneLoading ? "Detecting..." : (cityName || "Nearby")}</span></h1>
         </div>
 
         <div className="relative">
