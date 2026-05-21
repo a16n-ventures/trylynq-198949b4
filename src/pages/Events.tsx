@@ -170,7 +170,7 @@ export default function Events() {
   const userId = user?.id;
   const queryClient = useQueryClient();
   const { location, isLoading: locationLoading } = useGeolocation();
-  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName, parentCity }
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName }
   = useLaunchZone(location?.latitude, location?.longitude); 
   
   const [milestone, setMilestone] = useState<{ current: number; target: number; is_unlocked: boolean; zone_name?: string } | null>(null);
