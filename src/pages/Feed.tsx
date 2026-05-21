@@ -129,8 +129,8 @@ const Feed = () => {
     current: currentCount,
     target: targetCount,
     is_unlocked: isInLaunchZone ?? false,
-    zone_name: launchCityName || undefined,
-  }), [currentCount, targetCount, isInLaunchZone, launchCityName]);
+    zone_name: cityName || undefined,
+  }), [currentCount, targetCount, isInLaunchZone, cityName]);
 
   const { data: userProfile } = useQuery({
     queryKey: ['user-profile-prefs', user?.id],
@@ -169,7 +169,7 @@ const Feed = () => {
 
     fetchSmartFeed();
     checkPremium();
-  }, [user, location?.latitude, location?.longitude, isInLaunchZone, launchCityName]);
+  }, [user, location?.latitude, location?.longitude, isInLaunchZone, cityName]);
 
   // Realtime: refresh feed when RSVPs change so attendee counts update live
   useEffect(() => {
