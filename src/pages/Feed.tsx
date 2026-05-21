@@ -111,12 +111,11 @@ const Feed = () => {
   const [communities, setCommunities] = useState<FeedCommunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  // --- NEW: Explorer UX State ---
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const { location, isLoading: locationLoading } = useGeolocation();
-  const [locationName, setLocationName] = useState("Detecting...");
-  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName, parentCity }
-  = useLaunchZone(location?.latitude, location?.longitude);
+  
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName } =
+    useLaunchZone(location?.latitude, location?.longitude);
   
   // UI State
   const [activeTab, setActiveTab] = useState("for_you");
@@ -124,6 +123,7 @@ const Feed = () => {
   const [selectedCommunity, setSelectedCommunity] = useState<FeedCommunity | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [isPremium, setIsPremium] = useState(false);
+
   // Pioneer milestone derived from launch zone hook
   const milestone = useMemo(() => ({
     current: currentCount,
@@ -146,6 +146,20 @@ const Feed = () => {
   const lastFetchedLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const hasFetchedRef = useRef(false);
 
+  // Isolated geocoding properly closed to solve the compiler crash
+  const geocodeLocation = useCallback(async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      if (!res.ok) return;
+      await res.json();
+    } catch (e) {
+      console.error("Geocode suppression capture:", e);
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) return;
 
@@ -162,7 +176,6 @@ const Feed = () => {
 
     if (lat && lng) {
       lastFetchedLocationRef.current = { lat, lng };
-      // Geocode separately — never blocks the feed
       geocodeLocation(lat, lng);
     }
     hasFetchedRef.current = true;
@@ -171,7 +184,7 @@ const Feed = () => {
     checkPremium();
   }, [user, location?.latitude, location?.longitude, isInLaunchZone, cityName]);
 
-  // Realtime: refresh feed when RSVPs change so attendee counts update live
+  // Realtime updates
   useEffect(() => {
     if (!user) return;
     const ch = supabase
@@ -181,7 +194,6 @@ const Feed = () => {
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   useEffect(() => {
@@ -236,43 +248,13 @@ const Feed = () => {
     setIsPremium(!!subData || (featureData && featureData.length > 0));
   };
   
-  // Stable geocoding — runs once per significant location change, isolated
-  // from the feed fetch so a Nominatim failure never kills the feed.
-  const geocodeLocation = useCallback(async (lat: number, lng: number) => {
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`,
-        { headers: { 'Accept-Language': 'en' } }
-      );
-      if (!res.ok) return; // rate-limited or offline — silently skip
-      const data = await res.json();
-      const addr = data.address || {};
-
-      // Zone name = most specific populated place (shown in "Discover X")
-      // Priority: suburb > neighbourhood > quarter > village > town > city
-      const zoneName =
-        addr.suburb       ||
-        addr.neighbourhood||
-        addr.quarter      ||
-        addr.village      ||
-        addr.town         ||
-        addr.city         ||
-        addr.county       ||
-        addr.state        ||
-        'Nearby';
-  }, []);
-
-  // 1. In your Feed component, use the geocoded name for the RPC
   const fetchSmartFeed = async () => {
     setLoading(true);
     try {
       const currentLat = location?.latitude;
       const currentLong = location?.longitude;
-
-      // Pass whatever we already geocoded — don't block the feed on geocoding
       const city = cityName || 'Nearby';
 
-      // Pass this specific city name to the backend
       const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
         p_user_id: user?.id,
         p_user_lat: currentLat,
@@ -291,7 +273,6 @@ const Feed = () => {
         const attendingIds = new Set(myAttendance?.map(a => a.event_id) || []);
 
         if (response.events) {
-          // --- FIXED: Fetch creator verification status since the RPC doesn't return it ---
           const creatorIds = Array.from(new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))) as string[];
           const { data: creatorProfiles } = creatorIds.length > 0
             ? await supabase
@@ -312,7 +293,6 @@ const Feed = () => {
             distanceKm: currentLat && currentLong && e.latitude && e.longitude
               ? Number(calculateDistanceKm(currentLat, currentLong, Number(e.latitude), Number(e.longitude)).toFixed(1))
               : null,
-            // --- INJECT VERIFIED STATUS HERE ---
             is_verified: verifiedCreators.has(e.creator_id)
           })));
         }
@@ -324,7 +304,6 @@ const Feed = () => {
             seen.add(c.id);
             return true;
           });
-          // Reconcile real member counts
           const ids = unique.map((c: any) => c.id);
           const { data: members } = ids.length
             ? await supabase.from('community_members').select('community_id').in('community_id', ids)
@@ -405,21 +384,17 @@ const Feed = () => {
     }
   };
 
-  // --- MODIFIED: Smart Feed Logic for Explorers ---
   const getFilteredEvents = () => {
     let filtered = [...events];
 
-    // 1. Trust Filter: Hide unvouched events if toggled
     if (verifiedOnly) {
       filtered = filtered.filter(e => e.creator_id && e.is_verified); 
-      // Note: is_verified comes from the backend payload
     }
 
     if (searchQuery) {
       filtered = filtered.filter(e => e.title.toLowerCase().includes(searchQuery.toLowerCase()));
     }
 
-    // 2. Prioritized View: Nearby first for 'for_you', then friends-going & match score
     if (activeTab === 'for_you') {
       filtered.sort((a, b) => {
         const da = a.distanceKm ?? 9999;
@@ -444,6 +419,7 @@ const Feed = () => {
   };
 
   const displayEvents = getFilteredEvents();
+  const currentCityDisplay = cityName || "Nearby";
 
   return (
     <LaunchZoneGuard
@@ -462,14 +438,10 @@ const Feed = () => {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h1 className="text-xl font-bold flex items-center gap-2">
-                    Discover <span className="text-primary">{launchZoneLoading ? "Detecting..." : (cityName || "Nearby")}</span>
+                    Discover <span className="text-primary">{launchZoneLoading ? "Detecting..." : currentCityDisplay}</span>
                   </h1>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> {parentCity}
-                  </p>
                 </div>
                 <div className="flex items-center gap-2"> 
-                  {/* --- NEW: Trust Filter Toggle --- */}
                   <Button 
                     variant={verifiedOnly ? "default" : "outline"} 
                     size="sm" 
@@ -533,7 +505,6 @@ const Feed = () => {
                             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
                             <div className="absolute top-3 left-3 flex gap-2">
                                 <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>{status.label}</Badge>
-                                {/* --- Explorer UI: High Match Score Badge --- */}
                                 {event.match_score && event.match_score > 80 && (
                                   <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
                                     <Sparkles className="w-3 h-3 mr-1 text-yellow-400" /> {event.match_score}% Vibe Match
@@ -541,7 +512,6 @@ const Feed = () => {
                                 )}
                               </div>
                               
-                              {/* --- NEW: Vouch Badge for Verified Organizers --- */}
                               {event.is_verified && (
                                 <div className="absolute top-3 right-16">
                                    <div className="bg-primary/90 text-white p-1.5 rounded-full shadow-lg backdrop-blur-md">
@@ -557,7 +527,7 @@ const Feed = () => {
                               <div className="absolute bottom-3 left-3 right-3 text-white">
                                 <h3 className="font-black text-xl leading-tight line-clamp-2">{event.title}</h3>
                                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.location || locationName}</span> 
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.location || currentCityDisplay}</span> 
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
                                   {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
@@ -568,11 +538,10 @@ const Feed = () => {
                             <CardContent className="p-4">
                               <h3 className="sr-only">{event.title}</h3>
                                <div className="flex items-center text-xs text-muted-foreground gap-3">
-                                <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || locationName}</span> 
+                                <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || currentCityDisplay}</span> 
                               </div> 
                               
                               <div className="mt-4 flex items-center justify-between">
-                                {/* --- Explorer UI: Large Avatar Stacks for Social Proof --- */}
                                 <div className="flex items-center -space-x-3">
                                   {(event.friend_images || []).slice(0, 4).map((img, i) => (
                                     <Avatar key={i} className="w-9 h-9 border-2 border-background shadow-sm">
