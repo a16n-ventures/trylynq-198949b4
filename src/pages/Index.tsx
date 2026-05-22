@@ -91,7 +91,7 @@ const Index = () => {
   const { user, loading } = useAuth(); 
   const navigate = useNavigate();
   const currentYear = new Date().getFullYear();
-  const targetDate = new Date('2026-06-01T00:00:00');
+  const targetDate = new Date('2026-05-23T00:00:00');
   const daysLeft = Math.ceil((targetDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
 
   useEffect(() => {
@@ -293,7 +293,7 @@ const Index = () => {
         <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(232,81,26,0.25)' }}>
           <div className="relative h-64 w-full">
             <img
-              src="/ahmia-fct-launch.jpg"
+              src="/abuja-1.png"
               alt="Ahmia FCT Launch"
               loading="lazy"
               width={1280}
@@ -312,10 +312,10 @@ const Index = () => {
                 Abuja, FCT
               </p>
               <h3 className="text-2xl font-black leading-tight mb-1" style={{ letterSpacing: '-0.03em' }}>
-                Ahmia FCT Launch
+                FCT Launch
               </h3>
               <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                Events. Hangouts. At the heart of FCT.
+                Events. Hangouts. FCT. Where vibes and beauty blends.
               </p>
             </div>
           </div>
