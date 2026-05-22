@@ -63,8 +63,8 @@ export function useLaunchZone(
 
       if (cancelled.current) return;
 
-      const roundedLat = parseFloat(lat.toFixed(2));
-      const roundedLon = parseFloat(lon.toFixed(2));
+      const roundedLat = parseFloat(lat.toFixed(5));
+      const roundedLon = parseFloat(lon.toFixed(5));
 
       const { data: milestones, error } = await supabase
         .from('city_milestones')
@@ -79,8 +79,8 @@ export function useLaunchZone(
       }
 
       const match = milestones.find(m => {
-        const mLatFixed = parseFloat(m.center_lat.toFixed(2));
-        const mLonFixed = parseFloat(m.center_long.toFixed(2));
+        const mLatFixed = parseFloat(m.center_lat.toFixed(5));
+        const mLonFixed = parseFloat(m.center_long.toFixed(5));
         if (mLatFixed === roundedLat && mLonFixed === roundedLon) return true;
         
         const dist = haversineKm(lat, lon, m.center_lat, m.center_long);
