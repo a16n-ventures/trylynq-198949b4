@@ -114,7 +114,7 @@ const Feed = () => {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const { location, isLoading: locationLoading } = useGeolocation();
   
-  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName } =
+  const { isInLaunchZone, isWithinCity, isLoading: launchZoneLoading, currentCount, targetCount, cityName, parentCity } =
     useLaunchZone(location?.latitude, location?.longitude);
   
   // UI State
@@ -439,7 +439,10 @@ const Feed = () => {
                 <div>
                   <h1 className="text-xl font-bold flex items-center gap-2">
                     Discover <span className="text-primary">{launchZoneLoading ? "Detecting..." : currentCityDisplay}</span>
-                  </h1>
+                  </h1> 
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> {parentCity || "Detecting..."}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2"> 
                   <Button 
