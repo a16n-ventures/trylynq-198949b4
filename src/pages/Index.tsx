@@ -347,7 +347,7 @@ const Index = () => {
             <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 5%, rgba(0,0,0,0.35) 55%, transparent 100%)' }} />
             <span
               className="absolute top-4 left-4 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full"
-              style={{ background: '#E8511A', color: '#fff' }}
+              style={{ background: 'rgba(255,255,255,0.4)', color: '#fff' }}
             >
               🔥 Beta Waitlist
             </span>
@@ -369,7 +369,7 @@ const Index = () => {
             </div> */}
             <button
               className="flex items-center gap-2 font-bold text-sm px-5 py-3 rounded-xl transition-all active:scale-95"
-              style={{ background: '#E8511A', color: '#fff' }}
+              style={{ background: 'rgba(255,255,255,0.4)', color: '#fff' }}
               onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
             >
               JOIN the waitlist
