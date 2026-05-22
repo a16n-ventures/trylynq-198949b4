@@ -293,8 +293,8 @@ const Index = () => {
         <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(232,81,26,0.25)' }}>
           <div className="relative h-64 w-full">
             <img
-              src="/ahmia-zaria-launch.jpg"
-              alt="Ahmia Zaria Launch — ABU campus festival at golden hour"
+              src="/ahmia-fct-launch.jpg"
+              alt="Ahmia FCT Launch"
               loading="lazy"
               width={1280}
               height={768}
@@ -309,13 +309,13 @@ const Index = () => {
             </span>
             <div className="absolute bottom-0 left-0 right-0 p-5">
               <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#FFB088' }}>
-                June 1 · ABU Zaria
+                Abuja, FCT
               </p>
               <h3 className="text-2xl font-black leading-tight mb-1" style={{ letterSpacing: '-0.03em' }}>
-                Ahmia Zaria Launch
+                Ahmia FCT Launch
               </h3>
               <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                Music. Jollof. Real link-ups. The day Northern Nigeria gets its city.
+                Events. Hangouts. At the heart of FCT.
               </p>
             </div>
           </div>
@@ -329,6 +329,50 @@ const Index = () => {
               onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
             >
               RSVP free
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(232,81,26,0.25)' }}>
+          <div className="relative h-64 w-full">
+            <img
+              src="/ahmia-zaria-launch.jpg"
+              alt="Zaria Launch — ABU campus festival at golden hour"
+              loading="lazy"
+              width={1280}
+              height={768}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 5%, rgba(0,0,0,0.35) 55%, transparent 100%)' }} />
+            <span
+              className="absolute top-4 left-4 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full"
+              style={{ background: '#E8511A', color: '#fff' }}
+            >
+              🔥 Beta Waitlist
+            </span>
+            <div className="absolute bottom-0 left-0 right-0 p-5">
+              <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#FFB088' }}>
+                ABU Zaria
+              </p>
+              <h3 className="text-2xl font-black leading-tight mb-1" style={{ letterSpacing: '-0.03em' }}>
+                Zaria Launch
+              </h3>
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                Music. Jollof. Real link-ups. The day Northern Nigeria gets its city.
+              </p>
+            </div>
+          </div>
+          <div className="p-5 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+           {/* <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              {daysLeft > 0 ? <><span className="font-black text-white">{daysLeft}</span> days to go</> : 'Live now'}
+            </div> */}
+            <button
+              className="flex items-center gap-2 font-bold text-sm px-5 py-3 rounded-xl transition-all active:scale-95"
+              style={{ background: '#E8511A', color: '#fff' }}
+              onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
+            >
+              JOIN the waitlist
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
