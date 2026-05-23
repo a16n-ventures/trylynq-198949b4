@@ -182,7 +182,7 @@ const Feed = () => {
 
     fetchSmartFeed();
     checkPremium();
-  }, [user, location?.latitude, location?.longitude, isInLaunchZone, cityName]);
+  }, [user, location?.latitude, location?.longitude]);
 
   // Realtime updates
   useEffect(() => {
@@ -248,82 +248,73 @@ const Feed = () => {
     setIsPremium(!!subData || (featureData && featureData.length > 0));
   };
   
-  const fetchSmartFeed = async () => {
+    const fetchSmartFeed = async () => {
+    if (!user?.id) return;  // guard #1
     setLoading(true);
     try {
-      const currentLat = location?.latitude;
-      const currentLong = location?.longitude;
-      const city = cityName || 'Nearby';
-
+      const currentLat = location?.latitude ?? null;
+      const currentLong = location?.longitude ?? null;
+      const city = cityName || null;  // fix #1 — never pass 'Nearby'
+  
       const { data: rawResponse, error } = await supabase.rpc('generate_smart_feed', {
-        p_user_id: user?.id,
+        p_user_id: user.id,
         p_user_lat: currentLat,
         p_user_long: currentLong,
-        p_city: city
+        p_city: city,
       });
-
+  
       if (error) throw error;
-
+  
       const response = rawResponse as { events?: any[]; communities?: any[]; milestone?: any } | null;
-      if (response) {
-        const { data: myAttendance } = await supabase
-          .from('event_attendees')
-          .select('event_id')
-          .eq('user_id', user?.id || '');
-        const attendingIds = new Set(myAttendance?.map(a => a.event_id) || []);
-
-        if (response.events) {
-          const creatorIds = Array.from(new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))) as string[];
-          const { data: creatorProfiles } = creatorIds.length > 0
-            ? await supabase
-                .from('profiles')
-                .select('user_id, verification_status')
-                .in('user_id', creatorIds)
-            : { data: [] as Array<{ user_id: string; verification_status: string | null }> };
-            
-          const verifiedCreators = new Set(
-            creatorProfiles?.filter(p => p.verification_status === 'verified').map(p => p.user_id) || []
-          );
-
-          setEvents(response.events.map((e: any) => ({
-            ...e,
-            attendee_count: e.attendee_count || 0,
-            is_attending: attendingIds.has(e.id),
-            friend_images: e.friend_images || [],
-            distanceKm: currentLat && currentLong && e.latitude && e.longitude
-              ? Number(calculateDistanceKm(currentLat, currentLong, Number(e.latitude), Number(e.longitude)).toFixed(1))
-              : null,
-            is_verified: verifiedCreators.has(e.creator_id)
-          })));
-        }
-        
-        if (response.communities) {
-          const seen = new Set<string>();
-          const unique = response.communities.filter((c: any) => {
-            if (seen.has(c.id)) return false;
-            seen.add(c.id);
-            return true;
-          });
-          const ids = unique.map((c: any) => c.id);
-          const { data: members } = ids.length
-            ? await supabase.from('community_members').select('community_id').in('community_id', ids)
-            : { data: [] as any[] };
-          const realCount = new Map<string, number>();
-          (members || []).forEach((m: any) => {
-            realCount.set(m.community_id, (realCount.get(m.community_id) || 0) + 1);
-          });
-          setCommunities(unique.map((c: any) => ({
-            ...c,
-            avatar_url: c.cover_url || c.avatar_url || null,
-            is_premium: c.is_premium || false,
-            join_fee: c.join_fee || 0,
-            member_count: realCount.get(c.id) ?? (c.member_count || 0),
-          })));
-        }
+      if (!response) return;
+  
+      if (response.events) {
+        const creatorIds = Array.from(
+          new Set(response.events.map((e: any) => e.creator_id).filter(Boolean))
+        ) as string[];
+  
+        const { data: creatorProfiles } = creatorIds.length > 0
+          ? await supabase
+              .from('profiles')
+              .select('user_id, verification_status')
+              .in('user_id', creatorIds)
+          : { data: [] as Array<{ user_id: string; verification_status: string | null }> };
+  
+        const verifiedCreators = new Set(
+          creatorProfiles?.filter(p => p.verification_status === 'verified').map(p => p.user_id) || []
+        );
+  
+        setEvents(response.events.map((e: any) => ({
+          ...e,
+          is_attending: e.is_attending ?? false,  // use RPC value directly
+          attendee_count: e.attendee_count || 0,
+          friend_images: Array.isArray(e.friend_images) ? e.friend_images.filter(Boolean) : [],
+          distanceKm: currentLat && currentLong && e.latitude && e.longitude
+            ? Number(calculateDistanceKm(currentLat, currentLong, Number(e.latitude), Number(e.longitude)).toFixed(1))
+            : null,
+          is_verified: verifiedCreators.has(e.creator_id),
+        })));
       }
-    } catch (err) {
+  
+      if (response.communities) {
+        const seen = new Set<string>();
+        const unique = response.communities.filter((c: any) => {
+          if (seen.has(c.id)) return false;
+          seen.add(c.id);
+          return true;
+        });
+  
+        setCommunities(unique.map((c: any) => ({
+          ...c,
+          avatar_url: c.cover_url || c.avatar_url || null,
+          is_premium: c.is_premium || false,
+          join_fee: c.join_fee || 0,
+          member_count: c.member_count || 0,  // trust RPC count; no extra query needed
+        })));
+      }
+    } catch (err: any) {
       console.error("Feed Error:", err);
-      toast.error("Could not load discovery feed");
+      toast.error(err?.message || "Could not load discovery feed");
     } finally {
       setLoading(false);
     }
