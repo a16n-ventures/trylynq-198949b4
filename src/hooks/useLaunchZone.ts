@@ -4,7 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 export interface LaunchZoneResult {
   isInLaunchZone: boolean | null; 
   isWithinCity: boolean;          
-  cityName: string | null;        
+  cityName: string | null;        // narrow: suburb / neighbourhood
+  parentCity: string | null;      // broad: city / state for subtitle display
   currentCount: number;
   targetCount: number;
   isLoading: boolean;
@@ -28,7 +29,8 @@ export function useLaunchZone(
   const [result, setResult] = useState<LaunchZoneResult>({
     isInLaunchZone: null,
     isWithinCity: false,
-    cityName: 'Detecting...', // Safe fallback text
+    cityName: null,
+    parentCity: null,
     currentCount: 0,
     targetCount: 500,
     isLoading: true,
@@ -48,14 +50,21 @@ export function useLaunchZone(
 
     try {
       let detectedZone = 'Nearby';
-      
+      let detectedParentCity: string | null = null;
+
       try {
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`);
         if (res.ok) {
           const data = await res.json();
           const addr = data.address || {};
-          // Narrowest accurate coordinate match
+          // Narrow: suburb/neighbourhood for the main city label
           detectedZone = addr.suburb || addr.neighbourhood || addr.quarter || addr.village || addr.town || addr.city || 'Nearby';
+          // Broad: city → state → country for the subtitle "parent" label
+          detectedParentCity = addr.city || addr.state_district || addr.state || addr.country || null;
+          // Avoid showing same value twice (e.g. if detectedZone IS the city)
+          if (detectedParentCity === detectedZone) {
+            detectedParentCity = addr.state || addr.country || null;
+          }
         }
       } catch (e) {
         console.error("Reverse geocoding error:", e);
@@ -63,8 +72,8 @@ export function useLaunchZone(
 
       if (cancelled.current) return;
 
-      const roundedLat = parseFloat(lat.toFixed(5));
-      const roundedLon = parseFloat(lon.toFixed(5));
+      const roundedLat = parseFloat(lat.toFixed(2));
+      const roundedLon = parseFloat(lon.toFixed(2));
 
       const { data: milestones, error } = await supabase
         .from('city_milestones')
@@ -79,8 +88,8 @@ export function useLaunchZone(
       }
 
       const match = milestones.find(m => {
-        const mLatFixed = parseFloat(m.center_lat.toFixed(5));
-        const mLonFixed = parseFloat(m.center_long.toFixed(5));
+        const mLatFixed = parseFloat(m.center_lat.toFixed(2));
+        const mLonFixed = parseFloat(m.center_long.toFixed(2));
         if (mLatFixed === roundedLat && mLonFixed === roundedLon) return true;
         
         const dist = haversineKm(lat, lon, m.center_lat, m.center_long);
@@ -98,7 +107,8 @@ export function useLaunchZone(
         setResult({
           isInLaunchZone: match.is_unlocked === true,
           isWithinCity: true,
-          cityName: detectedZone, // Forced narrow coordinate identity
+          cityName: detectedZone,
+          parentCity: detectedParentCity,
           currentCount: count || 0, 
           targetCount: match.target_count || 500,
           isLoading: false,
@@ -120,6 +130,7 @@ export function useLaunchZone(
         isInLaunchZone: false,
         isWithinCity: false,
         cityName: detectedZone,
+        parentCity: detectedParentCity,
         currentCount: waitlistCount,
         targetCount: 500,
         isLoading: false,
