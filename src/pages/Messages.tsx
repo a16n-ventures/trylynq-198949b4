@@ -593,7 +593,7 @@ export default function Messages() {
                 <TabsTrigger value="event" className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                    Vibes
                 </TabsTrigger>
-                <TabsTrigger value="service" className={`rounded-lg text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-white ${user_type !== 'business' ? 'hidden' : ''}`}>
+                <TabsTrigger value="service" className="rounded-lg text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-white">
                   <Briefcase className="w-3 h-3 mr-1" />Services
                 </TabsTrigger>
               </TabsList>
