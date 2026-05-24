@@ -885,7 +885,7 @@ const EventDetail = () => {
     if (showEditDialog && event) {
       setEditTitle(event.title);
       setEditDescription(event.description);
-      setEditLocation(event.location);
+      setEditLocation(event_locations.location_name);
       setEditStartDate(event.start_date.slice(0, 16)); // Format for datetime-local input
       setEditTicketPrice(event.ticket_price.toString());
       setEditMaxAttendees(event.max_attendees?.toString() || '');
