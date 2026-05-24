@@ -323,16 +323,23 @@ const MapPage = () => {
   });
 
   const nearbyEventsForMap = useMemo(() => {
-    return events.map((e: any) => ({
-      user_id: e.id, 
-      latitude: e.latitude,
-      longitude: e.longitude,
-      markerType: 'event' as const,
-      is_sharing: true, 
-      updated_at: new Date().toISOString(),
-      profiles: { display_name: e.title, avatar_url: e.image_url }
-    }));
-  }, [events]);
+    return events
+      .filter((e: any) => {
+        // Use city center as fallback for official events with no coords
+        const lat = e.latitude ?? cityMilestone?.center_lat;
+        const lng = e.longitude ?? cityMilestone?.center_long;
+        return lat != null && lng != null;
+      })
+      .map((e: any) => ({
+        user_id: e.id,
+        latitude: e.latitude ?? cityMilestone?.center_lat,
+        longitude: e.longitude ?? cityMilestone?.center_long,
+        markerType: 'event' as const,
+        is_sharing: true,
+        updated_at: new Date().toISOString(),
+        profiles: { display_name: e.title, avatar_url: e.image_url }
+      }));
+  }, [events, cityMilestone]);
 
   const nearbyBusinessesForMap = useMemo(() => {
     return nearbyBusinesses.map((b: any) => ({
