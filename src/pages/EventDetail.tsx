@@ -569,25 +569,33 @@ const EventDetail = () => {
   });
   
   const editEventMutation = useMutation({
-      mutationFn: async () => {
-        if (!eventId || !user?.id) throw new Error('Missing data');
-        
-        const updates = {
-          title: editTitle.trim(),
-          description: editDescription.trim(),
-          location: editLocation.trim(),
-          start_date: new Date(editStartDate).toISOString(),
-          ticket_price: parseFloat(editTicketPrice) || 0,
-          max_attendees: editMaxAttendees ? parseInt(editMaxAttendees) : null,
-        };
-        
-        const { error } = await supabase
+    mutationFn: async () => {
+      if (!eventId || !user?.id) throw new Error('Missing data');
+      
+        // 1. Update events table (no location)
+        const { error: eventError } = await supabase
           .from('events')
-          .update(updates)
+          .update({
+            title: editTitle.trim(),
+            description: editDescription.trim(),
+            start_date: new Date(editStartDate).toISOString(),
+            ticket_price: parseFloat(editTicketPrice) || 0,
+            max_attendees: editMaxAttendees ? parseInt(editMaxAttendees) : null,
+          })
           .eq('id', eventId)
-          .eq('creator_id', user.id); // Security: Only creator can edit
-        
-        if (error) throw error;
+          .eq('creator_id', user.id);
+      
+        if (eventError) throw eventError;
+      
+        // 2. Upsert into event_locations
+        const { error: locError } = await supabase
+          .from('event_locations')
+          .upsert({
+            event_id: eventId,
+            location_name: editLocation.trim(),
+          }, { onConflict: 'event_id' });
+      
+        if (locError) throw locError;
       },
       onSuccess: () => {
         toast.success('Event updated successfully!');
@@ -885,7 +893,7 @@ const EventDetail = () => {
     if (showEditDialog && event) {
       setEditTitle(event.title);
       setEditDescription(event.description);
-      setEditLocation(event_locations.location_name);
+      setEditLocation(event.location);
       setEditStartDate(event.start_date.slice(0, 16)); // Format for datetime-local input
       setEditTicketPrice(event.ticket_price.toString());
       setEditMaxAttendees(event.max_attendees?.toString() || '');
