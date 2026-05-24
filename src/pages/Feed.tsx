@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { 
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
-  Clock, Check, Megaphone, Repeat,
+  Clock, Check, Megaphone, Repeat, Video,
   ArrowRight, Music, Martini, Palette, Zap, Rocket, UserPlus, Globe, Lock, Bell, ShieldCheck
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -42,10 +42,16 @@ type FeedEvent = {
   is_attending?: boolean;
   is_sponsored?: boolean;
   is_verified?: boolean;
+  is_official?: boolean | null;
   friend_images?: string[];
   latitude?: number | null;
   longitude?: number | null;
   distanceKm?: number | null;
+  event_type?: 'physical' | 'virtual' | null;
+  meeting_link?: string | null;
+  recurrence_rule?: string | null;
+  requires_approval?: boolean | null;
+  max_attendees?: number | null;
 };
 
 type FeedCommunity = {
@@ -497,11 +503,26 @@ const Feed = () => {
                           <div className="relative h-48 w-full bg-muted">
                             <img src={event.image_url || '/placeholder-event.jpg'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
-                            <div className="absolute top-3 left-3 flex gap-2">
+                            <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
                                 <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>{status.label}</Badge>
                                 {event.match_score && event.match_score > 80 && (
                                   <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
                                     <Sparkles className="w-3 h-3 mr-1 text-yellow-400" /> {event.match_score}% Vibe Match
+                                  </Badge>
+                                )}
+                                {event.is_official && (
+                                  <Badge className="bg-primary text-white border-0 shadow-sm backdrop-blur-md">
+                                    <Megaphone className="w-3 h-3 mr-1" /> Official
+                                  </Badge>
+                                )}
+                                {event.recurrence_rule && (
+                                  <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
+                                    <Repeat className="w-3 h-3 mr-1" /> {event.recurrence_rule.replace('FREQ=', '').charAt(0).toUpperCase() + event.recurrence_rule.replace('FREQ=', '').slice(1).toLowerCase()}
+                                  </Badge>
+                                )}
+                                {event.event_type === 'virtual' && (
+                                  <Badge className="bg-cyan-600/80 text-white border-0 backdrop-blur-md">
+                                    <Video className="w-3 h-3 mr-1" /> Virtual
                                   </Badge>
                                 )}
                               </div>
@@ -521,10 +542,15 @@ const Feed = () => {
                               <div className="absolute bottom-3 left-3 right-3 text-white">
                                 <h3 className="font-black text-xl leading-tight line-clamp-2">{event.title}</h3>
                                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.location || currentCityDisplay}</span> 
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><MapPin className="w-3 h-3" /> {event.event_type === 'virtual' ? 'Online' : (event.location || currentCityDisplay)}</span> 
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
                                   {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
+                                  {event.max_attendees && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
+                                      <Users className="w-3 h-3" /> {event.attendee_count || 0}/{event.max_attendees}{(event.attendee_count || 0) >= event.max_attendees ? ' · Full' : ''}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -532,7 +558,7 @@ const Feed = () => {
                             <CardContent className="p-4">
                               <h3 className="sr-only">{event.title}</h3>
                                <div className="flex items-center text-xs text-muted-foreground gap-3">
-                                <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.location || currentCityDisplay}</span> 
+                                <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.event_type === 'virtual' ? 'Online' : (event.location || currentCityDisplay)}</span> 
                               </div> 
                               
                               <div className="mt-4 flex items-center justify-between">
@@ -553,7 +579,9 @@ const Feed = () => {
                                 </div>
                               <div className="flex gap-2">
                                 <Button size="sm" variant="secondary" className="h-8 w-8 rounded-full p-0" onClick={(e) => { e.stopPropagation(); navigate(`/app/messages?type=event&id=${event.id}`); }}><MessageCircle className="w-4 h-4 text-primary" /></Button>
-                                <Button size="sm" className={`h-8 rounded-full px-4 ${event.is_attending ? "bg-green-600" : ""}`} onClick={(e) => { e.stopPropagation(); handleRSVP(event.id); }}>{event.is_attending ? "Going" : event.ticket_price ? `₦${event.ticket_price.toLocaleString()}` : "RSVP"}</Button>
+                                <Button size="sm" className={`h-8 rounded-full px-4 ${event.is_attending ? "bg-green-600" : ""}`} onClick={(e) => { e.stopPropagation(); handleRSVP(event.id); }}>
+                                  {event.is_attending ? "Going" : event.requires_approval ? "Request to Join" : event.ticket_price ? `₦${event.ticket_price.toLocaleString()}` : "RSVP"}
+                                </Button>
                               </div>
                             </div>
                           </CardContent>
@@ -575,6 +603,17 @@ const Feed = () => {
                 <img src={selectedEvent.image_url || '/placeholder.jpg'} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
                 <Button variant="ghost" size="icon" className="absolute top-2 right-2 text-white rounded-full" onClick={() => setSelectedEvent(null)}><ArrowRight className="w-6 h-6 rotate-180" /></Button>
+                <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
+                  {selectedEvent.is_official && (
+                    <Badge className="bg-primary text-white border-0 backdrop-blur-md"><Megaphone className="w-3 h-3 mr-1" /> Official</Badge>
+                  )}
+                  {selectedEvent.event_type === 'virtual' && (
+                    <Badge className="bg-cyan-600/80 text-white border-0 backdrop-blur-md"><Video className="w-3 h-3 mr-1" /> Virtual</Badge>
+                  )}
+                  {selectedEvent.recurrence_rule && (
+                    <Badge className="bg-black/60 text-white border-0 backdrop-blur-md"><Repeat className="w-3 h-3 mr-1" /> {selectedEvent.recurrence_rule.replace('FREQ=', '').charAt(0).toUpperCase() + selectedEvent.recurrence_rule.replace('FREQ=', '').slice(1).toLowerCase()}</Badge>
+                  )}
+                </div>
                 <div className="absolute bottom-0 left-0 p-5 text-white w-full">
                   <Badge className="bg-white/20 mb-2 border-0 backdrop-blur-md italic font-bold">EVENT</Badge>
                   <h2 className="text-2xl font-black leading-tight mb-1 italic uppercase tracking-tighter">{selectedEvent.title}</h2>
@@ -593,12 +632,30 @@ const Feed = () => {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Time</p><p className="font-black">{new Date(selectedEvent.start_date).toLocaleTimeString([], {timeStyle: 'short'})}</p></div>
                   <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Price</p><p className="font-black">{selectedEvent.ticket_price ? `₦${selectedEvent.ticket_price.toLocaleString()}` : 'Free'}</p></div>
+                  <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Location</p><p className="font-black truncate">{selectedEvent.event_type === 'virtual' ? 'Online' : (selectedEvent.location || currentCityDisplay)}</p></div>
+                  {selectedEvent.max_attendees && (
+                    <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Capacity</p><p className="font-black">{selectedEvent.attendee_count || 0} / {selectedEvent.max_attendees}{(selectedEvent.attendee_count || 0) >= selectedEvent.max_attendees ? ' · Full' : ''}</p></div>
+                  )}
                 </div>
+                {selectedEvent.requires_approval && (
+                  <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-400 font-medium">
+                    <Check className="w-4 h-4 shrink-0" /> Attendance requires host approval
+                  </div>
+                )}
                 <div className="text-sm text-muted-foreground leading-relaxed italic">{selectedEvent.description}</div>
               </div>
-              <DialogFooter className="p-4 border-t sticky bottom-0 bg-background grid grid-cols-2 gap-3">
-                <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> ADD TO CAL </Button>
-                <Button onClick={() => handleRSVP(selectedEvent.id)} className={`h-12 rounded-xl font-bold uppercase ${selectedEvent.is_attending ? "bg-green-600" : "bg-primary"}`}>{selectedEvent.is_attending ? "Going" : "RSVP Now"}</Button>
+              <DialogFooter className="p-4 border-t sticky bottom-0 bg-background grid gap-3">
+                {selectedEvent.event_type === 'virtual' && selectedEvent.meeting_link && (
+                  <Button variant="outline" className="h-12 rounded-xl font-bold w-full" onClick={() => window.open(selectedEvent.meeting_link!, '_blank')}>
+                    <Video className="w-4 h-4 mr-2" /> Join Online
+                  </Button>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> ADD TO CAL </Button>
+                  <Button onClick={() => handleRSVP(selectedEvent.id)} className={`h-12 rounded-xl font-bold uppercase ${selectedEvent.is_attending ? "bg-green-600" : "bg-primary"}`}>
+                    {selectedEvent.is_attending ? "Going" : selectedEvent.requires_approval ? "Request to Join" : "RSVP Now"}
+                  </Button>
+                </div>
               </DialogFooter>
             </DialogContent>
           </Dialog>
