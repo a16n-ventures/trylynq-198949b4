@@ -217,17 +217,44 @@ const CreateEvent = () => {
       if (error) throw error;
 
       const locationName = eventData.eventType === 'virtual' ? 'In-App' : eventData.location.trim();
-      let matchedCoords: { latitude: number | null; longitude: number | null } = { latitude: null, longitude: null };
+      let matchedCoords: { latitude: number | null; longitude: number | null } = { latitude: null, longitude: null }; 
+      
       if (eventData.eventType === 'physical') {
-        const { data: milestones } = await supabase.from('city_milestones').select('city_name, center_lat, center_long');
-        const normalizedLocation = locationName.toLowerCase();
-        const matchedMilestone = milestones?.find((m) => {
-          const city = m.city_name.toLowerCase();
-          const cityParts = city.split(/\s+/).filter((part) => part.length > 2);
-          return normalizedLocation.includes(city) || cityParts.some((part) => normalizedLocation.includes(part));
-        });
-        if (matchedMilestone) {
-          matchedCoords = { latitude: matchedMilestone.center_lat, longitude: matchedMilestone.center_long };
+        try {
+          // Try to geocode the specific venue first
+          const query = encodeURIComponent(`${locationName}, Nigeria`);
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=ng`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const results = await res.json();
+      
+          if (results?.[0]) {
+            // Real venue coordinates from Nominatim
+            matchedCoords = {
+              latitude: parseFloat(results[0].lat),
+              longitude: parseFloat(results[0].lon),
+            };
+          } else {
+            // Fallback to city milestone center if Nominatim finds nothing
+            const { data: milestones } = await supabase
+              .from('city_milestones')
+              .select('city_name, center_lat, center_long');
+            const normalizedLocation = locationName.toLowerCase();
+            const matchedMilestone = milestones?.find((m) => {
+              const city = m.city_name.toLowerCase();
+              const cityParts = city.split(/\s+/).filter((p) => p.length > 2);
+              return normalizedLocation.includes(city) || cityParts.some((p) => normalizedLocation.includes(p));
+            });
+            if (matchedMilestone) {
+              matchedCoords = {
+                latitude: matchedMilestone.center_lat,
+                longitude: matchedMilestone.center_long,
+              };
+            }
+          }
+        } catch (e) {
+          console.warn('Geocoding failed, falling back to city center:', e);
         }
       }
 
@@ -715,13 +742,24 @@ const CreateEvent = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label htmlFor="official">Official Ahmia Event</Label>
-                    <p className="text-[10px] text-muted-foreground">Bypasses city locks and shows globally</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Bypasses city locks and shows globally
+                    </p>
                   </div>
-                  <Switch
-                    id="official"
-                    checked={eventData.isOfficial}
-                    onCheckedChange={(checked) => setEventData({...eventData, isOfficial: checked})}
-                  />
+                  <div className="flex items-center gap-2">
+                    {eventData.isOfficial && (
+                      <span className="text-[10px] font-bold text-primary uppercase tracking-wider">
+                        Active
+                      </span>
+                    )}
+                    <Switch
+                      id="official"
+                      checked={eventData.isOfficial}
+                      onCheckedChange={(checked) => 
+                        setEventData({...eventData, isOfficial: checked})
+                      }
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
