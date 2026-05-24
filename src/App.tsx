@@ -25,6 +25,8 @@ import EventInvite from "./pages/EventInvite";
 import EventDetail from "./pages/EventDetail";
 import Premium from "./pages/Premium";
 import Notifications from "./pages/Notifications";
+import Terms from "./pages/legal/Terms";
+import Privacy from "./pages/legal/Privacy";
 import MainLayout from "./components/layout/MainLayout";
 import NotFound from "./pages/NotFound";
 
@@ -97,6 +99,8 @@ const App = () => {
                   <Route path="events/:eventId/invite" element={<EventInvite />} />
                   <Route path="profile" element={<Profile />} />
                   <Route path="notifications" element={<Notifications />} />
+                  <Route path="/legal/terms-conditions" element={<Terms />} />
+                  <Route path="/legal/privacy-policy" element={<Privacy />} />
                   <Route path="marketplace" element={<Marketplace />} />
                   <Route path="trust-center" element={<TrustCenter />} />
                 </Route>
