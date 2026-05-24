@@ -603,7 +603,7 @@ export default function Messages() {
           {/* TABS */}
           <div className="px-2 pt-2">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChatType)} className="w-full">
-              <TabsList className="w-full bg-muted/50 p-1 rounded-xl grid grid-cols-4">
+              <TabsList className={`w-full bg-muted/50 p-1 rounded-xl grid ${myUserType === 'business' ? 'grid-cols-4' : 'grid-cols-3'}`}>
                 <TabsTrigger value="dm" className="rounded-lg text-xs">Direct</TabsTrigger>
                 <TabsTrigger value="community" className="rounded-lg text-xs">Community</TabsTrigger>
                 <TabsTrigger value="event" className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
