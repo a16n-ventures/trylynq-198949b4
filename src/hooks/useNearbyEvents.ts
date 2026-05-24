@@ -32,7 +32,8 @@ export type NearbyEvent = {
   friends_going_count: number;  // count of my friends going (excludes me)
   is_verified: boolean;
   is_vibe: boolean;
-  is_attending: boolean;
+  is_attending: boolean; 
+  is_official: boolean; 
 };
 
 type Origin = { latitude: number; longitude: number } | null;
@@ -48,8 +49,8 @@ interface Options {
   friendIds?: string[];    // to compute friends-going avatars/count
 }
 
-const PREMIUM_GPS_FALLBACK_RADIUS_KM = 150;
-const PREMIUM_CITY_MAX_RADIUS_KM = 75;
+const PREMIUM_GPS_FALLBACK_RADIUS_KM = 75;
+const PREMIUM_CITY_MAX_RADIUS_KM = 25;
 
 export function useNearbyEvents({
   userLocation, cityCenter, radiusKm, enabled = true,
@@ -59,7 +60,7 @@ export function useNearbyEvents({
   const origin = cityCenter ?? userLocation;
   const originLabel: 'city' | 'gps' | 'none' = cityCenter ? 'city' : userLocation ? 'gps' : 'none';
 
-  // Premium gets a wider radius: in-city up to 75km, outside-city up to 150km.
+  // Premium gets a wider radius: in-city up to 25km, outside-city up to 75km.
   const effectiveRadiusKm = useMemo(() => {
     if (isPremium && originLabel === 'gps') return Math.max(radiusKm, PREMIUM_GPS_FALLBACK_RADIUS_KM);
     if (isPremium && originLabel === 'city') return Math.max(radiusKm, PREMIUM_CITY_MAX_RADIUS_KM);
@@ -84,21 +85,42 @@ export function useNearbyEvents({
       const latDelta = effectiveRadiusKm / 111;
       const lngDelta = effectiveRadiusKm / (111 * Math.cos((origin.latitude * Math.PI) / 180));
 
-      // 1. Events + location (no fragile creator/attendee embed — those FKs don't exist in PostgREST cache)
-      const { data, error } = await supabase
+      // 1. Events + location (no fragile creator/attendee embed — those FKs don't exist in PostgREST cache)// Replace the single query with two parallel queries:
+      
+      // Query A — regular events with location (existing logic, keep !inner)
+      const { data: locatedData, error: locatedError } = await supabase
         .from('events')
         .select(
-          'id, title, description, start_date, end_date, ticket_price, image_url, category, creator_id, max_attendees, ' +
+          'id, title, description, start_date, end_date, ticket_price, image_url, category, creator_id, max_attendees, is_official, ' +
           'event_locations!inner(location_name, latitude, longitude)'
         )
         .gt('start_date', new Date().toISOString())
         .eq('is_public', true)
+        .eq('is_official', false)             
+         // non-official only
         .gte('event_locations.latitude',  origin.latitude  - latDelta)
         .lte('event_locations.latitude',  origin.latitude  + latDelta)
         .gte('event_locations.longitude', origin.longitude - lngDelta)
         .lte('event_locations.longitude', origin.longitude + lngDelta)
         .order('start_date', { ascending: true })
         .range(from, to);
+      
+      // Query B — official events, no location filter, LEFT join
+      const { data: officialData, error: officialError } = await supabase
+        .from('events')
+        .select(
+          'id, title, description, start_date, end_date, ticket_price, image_url, category, creator_id, max_attendees, is_official, ' +
+          'event_locations(location_name, latitude, longitude)'  // left join — no !inner
+        )
+        .gt('start_date', new Date().toISOString())
+        .eq('is_public', true)
+        .eq('is_official', true)                               // official only
+        .order('start_date', { ascending: true });
+      
+      if (locatedError) console.error('[useNearbyEvents] located query failed:', locatedError);
+      if (officialError) console.error('[useNearbyEvents] official query failed:', officialError);
+      
+      const data = [...(locatedData || []), ...(officialData || [])];
 
       if (error) {
         console.error('[useNearbyEvents] query failed:', error);
@@ -135,13 +157,23 @@ export function useNearbyEvents({
       });
 
       return (data || [])
-        .map((e: any): NearbyEvent | null => {
+          .map((e: any): NearbyEvent | null => {
           const loc = Array.isArray(e.event_locations) ? e.event_locations[0] : e.event_locations;
-          if (!loc || loc.latitude == null || loc.longitude == null) return null;
-          const lat = Number(loc.latitude);
-          const lng = Number(loc.longitude);
+        
+          // Official events: fall back to city center if no coordinates
+          const isOfficial = !!e.is_official;
+          const fallbackLat = origin.latitude;
+          const fallbackLng = origin.longitude;
+        
+          const lat = Number(loc?.latitude ?? (isOfficial ? fallbackLat : null));
+          const lng = Number(loc?.longitude ?? (isOfficial ? fallbackLng : null));
+        
+          if (!isOfficial && (loc?.latitude == null || loc?.longitude == null)) return null;
+          if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return null;
+        
           const dist = distanceKm(origin.latitude, origin.longitude, lat, lng);
-          if (dist > effectiveRadiusKm) return null;
+          // Official events bypass distance filter entirely
+          if (!isOfficial && dist > effectiveRadiusKm) return null;
 
           const eAttendees = attByEvent.get(e.id) || [];
           const confirmed = eAttendees.filter((a: any) => a.status === 'confirmed');
