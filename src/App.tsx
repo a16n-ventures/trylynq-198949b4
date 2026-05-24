@@ -99,8 +99,8 @@ const App = () => {
                   <Route path="events/:eventId/invite" element={<EventInvite />} />
                   <Route path="profile" element={<Profile />} />
                   <Route path="notifications" element={<Notifications />} />
-                  <Route path="/legal/terms-conditions" element={<Terms />} />
-                  <Route path="/legal/privacy-policy" element={<Privacy />} />
+                  <Route path="legal/terms-conditions" element={<Terms />} />
+                  <Route path="legal/privacy-policy" element={<Privacy />} />
                   <Route path="marketplace" element={<Marketplace />} />
                   <Route path="trust-center" element={<TrustCenter />} />
                 </Route>
