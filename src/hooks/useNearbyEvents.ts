@@ -122,10 +122,6 @@ export function useNearbyEvents({
       
       const data = [...(locatedData || []), ...(officialData || [])];
 
-      if (error) {
-        console.error('[useNearbyEvents] query failed:', error);
-        return [];
-      }
 
       const eventIds = (data || []).map((e: any) => e.id);
       const creatorIds = Array.from(new Set((data || []).map((e: any) => e.creator_id).filter(Boolean)));
@@ -197,7 +193,7 @@ export function useNearbyEvents({
             category: e.category,
             creator_id: e.creator_id,
             max_attendees: e.max_attendees,
-            location: loc.location_name,
+            location: loc?.location_name ?? 'Official Event',
             latitude: lat,
             longitude: lng,
             distanceKm: Number(dist.toFixed(1)),
@@ -206,6 +202,7 @@ export function useNearbyEvents({
             friends_going_count: friendsGoing.length,
             is_verified: creatorByUser.get(e.creator_id)?.verification_status === 'verified',
             is_vibe: confirmed.length >= 10,
+            is_official: isOfficial,
             is_attending,
           };
         })
