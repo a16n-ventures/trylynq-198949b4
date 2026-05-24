@@ -97,7 +97,23 @@ export default function Messages() {
         if (chat) setSelectedChat(chat);
       });
     }
-  }, [searchParams, user]);
+  }, [searchParams, user]); 
+  
+  // Add this query near your other queries (after line 67 state declarations)
+  const { data: myProfile } = useQuery({
+    queryKey: ['my-profile', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase
+        .from('profiles')
+        .select('user_type')
+        .eq('user_id', user.id)
+        .single();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+  const myUserType = myProfile?.user_type;
   
   const fetchChatDetails = async (type: ChatType, id: string): Promise<ChatItem | null> => {
     if (type === 'event') {
@@ -593,7 +609,7 @@ export default function Messages() {
                 <TabsTrigger value="event" className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                    Vibes
                 </TabsTrigger>
-                <TabsTrigger value="service" className={`rounded-lg text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-white ${profiles.user_type !== 'business' ? 'hidden' : ''}`}>
+                <TabsTrigger value="service" className={`rounded-lg text-xs data-[state=active]:bg-cyan-500 data-[state=active]:text-white ${myUserType !== 'business' ? 'hidden' : ''}`}>
                   <Briefcase className="w-3 h-3 mr-1" />Services
                 </TabsTrigger>
               </TabsList>
