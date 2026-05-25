@@ -493,6 +493,15 @@ const Index = () => {
               onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}>
               <Linkedin className="w-5 h-5" />
             </a>
+          </div> 
+
+          <div>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            {/* <li><Link to="/careers" className="hover:text-foreground">Careers</Link></li> */}
+            <li><Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
+            <li><Link to="/terms" className="hover:text-foreground">Terms of Service</Link></li> 
+            <li><Link to="https://chat.whatsapp.com/EIfS97JzIiv1JRAdCE6QAC?mode=wwt" className="hover:text-foreground">Join our Community</Link></li>
+          </ul>
           </div>
 
           <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
