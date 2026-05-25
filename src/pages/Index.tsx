@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   MapPin, Users, Sparkles, Lock,
   ChevronRight, Instagram, Linkedin, Copyright, Loader2,
-  ArrowRight, Flame, Star, CheckCircle2, Users2, TrendingUp
+  ArrowRight, Flame, Star, CheckCircle2, TrendingUp
 } from 'lucide-react';
 import AuthModal from '@/components/auth/AuthModal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -157,13 +157,12 @@ const Index = () => {
     if (!waitlistEmail.trim()) return;
     setWaitlistSubmitting(true);
     try {
-      const cityName = zone?.city || 'Unknown';
       const { error } = await supabase.from('waitlist').insert({
         email: waitlistEmail.trim().toLowerCase(),
-        city: cityName,
+        city: zone?.city || 'Unknown',
         created_at: new Date().toISOString(),
       });
-      if (error && error.code !== '23505') throw error; // 23505 = duplicate, fine
+      if (error && error.code !== '23505') throw error;
       setWaitlistDone(true);
       setWaitlistEmail('');
     } catch (err: any) {
@@ -310,16 +309,20 @@ const Index = () => {
       </section>
 
       {/* ── LAUNCH ZONE + WAITLIST ── */}
-      <section className="px-6 pb-16">
+      <section className="px-6 pb-16 space-y-4">
 
-        {/* Live Zone Status Card */}
-        <div className="rounded-3xl overflow-hidden mb-4" style={{ border: '1px solid rgba(232,81,26,0.3)', background: 'linear-gradient(135deg, rgba(232,81,26,0.08) 0%, rgba(13,13,13,0) 60%)' }}>
+        {/* Dynamic Zone Status Card */}
+        <div className="rounded-3xl overflow-hidden" style={{ border: '1px solid rgba(232,81,26,0.3)', background: 'linear-gradient(135deg, rgba(232,81,26,0.08) 0%, rgba(13,13,13,0) 60%)' }}>
           <div className="p-5">
-            {/* Header row */}
+            {/* Status badge + city name */}
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-[0.2em] px-2.5 py-1 rounded-full inline-block mb-2"
-                  style={{ background: zone?.unlocked ? 'rgba(26,232,122,0.15)' : 'rgba(232,81,26,0.15)', color: zone?.unlocked ? '#1AE87A' : '#E8511A', border: zone?.unlocked ? '1px solid rgba(26,232,122,0.3)' : '1px solid rgba(232,81,26,0.3)' }}>
+                  style={{
+                    background: zone?.unlocked ? 'rgba(26,232,122,0.15)' : 'rgba(232,81,26,0.15)',
+                    color: zone?.unlocked ? '#1AE87A' : '#E8511A',
+                    border: zone?.unlocked ? '1px solid rgba(26,232,122,0.3)' : '1px solid rgba(232,81,26,0.3)'
+                  }}>
                   {zoneLoading ? '📡 Detecting zone...' : zone?.unlocked ? '🟢 Live in your city' : zone?.inZone ? '🔒 Your city is loading' : '🌍 Coming to your city'}
                 </span>
                 <h2 className="text-2xl font-black leading-tight" style={{ letterSpacing: '-0.03em' }}>
@@ -327,7 +330,7 @@ const Index = () => {
                 </h2>
                 {!zoneLoading && zone && !zone.unlocked && (
                   <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                    {zone.inZone ? 'You're in the zone. Help unlock your city.' : 'Not in a launch zone yet — join the waitlist.'}
+                    {zone.inZone ? "You're in the zone — help unlock your city." : "Not in a launch zone yet. Join the waitlist."}
                   </p>
                 )}
                 {!zoneLoading && zone?.unlocked && (
@@ -336,7 +339,7 @@ const Index = () => {
                   </p>
                 )}
               </div>
-              {!zoneLoading && (
+              {!zoneLoading && zone && (
                 <div className="flex-shrink-0 w-14 h-14 rounded-2xl flex flex-col items-center justify-center"
                   style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
                   <span className="text-lg font-black leading-none" style={{ color: '#E8511A' }}>{cityProgress}%</span>
@@ -345,7 +348,7 @@ const Index = () => {
               )}
             </div>
 
-            {/* Progress bar */}
+            {/* Progress bar — locked cities only */}
             {!zoneLoading && zone && !zone.unlocked && (
               <div className="mb-4">
                 <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -353,22 +356,22 @@ const Index = () => {
                   <span>goal: <span className="font-bold text-white">{zone.target.toLocaleString()}</span></span>
                 </div>
                 <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${cityProgress}%`, background: cityProgress >= 75 ? '#1AE87A' : cityProgress >= 40 ? '#E8C21A' : '#E8511A' }}
-                  />
+                  <div className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${cityProgress}%`, background: cityProgress >= 75 ? '#1AE87A' : cityProgress >= 40 ? '#E8C21A' : '#E8511A' }} />
                 </div>
                 <p className="text-xs mt-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                  {zone.target - zone.current > 0 ? `${(zone.target - zone.current).toLocaleString()} more people needed to unlock` : 'Goal reached! Launch imminent.'}
+                  {zone.target - zone.current > 0
+                    ? `${(zone.target - zone.current).toLocaleString()} more people needed to unlock`
+                    : 'Goal reached! Launch imminent.'}
                 </p>
               </div>
             )}
 
-            {/* Unlocked state stats */}
+            {/* Unlocked stats */}
             {!zoneLoading && zone?.unlocked && (
               <div className="grid grid-cols-3 gap-2 mb-4">
                 {[
-                  { label: 'Pioneers', value: zone.current.toLocaleString(), icon: Users2 },
+                  { label: 'Pioneers', value: zone.current.toLocaleString(), icon: Users },
                   { label: 'Status', value: 'Live', icon: TrendingUp },
                   { label: 'Events', value: 'Active', icon: Flame },
                 ].map(({ label, value, icon: Icon }) => (
@@ -381,15 +384,14 @@ const Index = () => {
               </div>
             )}
 
-            {/* CTA */}
+            {/* CTA button */}
             {zone?.unlocked ? (
               <button
                 className="w-full flex items-center justify-center gap-2 font-bold text-sm py-3.5 rounded-2xl transition-all active:scale-95"
                 style={{ background: '#1AE87A', color: '#0D0D0D' }}
                 onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
               >
-                Join Ahmia — it's free
-                <ArrowRight className="w-4 h-4" />
+                Join Ahmia — it's free <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <button
@@ -397,31 +399,33 @@ const Index = () => {
                 style={{ background: '#E8511A', color: '#fff' }}
                 onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
               >
-                Claim my pioneer spot
-                <ChevronRight className="w-4 h-4" />
+                Claim my pioneer spot <ChevronRight className="w-4 h-4" />
               </button>
             )}
           </div>
         </div>
 
-        {/* Beta Waitlist Card — shown when not in a live zone */}
+        {/* Beta Waitlist email capture — shown for non-live zones */}
         {!zoneLoading && zone && !zone.unlocked && (
           <div className="rounded-3xl p-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <div className="flex items-center gap-2 mb-1">
               <Lock className="w-4 h-4" style={{ color: '#E8511A' }} />
               <span className="text-sm font-bold">Beta Waitlist</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto" style={{ background: 'rgba(232,81,26,0.15)', color: '#E8511A' }}>
-                {zone.current} waiting
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto"
+                style={{ background: 'rgba(232,81,26,0.15)', color: '#E8511A' }}>
+                {zone.current.toLocaleString()} waiting
               </span>
             </div>
             <p className="text-xs mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
               Drop your email. Be first to know when {zone.inZone ? zone.city : 'your city'} goes live.
             </p>
-
             {waitlistDone ? (
-              <div className="flex items-center gap-2 py-3 px-4 rounded-xl" style={{ background: 'rgba(26,232,122,0.1)', border: '1px solid rgba(26,232,122,0.2)' }}>
+              <div className="flex items-center gap-2 py-3 px-4 rounded-xl"
+                style={{ background: 'rgba(26,232,122,0.1)', border: '1px solid rgba(26,232,122,0.2)' }}>
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: '#1AE87A' }} />
-                <p className="text-sm font-semibold" style={{ color: '#1AE87A' }}>You're on the list! We'll hit you when {zone.city} unlocks.</p>
+                <p className="text-sm font-semibold" style={{ color: '#1AE87A' }}>
+                  You're on the list! We'll notify you when {zone.city} unlocks.
+                </p>
               </div>
             ) : (
               <form onSubmit={handleWaitlistSubmit} className="flex gap-2">
@@ -448,51 +452,57 @@ const Index = () => {
         )}
 
         {/* Launch event cards */}
-        <div className="mt-4 space-y-4">
-          <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(232,81,26,0.25)' }}>
-            <div className="relative h-52 w-full">
-              <img src="/abuja-1.png" alt="Ahmia FCT Launch" loading="lazy" className="w-full h-full object-cover" style={{ filter: 'brightness(0.6)' }} />
-              <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 5%, transparent 60%)' }} />
-              <span className="absolute top-4 left-4 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full" style={{ background: '#E8511A', color: '#fff' }}>🔥 Flagship Launch</span>
-              <div className="absolute bottom-0 left-0 right-0 p-4">
-                <p className="text-xs font-bold uppercase tracking-widest mb-0.5" style={{ color: '#FFB088' }}>Abuja, FCT</p>
-                <h3 className="text-xl font-black leading-tight" style={{ letterSpacing: '-0.03em' }}>FCT Launch</h3>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>Events. Hangouts. FCT. Where vibes and beauty blends.</p>
-              </div>
-            </div>
-            <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                {daysLeft > 0 ? <><span className="font-black text-white">{daysLeft}</span> days to go</> : '🟢 Live now'}
-              </div>
-              <button className="flex items-center gap-2 font-bold text-xs px-4 py-2.5 rounded-xl transition-all active:scale-95" style={{ background: '#E8511A', color: '#fff' }} onClick={() => { setAuthMode('signup'); setShowAuth(true); }}>
-                RSVP free <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+        <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(232,81,26,0.25)' }}>
+          <div className="relative h-52 w-full">
+            <img src="/abuja-1.png" alt="Ahmia FCT Launch" loading="lazy"
+              className="w-full h-full object-cover" style={{ filter: 'brightness(0.6)' }} />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 5%, transparent 60%)' }} />
+            <span className="absolute top-4 left-4 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full"
+              style={{ background: '#E8511A', color: '#fff' }}>🔥 Flagship Launch</span>
+            <div className="absolute bottom-0 left-0 right-0 p-4">
+              <p className="text-xs font-bold uppercase tracking-widest mb-0.5" style={{ color: '#FFB088' }}>Abuja, FCT</p>
+              <h3 className="text-xl font-black leading-tight" style={{ letterSpacing: '-0.03em' }}>FCT Launch</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>Events. Hangouts. FCT. Where vibes and beauty blends.</p>
             </div>
           </div>
-
-          <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
-            <div className="relative h-52 w-full">
-              <img src="/ahmia-zaria-launch.jpg" alt="Zaria Launch" loading="lazy" className="w-full h-full object-cover" style={{ filter: 'brightness(0.6)' }} />
-              <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 5%, transparent 60%)' }} />
-              <span className="absolute top-4 left-4 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', backdropFilter: 'blur(8px)' }}>🔥 Beta Waitlist</span>
-              <div className="absolute bottom-0 left-0 right-0 p-4">
-                <p className="text-xs font-bold uppercase tracking-widest mb-0.5" style={{ color: '#FFB088' }}>ABU Zaria</p>
-                <h3 className="text-xl font-black leading-tight" style={{ letterSpacing: '-0.03em' }}>Zaria Launch</h3>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>Music. Jollof. Real link-ups. The day Northern Nigeria gets its city.</p>
-              </div>
+          <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              {daysLeft > 0 ? <><span className="font-black text-white">{daysLeft}</span> days to go</> : '🟢 Live now'}
             </div>
-            <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Coming soon</div>
-              <button className="flex items-center gap-2 font-bold text-xs px-4 py-2.5 rounded-xl transition-all active:scale-95" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }} onClick={() => { setAuthMode('signup'); setShowAuth(true); }}>
-                Join waitlist <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            <button className="flex items-center gap-2 font-bold text-xs px-4 py-2.5 rounded-xl transition-all active:scale-95"
+              style={{ background: '#E8511A', color: '#fff' }}
+              onClick={() => { setAuthMode('signup'); setShowAuth(true); }}>
+              RSVP free <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
+
+        <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div className="relative h-52 w-full">
+            <img src="/ahmia-zaria-launch.jpg" alt="Zaria Launch" loading="lazy"
+              className="w-full h-full object-cover" style={{ filter: 'brightness(0.6)' }} />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 5%, transparent 60%)' }} />
+            <span className="absolute top-4 left-4 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full"
+              style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', backdropFilter: 'blur(8px)' }}>🔥 Beta Waitlist</span>
+            <div className="absolute bottom-0 left-0 right-0 p-4">
+              <p className="text-xs font-bold uppercase tracking-widest mb-0.5" style={{ color: '#FFB088' }}>ABU Zaria</p>
+              <h3 className="text-xl font-black leading-tight" style={{ letterSpacing: '-0.03em' }}>Zaria Launch</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>Music. Jollof. Real link-ups. The day Northern Nigeria gets its city.</p>
+            </div>
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Coming soon</div>
+            <button className="flex items-center gap-2 font-bold text-xs px-4 py-2.5 rounded-xl transition-all active:scale-95"
+              style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}
+              onClick={() => { setAuthMode('signup'); setShowAuth(true); }}>
+              Join waitlist <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
       </section>
 
       {/* ── HOW IT WORKS ── */}
-
       <section className="px-6 pb-16" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '4rem' }}>
         <p className="text-xs font-bold uppercase tracking-[0.25em] mb-3" style={{ color: '#E8511A' }}>The process</p>
         <h2 className="text-3xl font-black mb-12" style={{ letterSpacing: '-0.03em' }}>Simple as sunday jollof.</h2>
