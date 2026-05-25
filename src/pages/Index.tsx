@@ -31,22 +31,32 @@ const NIGERIAN_CITIES = [
   {
     name: 'Lagos',
     tag: 'The City That Never Sleeps',
-    img: 'https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?w=600&q=80',
+    img: '/lagos.png',
   },
   {
     name: 'Abuja',
     tag: 'The Capital Moves',
-    img: 'https://images.unsplash.com/photo-1611348586840-ea9872d33411?w=600&q=80',
+    img: '/abuja-1.png',
   },
   {
-    name: 'Port Harcourt',
-    tag: 'Garden City Rising',
-    img: 'https://images.unsplash.com/photo-1555685812-4b943f1cb0eb?w=600&q=80',
+    name: 'Cross River',
+    tag: 'Street Party and Rainforest Adventure',
+    img: '/cross-river-1.png',
+  },
+  {
+    name: 'Abia',
+    tag: 'Trade, Craftsmanship, and Culture',
+    img: '/abia-2.png',
+  },
+  {
+    name: 'Ogun',
+    tag: 'A Vibrant Blend of Culture and History',
+    img: '/ogun-2.png',
   },
   {
     name: 'Ibadan',
     tag: 'Ancient & Always Forward',
-    img: 'https://images.unsplash.com/photo-1547481887-a26e2cacb5b2?w=600&q=80',
+    img: '/ibadan.png',
   },
 ];
 
@@ -603,7 +613,25 @@ const Index = () => {
               ahmia<span style={{ color: '#E8511A' }}>.</span>
             </h3>
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Real world. Real friends. Real-time.</p>
+          </div> 
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+          <h3>Contact</h3>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            {/* <li><Link to="/careers" className="hover:text-foreground">Careers</Link></li> */}
+            <li><a href="mailto:ahmia.nigltd@gmail.com">ahmia.nigltd@gmail.com</li>
+            <li><a href="tel://+2342084554366">+234 208 455 4366</li>
+          </ul>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            {/* <li><Link to="/careers" className="hover:text-foreground">Careers</Link></li> */}
+            <li><Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
+            <li><Link to="/terms" className="hover:text-foreground">Terms of Service</Link></li> 
+            <li><Link to="#">Join our Community</Link></li>
+          </ul>
+          </div> 
 
           <div className="flex gap-4">
             <a href="https://instagram.com/@ahmiahq" className="transition-colors" style={{ color: 'rgba(255,255,255,0.35)' }}
@@ -617,15 +645,6 @@ const Index = () => {
               <Linkedin className="w-5 h-5" />
             </a>
           </div> 
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            {/* <li><Link to="/careers" className="hover:text-foreground">Careers</Link></li> */}
-            <li><Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
-            <li><Link to="/terms" className="hover:text-foreground">Terms of Service</Link></li> 
-            <li><Link to="https://chat.whatsapp.com/EIfS97JzIiv1JRAdCE6QAC?mode=wwt" className="hover:text-foreground">Join our Community</Link></li>
-          </ul>
-          </div>
 
           <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
             <Copyright className="inline w-3 h-3 mr-1" />{currentYear} Ahmia Nigeria Ltd. Built with ❤️ by Corridor.
