@@ -619,8 +619,8 @@ const Index = () => {
           <h3>Contact</h3>
           <ul className="space-y-2 text-sm text-muted-foreground">
             {/* <li><Link to="/careers" className="hover:text-foreground">Careers</Link></li> */}
-            <li><a href="mailto:ahmia.nigltd@gmail.com">ahmia.nigltd@gmail.com</li>
-            <li><a href="tel://+2342084554366">+234 208 455 4366</li>
+            <li><a href="mailto:ahmia.nigltd@gmail.com">ahmia.nigltd@gmail.com</a></li>
+            <li><a href="tel://+2342084554366">+234 208 455 4366</a></li>
           </ul>
           </div>
 
