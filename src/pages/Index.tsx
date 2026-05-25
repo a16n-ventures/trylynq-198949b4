@@ -618,7 +618,7 @@ const Index = () => {
             </a>
           </div> 
 
-          <div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
           <ul className="space-y-2 text-sm text-muted-foreground">
             {/* <li><Link to="/careers" className="hover:text-foreground">Careers</Link></li> */}
             <li><Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
