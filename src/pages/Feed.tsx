@@ -527,9 +527,7 @@ const Feed = () => {
                                 {event.is_verified && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
                                   <ShieldCheck className="w-4 h-4 fill-white/20" />Verified                  </span>
-                                   </div>
-                                </div>
-                              )}
+                                )}
                                 </div>
                               </div>
                             </div>
@@ -537,7 +535,7 @@ const Feed = () => {
                             <CardContent className="p-4">
                               <h3 className="font-black text-sm leading-tight line-clamp-2">{event.title}</h3>
                                <div className="flex items-center text-xs text-muted-foreground gap-3">
-                                <span className="flex items-center"><Calendar className="w-4 h-4" /> {new Date(selectedEvent.start_date).toLocaleDateString()}          </span> 
+                                <span className="flex items-center"><Calendar className="w-4 h-4" /> {new Date(event.start_date).toLocaleDateString()}          </span> 
                                </div> 
                                <div className="flex items-center text-xs text-muted-foreground gap-3">
                               <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.event_type === 'virtual' ? 'Online' : (event.location || currentCityDisplay)}             </span> 
