@@ -517,7 +517,7 @@ const MapPage = () => {
                   
                   <Button 
                     size="icon" 
-                    className={`h-12 w-12 rounded-2xl shadow-lg border border-white/10 ${isGhostMode ? "bg-purple-600 text-white" : "bg-background/80 backdrop-blur-xl text-foreground"}`}
+                    className={`h-12 w-12 rounded-2xl border border-white/10 ${isGhostMode ? "bg-purple-600 text-white" : "bg-background/80 backdrop-blur-xl text-foreground"}`}
                     onClick={toggleGhostMode}
                   >
                     {isGhostMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5 text-white" />}
@@ -575,7 +575,7 @@ const MapPage = () => {
               <div className="flex justify-end mb-4">
                 <Button
                   onClick={() => location ? mapRef.current?.recenter() : requestLocation()}
-                  className="rounded-full h-12 w-12 shadow-xl bg-background/90 text-primary border border-white/20"
+                  className="rounded-full h-12 w-12 bg-background/90 text-primary border border-white/20"
                 >
                   {locationLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Crosshair className="h-6 w-6 text-white" />}
                 </Button>
@@ -666,10 +666,10 @@ const MapPage = () => {
                 
                 {/* Banner — padding-top % trick: parent is position:relative, no absolute child needed */}
                 <div className="relative w-full shrink-0" style={{ paddingTop: '44%' }}>
-                  <img
+                  {/* <img
                     src={selectedEvent.image_url || '/placeholder.jpg'}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
-                  />
+                  /> */}
                   <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, var(--background) 0%, transparent 60%)' }} />
                   
                   {selectedEvent.is_vibe && (
@@ -879,11 +879,18 @@ const MapPage = () => {
                       else setSelectedEvent(item);
                     }}
                   >
-                    <div className="relative">
-                      <Avatar className={`w-14 h-14 shadow-md ${item.is_vibe ? 'ring-2 ring-orange-500 ring-offset-2 animate-pulse' : ''}`}>
-                        <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
-                        <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
+                    <div className="relative"> 
+                      {activeView === 'events' ? ( 
+                          <Avatar className={`w-14 h-14 shadow-md ${item.is_vibe ? 'ring-2 ring-orange-500 ring-offset-2 animate-pulse' : ''}`}>
+                          <AvatarImage src={item.image_url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }} />
+                          <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
+                        </Avatar> 
+                      ) : ( 
+                        <Avatar className={`w-14 h-14 shadow-md ${item.is_vibe ? 'ring-2 ring-orange-500 ring-offset-2 animate-pulse' : ''}`}>
+                          <AvatarImage src={item.avatar || item.image_url} className="object-cover" />
+                          <AvatarFallback>{item.name?.[0] || item.title?.[0]}</AvatarFallback>
                       </Avatar>
+                      )}
                       {activeView === 'friends' && item.status === 'online' && (
                         <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background" />
                       )}

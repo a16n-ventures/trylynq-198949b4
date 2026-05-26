@@ -504,86 +504,49 @@ const Feed = () => {
                             <img src={event.image_url || '/placeholder-event.jpg'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
                             <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
-                                <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>{status.label}</Badge>
+                                <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>{status.label}</Badge>           {event.recurrence_rule && (
+                                  <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
+                                    <Repeat className="w-3 h-3 mr-1" /> {event.recurrence_rule.replace('FREQ=', '').charAt(0).toUpperCase() + event.recurrence_rule.replace('FREQ=', '').slice(1).toLowerCase()}
+                                  </Badge>
+                                )}
                                 {event.match_score && event.match_score > 80 && (
                                   <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
                                     <Sparkles className="w-3 h-3 mr-1 text-yellow-400" /> {event.match_score}% Vibe Match
                                   </Badge>
                                 )}
-                                {event.is_official && (
-                                  <Badge className="bg-primary text-white border-0 shadow-sm backdrop-blur-md">
-                                    <Megaphone className="w-3 h-3 mr-1" /> Official
-                                  </Badge>
-                                )}
-                                {event.recurrence_rule && (
-                                  <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
-                                    <Repeat className="w-3 h-3 mr-1" /> {event.recurrence_rule.replace('FREQ=', '').charAt(0).toUpperCase() + event.recurrence_rule.replace('FREQ=', '').slice(1).toLowerCase()}
-                                  </Badge>
-                                )}
-                                {event.event_type === 'virtual' && (
-                                  <Badge className="bg-cyan-600/80 text-white border-0 backdrop-blur-md">
-                                    <Video className="w-3 h-3 mr-1" /> Virtual
-                                  </Badge>
-                                )}
                               </div>
-                              
-                              {event.is_verified && (
-                                <div className="absolute top-3 right-16">
-                                   <div className="bg-primary/90 text-white p-1.5 rounded-full shadow-lg backdrop-blur-md">
-                                      <ShieldCheck className="w-4 h-4 fill-white/20" />
-                                   </div>
-                                </div>
-                              )}
 
                               <div className="absolute top-3 right-3 bg-white/90 backdrop-blur text-black px-2.5 py-1.5 rounded-lg text-center shadow-sm min-w-[50px]">
-                                <span className="block text-xs font-bold uppercase text-red-500">{new Date(event.start_date).toLocaleString('default', { month: 'short' })}</span>
-                                <span className="block text-lg font-black leading-none">{new Date(event.start_date).getDate()}</span>
+                                  
                               </div>
                               <div className="absolute bottom-3 left-3 right-3 text-white">
-                                <h3 className="font-black text-xl leading-tight line-clamp-2">{event.title}</h3>
                                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
-
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
                                   {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
-                                  {event.max_attendees && (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
-                                      <Users className="w-3 h-3" /> {event.attendee_count || 0}/{event.max_attendees}{(event.attendee_count || 0) >= event.max_attendees ? ' · Full' : ''}
-                                    </span>
-                                  )}
+                                {event.is_verified && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
+                                  <ShieldCheck className="w-4 h-4 fill-white/20" />Verified                  </span>
+                                   </div>
+                                </div>
+                              )}
                                 </div>
                               </div>
                             </div>
 
                             <CardContent className="p-4">
-                              <h3 className="sr-only">{event.title}</h3>
+                              <h3 className="font-black text-sm leading-tight line-clamp-2">{event.title}</h3>
                                <div className="flex items-center text-xs text-muted-foreground gap-3">
-                                <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.event_type === 'virtual' ? 'Online' : (event.location || currentCityDisplay)}</span> 
+                                <span className="flex items-center"><Calendar className="w-4 h-4" /> {new Date(selectedEvent.start_date).toLocaleDateString()}          </span> 
+                               </div> 
+                               <div className="flex items-center text-xs text-muted-foreground gap-3">
+                              <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.event_type === 'virtual' ? 'Online' : (event.location || currentCityDisplay)}             </span> 
+                                {event.max_attendees && (
+                                    <span className="flex items-center">
+                                      <Users className="w-3 h-3" /> {event.attendee_count || 0}/{event.max_attendees}{(event.attendee_count || 0) >= event.max_attendees ? ' · Full' : ''}
+                                    </span>
+                                  )}
                               </div> 
-                              
-                              <div className="mt-4 flex items-center justify-between">
-                                <div className="flex items-center -space-x-3">
-                                  {(event.friend_images || []).slice(0, 4).map((img, i) => (
-                                    <Avatar key={i} className="w-9 h-9 border-2 border-background shadow-sm">
-                                      <AvatarImage src={img} />
-                                      <AvatarFallback>?</AvatarFallback>
-                                    </Avatar>
-                                  ))}
-                                  <div className="text-xs text-muted-foreground pl-4 font-semibold">
-                                    {event.friend_images?.length ? (
-                                      <span className="text-primary">{event.friend_images.length === 1 ? "friend" : "friends"} in your circle are going</span>
-                                    ) : (
-                                      <span>{event.attendee_count || 0} attending</span>
-                                    )}
-                                  </div>
-                                </div>
-                              <div className="flex gap-2">
-                                <Button size="sm" variant="secondary" className="h-8 w-8 rounded-full p-0" onClick={(e) => { e.stopPropagation(); navigate(`/app/messages?type=event&id=${event.id}`); }}><MessageCircle className="w-4 h-4 text-primary" /></Button>
-                                <Button size="sm" className={`h-8 rounded-full px-4 ${event.is_attending ? "bg-green-600" : ""}`} onClick={(e) => { e.stopPropagation(); handleRSVP(event.id); }}>
-                                  {event.is_attending ? "Going" : event.requires_approval ? "Request to Join" : event.ticket_price ? `₦${event.ticket_price.toLocaleString()}` : "RSVP"}
-                                </Button>
-                              </div>
-                            </div>
                           </CardContent>
                         </Card>
                         );
@@ -609,9 +572,6 @@ const Feed = () => {
                   )}
                   {selectedEvent.event_type === 'virtual' && (
                     <Badge className="bg-cyan-600/80 text-white border-0 backdrop-blur-md"><Video className="w-3 h-3 mr-1" /> Virtual</Badge>
-                  )}
-                  {selectedEvent.recurrence_rule && (
-                    <Badge className="bg-black/60 text-white border-0 backdrop-blur-md"><Repeat className="w-3 h-3 mr-1" /> {selectedEvent.recurrence_rule.replace('FREQ=', '').charAt(0).toUpperCase() + selectedEvent.recurrence_rule.replace('FREQ=', '').slice(1).toLowerCase()}</Badge>
                   )}
                 </div>
                 <div className="absolute bottom-0 left-0 p-5 text-white w-full">
@@ -651,7 +611,7 @@ const Feed = () => {
                   </Button>
                 )}
                 <div className="grid grid-cols-2 gap-3">
-                  <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> ADD TO CAL </Button>
+                  <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> ADD TO CALENDAR </Button>
                   <Button onClick={() => handleRSVP(selectedEvent.id)} className={`h-12 rounded-xl font-bold uppercase ${selectedEvent.is_attending ? "bg-green-600" : "bg-primary"}`}>
                     {selectedEvent.is_attending ? "Going" : selectedEvent.requires_approval ? "Request to Join" : "RSVP Now"}
                   </Button>

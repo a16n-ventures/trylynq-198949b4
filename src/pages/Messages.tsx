@@ -844,15 +844,9 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
               </div>
             )}
 
-            {selectedChat.type === 'event' ? (
-               <p className="text-xs text-primary flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> Vibe Check Chat
-               </p>
-            ) : (
-               <p className="text-xs text-muted-foreground">
-                  {selectedChat.type === 'community' ? 'Community' : 'Online'}
-               </p>
-            )}
+           <p className="text-xs text-muted-foreground">
+              {selectedChat.type === 'community' ? 'Community' : 'Online'}
+           </p>
           </div>
         </div>
 
@@ -1032,7 +1026,7 @@ function ChatInputArea({ selectedChat, messageInput, setMessageInput, sendMessag
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
             placeholder={`Message ${selectedChat.name}...`}
-            className="flex-1 min-h-[40px] max-h-32 bg-transparent border-0 focus-visible:ring-0 resize-none py-2.5"
+            className="flex-1 min-h-[40px] bg-transparent border-0 focus-visible:ring-0 resize-none py-2.5"
             onKeyDown={(e) => {
                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
