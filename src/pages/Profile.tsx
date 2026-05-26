@@ -1259,7 +1259,6 @@ const Profile = () => {
               </div>
             </Card>
           </TabsContent>
-        )}
       </Tabs>
 
       {/* Profile Settings Dialog */}
