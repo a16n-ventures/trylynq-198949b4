@@ -669,14 +669,14 @@ const MapPage = () => {
                   {/* <img
                     src={selectedEvent.image_url || '/placeholder.jpg'}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
-                  /> */}
+                  /> 
                   <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, var(--background) 0%, transparent 60%)' }} />
                   
                   {selectedEvent.is_vibe && (
                     <Badge className="absolute top-2 left-2 bg-orange-500 text-white animate-pulse border-0 shadow-lg">
                       <Flame className="w-3 h-3 mr-1" /> HIGH VIBE
                     </Badge>
-                  )}
+                  )} */}
                   
                   <Button variant="secondary" size="icon" className="absolute top-2 right-2 rounded-full h-8 w-8 shadow-md" onClick={() => setSelectedEvent(null)}>
                     <X className="w-4 h-4" />

@@ -181,6 +181,91 @@ const AdminPortalButton = () => {
   );
 };
 
+// --- FAVORITES TAB ---
+const FavoritesTab = ({ userId, onEventClick }: { userId: string; onEventClick: (id: string) => void }) => {
+  const navigate = useNavigate();
+
+  // Load favorites from localStorage (same key as Feed.tsx)
+  const favoriteIds = useMemo<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('feed_favorites') || '[]'); }
+    catch { return []; }
+  }, []);
+
+  const { data: favoriteEvents = [], isLoading } = useQuery({
+    queryKey: ['favorite-events', favoriteIds.join(',')],
+    queryFn: async () => {
+      if (favoriteIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, title, start_date, image_url, category, ticket_price')
+        .in('id', favoriteIds)
+        .gt('start_date', new Date().toISOString())
+        .order('start_date', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: favoriteIds.length > 0,
+  });
+
+  if (isLoading) return (
+    <div className="space-y-3">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="flex gap-3 p-3 bg-muted/30 rounded-xl animate-pulse">
+          <div className="w-16 h-16 bg-muted rounded-xl shrink-0" />
+          <div className="flex-1 space-y-2 py-1">
+            <div className="h-4 bg-muted rounded w-2/3" />
+            <div className="h-3 bg-muted rounded w-1/2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  if (favoriteIds.length === 0 || favoriteEvents.length === 0) {
+    return (
+      <div className="text-center py-16 bg-muted/20 rounded-3xl border-2 border-dashed border-muted">
+        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+          <Heart className="w-8 h-8 text-muted-foreground/40" />
+        </div>
+        <h3 className="font-semibold text-lg">No favorites yet</h3>
+        <p className="text-sm text-muted-foreground mt-1 mb-4">Tap the heart on any event in the feed to save it here.</p>
+        <Button onClick={() => navigate('/app/feed')}>Browse Events</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">{favoriteEvents.length} saved event{favoriteEvents.length !== 1 ? 's' : ''}</p>
+      {(favoriteEvents as any[]).map((event: any) => (
+        <div
+          key={event.id}
+          className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer group"
+          onClick={() => onEventClick(event.id)}
+        >
+          <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-muted">
+            {event.image_url
+              ? <img src={event.image_url} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+              : <div className="w-full h-full flex items-center justify-center"><Calendar className="w-5 h-5 text-muted-foreground/40" /></div>
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{event.title}</p>
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+              <Calendar className="w-3 h-3" />
+              {new Date(event.start_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+            </p>
+            {event.ticket_price && event.ticket_price > 0 && (
+              <p className="text-xs font-semibold text-primary mt-0.5">₦{event.ticket_price.toLocaleString()}</p>
+            )}
+          </div>
+          <Heart className="w-4 h-4 fill-red-500 text-red-500 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // --- PROFILE VIEWS TAB ---
 const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boolean }) => {
   const navigate = useNavigate();
@@ -260,7 +345,8 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
       <p className="text-xs text-muted-foreground mb-3">
         {isPremium ? `${uniqueViewers.length} unique viewer${uniqueViewers.length !== 1 ? 's' : ''} in the last 30 days` : 'Upgrade to PRO for detailed viewer analytics'}
       </p>
-      {uniqueViewers.map((viewer: any, idx: number) => (
+      {/* For non-premium: show only first 3, blurred, with "+X others" summary */}
+      {(isPremium ? uniqueViewers : uniqueViewers.slice(0, 3)).map((viewer: any, idx: number) => (
         <div
           key={viewer.viewer_id + '-' + idx}
           className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer"
@@ -274,7 +360,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className={`font-semibold text-sm truncate transition-all ${!isPremium ? 'blur-sm select-none' : ''}`}>
-              {viewer.profile.display_name}  {/* always rendered, visually blurred */}
+              {viewer.profile.display_name}
             </p>
             <p className="text-xs text-muted-foreground">
               {new Date(viewer.viewed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -285,12 +371,29 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
           )}
         </div>
       ))}
+      {!isPremium && uniqueViewers.length > 3 && (
+        <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-dashed border-border/40">
+          <div className="flex -space-x-2">
+            {uniqueViewers.slice(3, 6).map((v: any, i: number) => (
+              <div key={i} className="w-8 h-8 rounded-full bg-muted border-2 border-background blur-sm flex items-center justify-center text-xs font-bold">
+                {v.profile.display_name?.[0] || '?'}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground flex-1">
+            <span className="font-semibold text-foreground">+{uniqueViewers.length - 3} others</span> also viewed your profile
+          </p>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 shrink-0" onClick={() => navigate('/premium')}>
+            <Crown className="w-3 h-3" /> Unlock
+          </Button>
+        </div>
+      )}
       {!isPremium && uniqueViewers.length > 0 && (
         <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent p-4 mt-4">
           <p className="text-sm font-semibold mb-1">Want to see who viewed your profile?</p>
-          <p className="text-xs text-muted-foreground mb-3">Upgrade to PRO to see full viewer details.</p>
+          <p className="text-xs text-muted-foreground mb-3">Upgrade to PRO to see full viewer details and unlock all {uniqueViewers.length} viewers.</p>
           <Button size="sm" onClick={() => navigate('/premium')} className="gap-1">
-            <Crown className="w-3.5 h-3.5" /> Upgrade
+            <Crown className="w-3.5 h-3.5" /> Upgrade to PRO
           </Button>
         </Card>
       )}
@@ -1016,29 +1119,35 @@ const Profile = () => {
 
       {/* 2. CONTENT TABS */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full bg-transparent border-b rounded-none h-12 px-6 gap-6 justify-start">
+        <TabsList className="w-full bg-transparent border-b rounded-none h-12 px-6 gap-6 justify-start overflow-x-auto">
           <TabsTrigger
             value="tickets"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0"
           >
             <Ticket className="w-4 h-4 mr-2" /> My Tickets
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="favorites"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0"
+          >
+            <Heart className="w-4 h-4 mr-2" /> Favorites
           </TabsTrigger>
           
           <TabsTrigger
             value="views"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0"
           >
             <Grid className="w-4 h-4 mr-2" /> Views
           </TabsTrigger>
           
-          {profile.is_premium && (
-            <TabsTrigger
-              value="analytics"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
-            >
-              <Sparkles className="w-4 h-4 mr-2" /> Insights
-            </TabsTrigger>
-          )}
+          {/* Use CSS hidden — conditional rendering breaks Radix TabsList child indexing */}
+          <TabsTrigger
+            value="analytics"
+            className={`rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0 ${!profile.is_premium ? 'hidden' : ''}`}
+          >
+            <Sparkles className="w-4 h-4 mr-2" /> Insights
+          </TabsTrigger>
         </TabsList>
 
         {/* A. MY TICKETS (Wallet View) */}
@@ -1081,14 +1190,18 @@ const Profile = () => {
           )}
         </TabsContent>
 
-        {/* B. VIEWS TAB */}
+        {/* B. FAVORITES TAB */}
+        <TabsContent value="favorites" className="p-4 space-y-4 min-h-[300px]">
+          <FavoritesTab userId={user!.id} onEventClick={(id) => navigate(`/app/events/${id}`)} />
+        </TabsContent>
+
+        {/* C. VIEWS TAB */}
         <TabsContent value="views" className="p-4 space-y-4 min-h-[300px]">
           <ProfileViewsTab userId={user!.id} isPremium={!!profile.is_premium} />
         </TabsContent>
 
-        {/* C. PREMIUM INSIGHTS (Analytics for premium users) */}
-        {profile.is_premium && (
-          <TabsContent value="analytics" className="p-4 space-y-4 min-h-[300px]">
+        {/* D. PREMIUM INSIGHTS (Analytics for premium users) */}
+        <TabsContent value="analytics" className={`p-4 space-y-4 min-h-[300px] ${!profile.is_premium ? 'hidden' : ''}`}>
             <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-amber-500/5 to-transparent overflow-hidden relative">
               <div className="absolute -right-8 -top-8 w-28 h-28 bg-primary/10 rounded-full blur-3xl" />
               <div className="p-5 space-y-4 relative z-10">

@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { 
   Search, MapPin, Calendar, Users, Plus, 
   MessageCircle, Loader2, Sparkles, Ticket, 
-  Clock, Check, Megaphone, Repeat, Video,
+  Clock, Check, Megaphone, Repeat, Video, Heart,
   ArrowRight, Music, Martini, Palette, Zap, Rocket, UserPlus, Globe, Lock, Bell, ShieldCheck
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -128,6 +128,21 @@ const Feed = () => {
   const [selectedEvent, setSelectedEvent] = useState<FeedEvent | null>(null);
   const [selectedCommunity, setSelectedCommunity] = useState<FeedCommunity | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('feed_favorites') || '[]')); }
+    catch { return new Set(); }
+  });
+
+  const toggleFavorite = (eventId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavorites(prev => {
+      const next = new Set(prev);
+      if (next.has(eventId)) { next.delete(eventId); toast('Removed from favorites'); }
+      else { next.add(eventId); toast.success('Added to favorites ❤️'); }
+      localStorage.setItem('feed_favorites', JSON.stringify([...next]));
+      return next;
+    });
+  };
   const [isPremium, setIsPremium] = useState(false);
 
   // Pioneer milestone derived from launch zone hook
@@ -516,8 +531,18 @@ const Feed = () => {
                                 )}
                               </div>
 
-                              <div className="absolute top-3 right-3 bg-white/90 backdrop-blur text-black px-2.5 py-1.5 rounded-lg text-center shadow-sm min-w-[50px]">
-                                  
+                              <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
+                                <button
+                                  onClick={(e) => toggleFavorite(event.id, e)}
+                                  className="w-9 h-9 rounded-full flex items-center justify-center shadow-md backdrop-blur-md transition-all active:scale-90"
+                                  style={{ background: favorites.has(event.id) ? 'rgba(239,68,68,0.9)' : 'rgba(255,255,255,0.85)' }}
+                                >
+                                  <Heart className={`w-4 h-4 transition-all ${favorites.has(event.id) ? 'fill-white text-white' : 'text-gray-500'}`} />
+                                </button>
+                                <div className="bg-white/90 backdrop-blur text-black px-2.5 py-1.5 rounded-lg text-center shadow-sm min-w-[50px]">
+                                  <p className="text-base font-black leading-none">{new Date(event.start_date).getDate()}</p>
+                                  <span className="text-[8px] text-gray-500 uppercase tracking-wider font-bold">{new Date(event.start_date).toLocaleString('en', { month: 'short' })}</span>
+                                </div>
                               </div>
                               <div className="absolute bottom-3 left-3 right-3 text-white">
                                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
@@ -532,19 +557,18 @@ const Feed = () => {
                               </div>
                             </div>
 
-                            <CardContent className="p-4">
-                              <h3 className="font-black text-sm leading-tight line-clamp-2">{event.title}</h3>
-                               <div className="flex items-center text-xs text-muted-foreground gap-3">
-                                <span className="flex items-center"><Calendar className="w-4 h-4" /> {new Date(event.start_date).toLocaleDateString()}          </span> 
-                               </div> 
-                               <div className="flex items-center text-xs text-muted-foreground gap-3">
-                              <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {event.event_type === 'virtual' ? 'Online' : (event.location || currentCityDisplay)}             </span> 
-                                {event.max_attendees && (
-                                    <span className="flex items-center">
-                                      <Users className="w-3 h-3" /> {event.attendee_count || 0}/{event.max_attendees}{(event.attendee_count || 0) >= event.max_attendees ? ' · Full' : ''}
-                                    </span>
-                                  )}
-                              </div> 
+                            <CardContent className="p-3">
+                              <h3 className="font-bold text-sm leading-snug line-clamp-1 mb-1">{event.title}</h3>
+                              <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-0.5">
+                                <span className="flex items-center gap-0.5 font-medium"><Calendar className="w-3 h-3 text-primary/70" /> {new Date(event.start_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                <span className="text-border">·</span>
+                                <span className="flex items-center gap-0.5 truncate max-w-[120px]"><MapPin className="w-3 h-3 shrink-0 text-primary/70" /> <span className="truncate">{event.event_type === 'virtual' ? 'Online' : (event.location || currentCityDisplay)}</span></span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                <span className="flex items-center gap-0.5"><Users className="w-3 h-3 text-primary/70" /> {event.attendee_count || 0}{event.max_attendees ? `/${event.max_attendees}` : ''} going{(event.attendee_count || 0) >= (event.max_attendees || Infinity) ? ' · Full' : ''}</span>
+                                <span className="text-border">·</span>
+                                <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
+                              </div>
                           </CardContent>
                         </Card>
                         );
@@ -559,8 +583,8 @@ const Feed = () => {
         {/* EVENT MODAL */}
         {selectedEvent && (
           <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-            <DialogContent className="p-0 overflow-hidden sm:max-w-[420px] border-0">
-              <div className="relative h-64 w-full">
+            <DialogContent className="p-0 overflow-hidden sm:max-w-[420px] border-0 max-h-[85vh] flex flex-col">
+              <div className="relative h-48 w-full shrink-0">
                 <img src={selectedEvent.image_url || '/placeholder.jpg'} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
                 <Button variant="ghost" size="icon" className="absolute top-2 right-2 text-white rounded-full" onClick={() => setSelectedEvent(null)}><ArrowRight className="w-6 h-6 rotate-180" /></Button>
@@ -578,7 +602,7 @@ const Feed = () => {
                   <div className="flex items-center gap-2 text-white/80 text-sm font-medium"><Calendar className="w-4 h-4" /> {new Date(selectedEvent.start_date).toLocaleDateString()} in {milestone?.zone_name}</div>
                 </div>
               </div>
-              <div className="p-5 space-y-6">
+              <div className="p-4 space-y-3 overflow-y-auto flex-1">
                 <div className="flex items-center justify-between bg-muted/30 p-3 rounded-xl border">
                    <div className="flex items-center -space-x-2">
                       {selectedEvent.friend_images?.slice(0, 3).map((img, i) => <Avatar key={i} className="border-2 border-background w-8 h-8"><AvatarImage src={img} /><AvatarFallback>👤</AvatarFallback></Avatar>)}
@@ -586,13 +610,13 @@ const Feed = () => {
                    </div>
                    <p className="text-xs text-muted-foreground font-medium">{selectedEvent.friend_images?.length ? <span className="font-bold text-primary">{selectedEvent.friend_images.length} friends are going</span> : <span>{selectedEvent.attendee_count || 0} attending</span>}</p>
                 </div>
-                <Button variant="outline" className="w-full gap-2 border-dashed border-primary/40 text-primary h-12 rounded-2xl font-bold uppercase" onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}><MessageCircle className="w-5 h-5" /> Join Vibe Check Chat</Button>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Time</p><p className="font-black">{new Date(selectedEvent.start_date).toLocaleTimeString([], {timeStyle: 'short'})}</p></div>
-                  <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Price</p><p className="font-black">{selectedEvent.ticket_price ? `₦${selectedEvent.ticket_price.toLocaleString()}` : 'Free'}</p></div>
-                  <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Location</p><p className="font-black truncate">{selectedEvent.event_type === 'virtual' ? 'Online' : (selectedEvent.location || currentCityDisplay)}</p></div>
+                <Button variant="outline" className="w-full gap-2 border-dashed border-primary/40 text-primary h-10 rounded-xl font-bold uppercase text-xs" onClick={() => navigate(`/app/messages?type=event&id=${selectedEvent.id}`)}><MessageCircle className="w-5 h-5" /> Join Vibe Check Chat</Button>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="bg-muted/30 p-2.5 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-0.5">Time</p><p className="font-black">{new Date(selectedEvent.start_date).toLocaleTimeString([], {timeStyle: 'short'})}</p></div>
+                  <div className="bg-muted/30 p-2.5 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-0.5">Price</p><p className="font-black">{selectedEvent.ticket_price ? `₦${selectedEvent.ticket_price.toLocaleString()}` : 'Free'}</p></div>
+                  <div className="bg-muted/30 p-2.5 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-0.5">Location</p><p className="font-black truncate">{selectedEvent.event_type === 'virtual' ? 'Online' : (selectedEvent.location || currentCityDisplay)}</p></div>
                   {selectedEvent.max_attendees && (
-                    <div className="bg-muted/30 p-3 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1">Capacity</p><p className="font-black">{selectedEvent.attendee_count || 0} / {selectedEvent.max_attendees}{(selectedEvent.attendee_count || 0) >= selectedEvent.max_attendees ? ' · Full' : ''}</p></div>
+                    <div className="bg-muted/30 p-2.5 rounded-xl"><p className="text-muted-foreground text-xs font-bold uppercase tracking-widest mb-0.5">Capacity</p><p className="font-black">{selectedEvent.attendee_count || 0} / {selectedEvent.max_attendees}{(selectedEvent.attendee_count || 0) >= selectedEvent.max_attendees ? ' · Full' : ''}</p></div>
                   )}
                 </div>
                 {selectedEvent.requires_approval && (
@@ -600,7 +624,7 @@ const Feed = () => {
                     <Check className="w-4 h-4 shrink-0" /> Attendance requires host approval
                   </div>
                 )}
-                <div className="text-sm text-muted-foreground leading-relaxed italic">{selectedEvent.description}</div>
+                <div className="text-xs text-muted-foreground leading-relaxed italic line-clamp-3">{selectedEvent.description}</div>
               </div>
               <DialogFooter className="p-4 border-t sticky bottom-0 bg-background grid gap-3">
                 {selectedEvent.event_type === 'virtual' && selectedEvent.meeting_link && (
@@ -610,7 +634,18 @@ const Feed = () => {
                 )}
                 <div className="grid grid-cols-2 gap-3">
                   <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> ADD TO CALENDAR </Button>
-                  <Button onClick={() => handleRSVP(selectedEvent.id)} className={`h-12 rounded-xl font-bold uppercase ${selectedEvent.is_attending ? "bg-green-600" : "bg-primary"}`}>
+                  <Button
+                    onClick={() => {
+                      if (!selectedEvent.is_attending && selectedEvent.requires_approval) {
+                        // Route to Messages event chat with request flag so host sees it as a join request
+                        navigate(`/app/messages?type=event&id=${selectedEvent.id}&action=request`);
+                        setSelectedEvent(null);
+                      } else {
+                        handleRSVP(selectedEvent.id);
+                      }
+                    }}
+                    className={`h-12 rounded-xl font-bold uppercase ${selectedEvent.is_attending ? "bg-green-600" : "bg-primary"}`}
+                  >
                     {selectedEvent.is_attending ? "Going" : selectedEvent.requires_approval ? "Request to Join" : "RSVP Now"}
                   </Button>
                 </div>

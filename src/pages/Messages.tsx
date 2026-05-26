@@ -90,11 +90,18 @@ export default function Messages() {
   useEffect(() => {
     const type = searchParams.get('type') as ChatType;
     const id = searchParams.get('id');
+    const action = searchParams.get('action');
     
     if (type && id && user) {
       setActiveTab(type);
       fetchChatDetails(type, id).then(chat => {
-        if (chat) setSelectedChat(chat);
+        if (chat) {
+          setSelectedChat(chat);
+          // Pre-fill message input for join requests from Feed
+          if (action === 'request') {
+            setMessageInput(`Hi! I'd like to request to join "${chat.name}". Please consider my request. Thanks!`);
+          }
+        }
       });
     }
   }, [searchParams, user]); 
@@ -1026,7 +1033,7 @@ function ChatInputArea({ selectedChat, messageInput, setMessageInput, sendMessag
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
             placeholder={`Message ${selectedChat.name}...`}
-            className="flex-1 min-h-[40px] bg-transparent border-0 focus-visible:ring-0 resize-none py-2.5"
+            className="flex-1 min-h-[36px] max-h-[100px] bg-transparent border-0 focus-visible:ring-0 resize-none py-2 text-sm"
             onKeyDown={(e) => {
                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
