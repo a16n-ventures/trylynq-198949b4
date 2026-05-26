@@ -648,7 +648,7 @@ const Index = () => {
         </div>
       
         {/* Bottom: copyright */}
-        <p className="text-xs border-t pt-6" style={{ borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.2)' }}>
+        <p className="text-xs text-center justify-center border-t pt-6" style={{ borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.2)' }}>
           <Copyright className="inline w-3 h-3 mr-1" />{currentYear} Ahmia Nigeria Ltd. Built with ❤️ by Corridor.
         </p>
       </footer>

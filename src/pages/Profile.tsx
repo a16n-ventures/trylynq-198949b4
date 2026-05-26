@@ -383,9 +383,6 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
           <p className="text-xs text-muted-foreground flex-1">
             <span className="font-semibold text-foreground">+{uniqueViewers.length - 3} others</span> also viewed your profile
           </p>
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 shrink-0" onClick={() => navigate('/premium')}>
-            <Crown className="w-3 h-3" /> Unlock
-          </Button>
         </div>
       )}
       {!isPremium && uniqueViewers.length > 0 && (
