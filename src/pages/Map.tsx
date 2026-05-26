@@ -678,12 +678,12 @@ const MapPage = () => {
                     </Badge>
                   )}
                   
-                  <Button variant="secondary" size="icon" className="absolute top-2 right-2 rounded-full h-8 w-8 shadow-md" onClick={() => setSelectedEvent(null)}>
-                    <X className="w-4 h-4" />
-                  </Button>
                 </div> */}
                 
                 <CardContent className="p-5 pt-2 overflow-y-auto flex-1 min-h-0">
+                  <Button variant="secondary" size="icon" className="absolute top-2 right-2 rounded-full h-8 w-8 shadow-md" onClick={() => setSelectedEvent(null)}>
+                    <X className="w-4 h-4" />
+                  </Button>
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <Badge variant="secondary" className="mb-2 bg-primary/10 text-primary hover:bg-primary/20 border-0">

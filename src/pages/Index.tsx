@@ -644,7 +644,6 @@ const Index = () => {
             <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.25)' }}>Contact</p>
             <div><a href="mailto:ahmia.nigltd@gmail.com" className="hover:text-white transition-colors">ahmia.nigltd@gmail.com</a></div>
             <div><a href="tel:+2342084554366" className="hover:text-white transition-colors">+234 208 455 4366</a></div>
-            <div><Link to="#" className="hover:text-white transition-colors">Join Community</Link></div>
           </div>
         </div>
       
