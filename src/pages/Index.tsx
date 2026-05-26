@@ -605,51 +605,53 @@ const Index = () => {
         </button>
       </section>
 
-      {/* ── FOOTER ── */}
+            {/* ── FOOTER ── */}{/* ── FOOTER ── */}
       <footer className="px-6 pb-12 pt-8" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        {/* Top row: brand + social */}
+        <div className="flex items-start justify-between gap-6 mb-8">
           <div>
             <h3 className="text-2xl font-black tracking-tighter mb-1" style={{ letterSpacing: '-0.04em' }}>
               ahmia<span style={{ color: '#E8511A' }}>.</span>
             </h3>
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Real world. Real friends. Real-time.</p>
-          </div> 
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-          <h3>Contact</h3>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            {/* <li><Link to="/careers" className="hover:text-foreground">Careers</Link></li> */}
-            <li><a href="mailto:ahmia.nigltd@gmail.com">ahmia.nigltd@gmail.com</a></li>
-            <li><a href="tel://+2342084554366">+234 208 455 4366</a></li>
-          </ul>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            {/* <li><Link to="/careers" className="hover:text-foreground">Careers</Link></li> */}
-            <li><Link to="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
-            <li><Link to="/terms" className="hover:text-foreground">Terms of Service</Link></li> 
-            <li><Link to="#">Join our Community</Link></li>
-          </ul>
-          </div> 
-
-          <div className="flex gap-4">
-            <a href="https://instagram.com/@ahmiahq" className="transition-colors" style={{ color: 'rgba(255,255,255,0.35)' }}
+          <div className="flex gap-3 mt-1">
+            <a href="https://instagram.com/@ahmiahq"
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}
               onMouseEnter={e => (e.currentTarget.style.color = '#E8511A')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}>
-              <Instagram className="w-5 h-5" />
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}>
+              <Instagram className="w-4 h-4" />
             </a>
-            <a href="https://linkedin.com/company/ahmiahq" className="transition-colors" style={{ color: 'rgba(255,255,255,0.35)' }}
+            <a href="https://linkedin.com/company/ahmiahq"
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}
               onMouseEnter={e => (e.currentTarget.style.color = '#E8511A')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}>
-              <Linkedin className="w-5 h-5" />
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}>
+              <Linkedin className="w-4 h-4" />
             </a>
-          </div> 
-
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-            <Copyright className="inline w-3 h-3 mr-1" />{currentYear} Ahmia Nigeria Ltd. Built with ❤️ by Corridor.
-          </p>
+          </div>
         </div>
+      
+        {/* Middle row: links grid — stacks on mobile, 2-col on sm+ */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-x-8 gap-y-2 mb-8 text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.25)' }}>Legal</p>
+            <div><Link to="/legal/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></div>
+            <div><Link to="/legal/terms-conditions" className="hover:text-white transition-colors">Terms of Service</Link></div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'rgba(255,255,255,0.25)' }}>Contact</p>
+            <div><a href="mailto:ahmia.nigltd@gmail.com" className="hover:text-white transition-colors">ahmia.nigltd@gmail.com</a></div>
+            <div><a href="tel:+2342084554366" className="hover:text-white transition-colors">+234 208 455 4366</a></div>
+            <div><Link to="#" className="hover:text-white transition-colors">Join Community</Link></div>
+          </div>
+        </div>
+      
+        {/* Bottom: copyright */}
+        <p className="text-xs border-t pt-6" style={{ borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.2)' }}>
+          <Copyright className="inline w-3 h-3 mr-1" />{currentYear} Ahmia Nigeria Ltd. Built with ❤️ by Corridor.
+        </p>
       </footer>
 
       <AuthModal

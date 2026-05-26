@@ -665,8 +665,8 @@ const MapPage = () => {
               <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl rounded-3xl animate-in slide-in-from-bottom-10 overflow-hidden max-h-[82vh] flex flex-col">
                 
                 {/* Banner — padding-top % trick: parent is position:relative, no absolute child needed */}
-                <div className="relative w-full shrink-0" style={{ paddingTop: '44%' }}>
-                  {/* <img
+                {/* <div className="relative w-full shrink-0" style={{ paddingTop: '44%' }}>
+                  <img
                     src={selectedEvent.image_url || '/placeholder.jpg'}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
                   /> 
@@ -676,12 +676,12 @@ const MapPage = () => {
                     <Badge className="absolute top-2 left-2 bg-orange-500 text-white animate-pulse border-0 shadow-lg">
                       <Flame className="w-3 h-3 mr-1" /> HIGH VIBE
                     </Badge>
-                  )} */}
+                  )}
                   
                   <Button variant="secondary" size="icon" className="absolute top-2 right-2 rounded-full h-8 w-8 shadow-md" onClick={() => setSelectedEvent(null)}>
                     <X className="w-4 h-4" />
                   </Button>
-                </div>
+                </div> */}
                 
                 <CardContent className="p-5 pt-2 overflow-y-auto flex-1 min-h-0">
                   <div className="flex justify-between items-start mb-4">

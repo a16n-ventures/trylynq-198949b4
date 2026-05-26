@@ -1427,7 +1427,7 @@ const Profile = () => {
                 </div>
                 {((profile as any).skills?.length > 0) ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {((profile as any).skills as string[]).slice(0, 6).map((skill) => (
+                    {(((profile as any).skills as string[]) || []).slice(0, 6).map((skill) => (
                       <Badge key={skill} variant="secondary"
                         className="text-[10px] bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200">
                         {skill}
@@ -1462,7 +1462,7 @@ const Profile = () => {
                 </div>
                 {((profile as any).interests?.length > 0) ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {((profile as any).interests as string[]).slice(0, 6).map((interest) => (
+                    {(((profile as any).interests as string[]) || []).slice(0, 6).map((interest) => (
                       <Badge key={interest} variant="secondary" className="text-[10px]">{interest}</Badge>
                     ))}
                     {(profile as any).interests?.length > 6 && (

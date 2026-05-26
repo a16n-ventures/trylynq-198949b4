@@ -539,16 +539,11 @@ const Feed = () => {
                                 >
                                   <Heart className={`w-4 h-4 transition-all ${favorites.has(event.id) ? 'fill-white text-white' : 'text-gray-500'}`} />
                                 </button>
-                                <div className="bg-white/90 backdrop-blur text-black px-2.5 py-1.5 rounded-lg text-center shadow-sm min-w-[50px]">
-                                  <p className="text-base font-black leading-none">{new Date(event.start_date).getDate()}</p>
-                                  <span className="text-[8px] text-gray-500 uppercase tracking-wider font-bold">{new Date(event.start_date).toLocaleString('en', { month: 'short' })}</span>
-                                </div>
                               </div>
                               <div className="absolute bottom-3 left-3 right-3 text-white">
                                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
                                   {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
                                 {event.is_verified && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
                                   <ShieldCheck className="w-4 h-4 fill-white/20" />Verified                  </span>
@@ -633,7 +628,7 @@ const Feed = () => {
                   </Button>
                 )}
                 <div className="grid grid-cols-2 gap-3">
-                  <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4 mr-2" /> ADD TO CALENDAR </Button>
+                  <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => addToCalendar(selectedEvent)}><Calendar className="w-4 h-4" /> ADD TO CALENDAR </Button>
                   <Button
                     onClick={() => {
                       if (!selectedEvent.is_attending && selectedEvent.requires_approval) {
