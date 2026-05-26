@@ -78,18 +78,33 @@ const addToCalendar = (event: FeedEvent) => {
   toast.success("Opening Calendar...");
 };
 
-const getEventStatus = (startDate: string) => {
-  const date = new Date(startDate);
+const getEventStatus = (startDate: string, endDate?: string | null) => {
+  const start = new Date(startDate);
   const now = new Date();
-  const expirationTime = addHours(date, 3); 
+  
+  // Use the specified end_date; if missing, fall back to a 3-hour duration window
+  const end = endDate ? new Date(endDate) : addHours(start, 3);
 
-  if (isPast(date) && now < expirationTime) return { label: 'Happening Now', color: 'bg-green-600' };
-  if (isToday(date)) return { label: 'Today', color: 'bg-blue-500' };
-  if (isFuture(date)) {
-    const hoursUntil = differenceInMinutes(date, now) / 60;
+  // 1. Bounded status checks: Active window vs past window
+  if (now >= start && now <= end) {
+    return { label: 'Happening Now', color: 'bg-green-600' };
+  }
+  
+  if (now > end) {
+    return { label: 'Past', color: 'bg-muted' };
+  }
+
+  // 2. Future status checks
+  if (isToday(start)) {
+    return { label: 'Today', color: 'bg-blue-500' };
+  }
+
+  if (isFuture(start)) {
+    const hoursUntil = differenceInMinutes(start, now) / 60;
     if (hoursUntil <= 24) return { label: 'Soon', color: 'bg-amber-500' };
     return { label: 'Upcoming', color: 'bg-primary' };
   }
+  
   return { label: 'Past', color: 'bg-muted' };
 };
 
@@ -398,16 +413,46 @@ const Feed = () => {
 
   const getFilteredEvents = () => {
     let filtered = [...events];
-
+  
+    // 1. Apply global filters
     if (verifiedOnly) {
       filtered = filtered.filter(e => e.creator_id && e.is_verified); 
     }
-
+  
     if (searchQuery) {
       filtered = filtered.filter(e => e.title.toLowerCase().includes(searchQuery.toLowerCase()));
     }
-
+    
+    // 2. Filter down by active tab category
+    switch (activeTab) {
+      case 'trending': 
+        filtered = filtered.filter(e => (e.attendee_count || 0) > 10 || (e.match_score && e.match_score > 80)); 
+        break;
+      case 'music': 
+        filtered = filtered.filter(e => e.category?.toLowerCase().includes('music') || e.description?.toLowerCase().includes('music')); 
+        break;
+      case 'nightlife': 
+        filtered = filtered.filter(e => e.category?.toLowerCase().includes('nightlife') || e.category?.toLowerCase().includes('party')); 
+        break;
+      case 'tech': 
+        filtered = filtered.filter(e => e.category?.toLowerCase().includes('tech')); 
+        break;
+      case 'sports': 
+        filtered = filtered.filter(e => e.category?.toLowerCase().includes('sports')); 
+        break;
+      case 'food': 
+        filtered = filtered.filter(e => e.category?.toLowerCase().includes('food')); 
+        break;
+      case 'art': 
+        filtered = filtered.filter(e => e.category?.toLowerCase().includes('art')); 
+        break;
+      default: 
+        break;
+    }
+  
+    // 3. Apply sorting logic
     if (activeTab === 'for_you') {
+      // Keep your custom vibe/distance matching for the personalized feed
       filtered.sort((a, b) => {
         const da = a.distanceKm ?? 9999;
         const db = b.distanceKm ?? 9999;
@@ -416,18 +461,12 @@ const Feed = () => {
         const scoreB = (b.match_score || 0) + (b.friend_images?.length || 0) * 10;
         return scoreB - scoreA;
       });
+    } else {
+      // Sort all other categories by earliest start time (ascending chronological order)
+      filtered.sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
     }
-    
-    switch (activeTab) {
-        case 'trending': return filtered.filter(e => (e.attendee_count || 0) > 10 || (e.match_score && e.match_score > 80));
-        case 'music': return filtered.filter(e => e.category?.toLowerCase().includes('music') || e.description?.toLowerCase().includes('music'));
-        case 'nightlife': return filtered.filter(e => e.category?.toLowerCase().includes('nightlife') || e.category?.toLowerCase().includes('party'));
-        case 'tech': return filtered.filter(e => e.category?.toLowerCase().includes('tech'));
-        case 'sports': return filtered.filter(e => e.category?.toLowerCase().includes('sports'));
-        case 'food': return filtered.filter(e => e.category?.toLowerCase().includes('food'));
-        case 'art': return filtered.filter(e => e.category?.toLowerCase().includes('art'));
-        default: return filtered;
-    }
+  
+    return filtered;
   };
 
   const displayEvents = getFilteredEvents();
@@ -512,7 +551,7 @@ const Feed = () => {
                       {loading ? <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div> : 
                       displayEvents.length === 0 ? <div className="text-center py-16 flex flex-col items-center gap-4"><div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center"><Calendar className="w-10 h-10 text-muted-foreground/30" /></div><div><p className="font-semibold text-base">No events for this vibe yet in {milestone?.zone_name}</p></div><Button className="rounded-full px-6 gap-2 shadow-md" onClick={() => navigate('/create-event')}><Plus className="w-4 h-4" /> Create Event</Button></div> :
                       displayEvents.map((event) => {
-                        const status = getEventStatus(event.start_date);
+                        const status = getEventStatus(event.start_date, event.end_date);
                         return (
                         <Card key={event.id} className="overflow-hidden border-0 shadow-md group cursor-pointer active:scale-[0.98] transition-transform" onClick={() => setSelectedEvent(event)}>
                           <div className="relative h-48 w-full bg-muted">
