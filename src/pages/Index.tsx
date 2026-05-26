@@ -121,17 +121,44 @@ const Index = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let currentCityName: string | null = null;
+
+    // Helper to fetch the actual live count from Supabase
+    const fetchRealCount = async (cityName: string) => {
+      const { count } = await supabase
+        .from('city_pioneers')
+        .select('*', { count: 'exact', head: true })
+        .eq('city_name', cityName);
+      return count || 0;
+    };
+
     const matchTo = async (lat: number, lng: number) => {
       const { data: milestones } = await supabase.from('city_milestones').select('*');
       if (cancelled || !milestones || milestones.length === 0) { setZoneLoading(false); return; }
+      
       let best: any = null, bestDist = Infinity;
       for (const m of milestones) {
         const d = distKm(lat, lng, m.center_lat, m.center_long);
         if (d < bestDist) { bestDist = d; best = m; }
       }
+      
       const inZone = best && bestDist <= (best.radius_km ?? 25);
-      if (best) setZone({ city: best.city_name, current: best.current_count ?? 0, target: best.target_count ?? 0, unlocked: best.is_unlocked === true, inZone: !!inZone });
-      setZoneLoading(false);
+      
+      if (best) {
+        currentCityName = best.city_name;
+        const realCount = await fetchRealCount(best.city_name);
+        
+        if (!cancelled) {
+          setZone({ 
+            city: best.city_name, 
+            current: realCount, 
+            target: best.target_count ?? 0, 
+            unlocked: best.is_unlocked === true, 
+            inZone: !!inZone 
+          });
+        }
+      }
+      if (!cancelled) setZoneLoading(false);
     };
 
     const ipFallback = async () => {
@@ -140,22 +167,48 @@ const Index = () => {
         const data = await res.json();
         if (data?.latitude && data?.longitude && !cancelled) { await matchTo(data.latitude, data.longitude); return; }
       } catch (e) { console.warn('IP geo failed', e); }
+      
       const { data: milestones } = await supabase.from('city_milestones').select('*').limit(1);
       if (cancelled) return;
+      
       if (milestones && milestones[0]) {
         const m = milestones[0];
-        setZone({ city: m.city_name, current: m.current_count ?? 0, target: m.target_count ?? 0, unlocked: m.is_unlocked === true, inZone: false });
+        currentCityName = m.city_name;
+        const realCount = await fetchRealCount(m.city_name);
+        
+        setZone({ 
+          city: m.city_name, 
+          current: realCount, 
+          target: m.target_count ?? 0, 
+          unlocked: m.is_unlocked === true, 
+          inZone: false 
+        });
       }
       setZoneLoading(false);
     };
 
-    if (!navigator.geolocation) { ipFallback(); return () => { cancelled = true; }; }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => !cancelled && matchTo(pos.coords.latitude, pos.coords.longitude),
-      () => { if (!cancelled) ipFallback(); },
-      { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
-    );
-    return () => { cancelled = true; };
+    if (!navigator.geolocation) { ipFallback(); }
+    else {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => !cancelled && matchTo(pos.coords.latitude, pos.coords.longitude),
+        () => { if (!cancelled) ipFallback(); },
+        { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
+      );
+    }
+
+    // Subscribe to realtime updates so the landing page counter ticks up live
+    const pioneersChannel = supabase.channel('index-pioneers-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'city_pioneers' }, async () => {
+         if (currentCityName && !cancelled) {
+           const newCount = await fetchRealCount(currentCityName);
+           setZone(prev => prev ? { ...prev, current: newCount } : prev);
+         }
+      }).subscribe();
+
+    return () => { 
+      cancelled = true; 
+      supabase.removeChannel(pioneersChannel);
+    };
   }, []);
 
   useEffect(() => {
@@ -605,7 +658,7 @@ const Index = () => {
         </button>
       </section>
 
-            {/* ── FOOTER ── */}{/* ── FOOTER ── */}
+      {/* ── FOOTER ── */}
       <footer className="px-6 pb-12 pt-8" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         {/* Top row: brand + social */}
         <div className="flex items-start justify-between gap-6 mb-8">
