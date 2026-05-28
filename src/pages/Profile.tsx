@@ -187,8 +187,10 @@ const AdminPortalButton = () => {
 const FavoritesTab = ({ userId, onEventClick }: { userId: string; onEventClick: (id: string) => void }) => {
   const navigate = useNavigate();
 
+  // Load favorites from localStorage (same key as Feed.tsx)
   const favoriteIds = useMemo<string[]>(() => {
     try { 
+      // Scope key directly to the active profile owner matching user.id
       return JSON.parse(localStorage.getItem(`feed_favorites_${userId}`) || '[]'); 
     }
     catch { return []; }
@@ -276,6 +278,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
   const { data: recentViewers = [], isLoading } = useQuery({
     queryKey: ['profile-viewers', userId],
     queryFn: async () => {
+      // Use a raw query approach since profile_views isn't in generated types yet
       const { data, error } = await supabase
         .from('profile_views' as any)
         .select('viewer_id, viewed_at')
@@ -285,6 +288,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
 
       if (error || !data) return [];
 
+      // Fetch viewer profiles
       const viewerIds = [...new Set((data as any[]).map((v: any) => v.viewer_id))] as string[];
       if (viewerIds.length === 0) return [];
 
@@ -303,6 +307,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
     enabled: !!userId,
   });
 
+  // Deduplicate by viewer_id (show latest view only)
   const uniqueViewers = useMemo(() => {
     const seen = new Set<string>();
     return recentViewers.filter((v: any) => {
@@ -345,6 +350,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
       <p className="text-xs text-muted-foreground mb-3">
         {isPremium ? `${uniqueViewers.length} unique viewer${uniqueViewers.length !== 1 ? 's' : ''} in the last 30 days` : 'Upgrade to PRO for detailed viewer analytics'}
       </p>
+      {/* For non-premium: show only first 3, blurred, with "+X others" summary */}
       {(isPremium ? uniqueViewers : uniqueViewers.slice(0, 3)).map((viewer: any, idx: number) => (
         <div
           key={viewer.viewer_id + '-' + idx}
@@ -407,7 +413,6 @@ const Profile = () => {
   const [showSkillsEditor, setShowSkillsEditor] = useState(false);
   const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
   
-  // --- FIXED: SEPARATED ACTIVE INSTANCE SELECTIONS FOR MODAL ARRAYS ---
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]); 
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]); 
   
@@ -529,15 +534,17 @@ const Profile = () => {
     stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 } 
   }; 
   
-  // --- FIXED: SEPARATE RECONCILIATION TO AVOID MERGED RENDER LOOP CRASHES ---
+  // --- FIX 1: Track the stable data object to avoid merged render loop crashes ---
   useEffect(() => {
-    if (profile?.skills) {
-      setSelectedSkills(profile.skills);
+    if (data?.profile) {
+      if (data.profile.skills) {
+        setSelectedSkills(data.profile.skills);
+      }
+      if (data.profile.interests) {
+        setSelectedInterests(data.profile.interests);
+      }
     }
-    if (profile?.interests) {
-      setSelectedInterests(profile.interests);
-    }
-  }, [profile?.skills, profile?.interests]);
+  }, [data?.profile]);
 
   useEffect(() => {
     if (!user) {
@@ -548,22 +555,23 @@ const Profile = () => {
     }
   }, [user, navigate]);
 
+  // --- FIX 2: Swapped dependency array to use the stable 'data?.profile' query object ---
   useEffect(() => {
-    if (profile) {
-      if (profile.preferences?.discovery_radius) {
-        const km = profile.preferences.discovery_radius / 1000;
+    if (data?.profile) {
+      if (data.profile.preferences?.discovery_radius) {
+        const km = data.profile.preferences.discovery_radius / 1000;
         setLocalRadius(Math.min(25, Math.max(5, km)));
       }
 
       setSettingsForm({
-        display_name: profile.display_name || '',
-        username: profile.username || '',
-        email: profile.email || user?.email || '',
-        bio: profile.bio || '',
-        phone: profile.phone || ''
+        display_name: data.profile.display_name || '',
+        username: data.profile.username || '',
+        email: data.profile.email || user?.email || '',
+        bio: data.profile.bio || '',
+        phone: data.profile.phone || ''
       });
     }
-  }, [profile, user?.email]);
+  }, [data?.profile, user?.email]);
 
   const updateProfileSettingsMutation = useMutation({
     mutationFn: async (updates: {
@@ -857,7 +865,6 @@ const Profile = () => {
   const displayName = profile.display_name || 'User';
   const username = profile.username || 'user';
   
-  // --- FIXED: SAFE RUNTIME SAFEGUARDS TO PREVENT UNDEFINED PREFERENCES CRASH ---
   const isGhostMode = profile?.preferences?.ghost_mode === true;
   const targetTagInstance = isBusiness || pendingUserType === 'business' ? selectedSkills : selectedInterests;
 
@@ -1100,7 +1107,7 @@ const Profile = () => {
                 onClick={() => navigate(`/app/events/${event.id}`)}
               >
                 <div className="flex">
-                  <div className="w.1.5 bg-primary/80" /> 
+                  <div className="w-1.5 bg-primary/80" /> 
                   <div className="flex-1 p-5">
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="text-[10px] font-bold bg-green-500/10 text-green-600 border-none">CONFIRMED</Badge>
