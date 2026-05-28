@@ -49,7 +49,7 @@ export function FriendProfilePreview({
       if (!profile?.user_id) return null;
       try {
         const [profileRes, locationRes, premiumRes, subRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('user_id', profile.user_id).single(),
+          supabase.from('profiles').select('*, skills, interests').eq('user_id', profile.user_id).single(),
           supabase.from('user_locations').select('*').eq('user_id', profile.user_id).maybeSingle(),
           supabase
             .from('premium_features')
@@ -80,6 +80,8 @@ export function FriendProfilePreview({
 
         return {
           ...profileRes.data,
+          skills: profileRes.data?.skills || [],       // 👈 Force fallback protection arrays
+          interests: profileRes.data?.interests || [], // 👈 Force fallback protection arrays
           location: locationRes.data,
           isPremium,
           store: storeData,
