@@ -97,7 +97,11 @@ export function FriendProfilePreview({
   const isBusinessUser  = fullProfile?.user_type === 'business';
   const isVerified      = fullProfile?.verification_status === 'verified';
   const skills: string[]    = fullProfile?.skills    || [];
-  const interests: string[] = fullProfile?.interests || [];
+  const interests: string[] = fullProfile?.interests || []; 
+  
+  // 💡 NUCLEAR FIX: Enforce arrays aggressively to prevent .map() crashes
+  const skills: string[] = Array.isArray(fullProfile?.skills) ? fullProfile.skills : [];
+  const interests: string[] = Array.isArray(fullProfile?.interests) ? fullProfile.interests : []; 
 
   const lastSeen = fullProfile?.location?.last_seen
     ? formatDistanceToNow(new Date(fullProfile.location.last_seen), { addSuffix: true })
