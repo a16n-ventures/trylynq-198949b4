@@ -1423,7 +1423,7 @@ const Profile = () => {
                 <button
                   onClick={() => {
                     if (profile.account_type !== 'business') {
-                      setSelectedSkills((Array.isArray(profile?.skills) ? profile.skills : []);
+                      setSelectedSkills(Array.isArray(profile?.skills) ? profile.skills : []);
                       setPendingUserType('business');
                       setShowSkillsEditor(true);
                     }
