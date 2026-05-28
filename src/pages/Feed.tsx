@@ -578,7 +578,6 @@ const Feed = () => {
                                 {event.is_sponsored && (
                                   <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold tracking-wide border-0 shadow-sm uppercase text-[9px] px-2 py-0.5 flex items-center gap-1 animate-pulse">
                                     <Sparkles className="w-2.5 h-2.5 fill-current" />
-                                    Promoted
                                   </Badge>
                                 )}
                                 <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md text-[10px]`}>
