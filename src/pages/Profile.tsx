@@ -416,12 +416,6 @@ const Profile = () => {
   const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]); 
   
-  useEffect(() => {
-    if (profile?.skills) {
-      setSelectedSkills(profile.skills);
-    }
-  }, [profile?.skills]);
-  
   const SKILL_TAGS = [
     'Graphic Design','Video Editing','Photography','Social Media Management','Content Writing',
     'Web Design','Animation','Music Production','Voiceover','Illustration',
@@ -546,13 +540,19 @@ const Profile = () => {
     }, 
     location: null, 
     stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 } 
-  };
+  }; 
+  
+  useEffect(() => {
+    if (profile?.skills) {
+      setSelectedSkills(profile.skills);
+    }
+  }, [profile?.skills]);
 
   // Handle Authentication Redirect safely
   useEffect(() => {
     if (!user) {
       const timer = setTimeout(() => {
-        navigate('/ahmia');
+        navigate('/');
       }, 100);
       return () => clearTimeout(timer);
     }
