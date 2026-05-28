@@ -267,7 +267,7 @@ const MapPage = () => {
   // A separate query fetches all nearby verified business profiles for discovery.
   const { items: ownCatalogItems } = useUserCatalog(user?.id);
 
-  const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
+    const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
     queryKey: ['nearby-businesses', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
       if (!location) return [];
@@ -278,6 +278,7 @@ const MapPage = () => {
           latitude,
           longitude,
           updated_at,
+          is_sharing_location,
           profiles!inner (
             display_name,
             avatar_url,
@@ -288,12 +289,17 @@ const MapPage = () => {
             is_premium
           )
         `)
+        // ✅ Keep this filter to target business accounts
         .eq('profiles.user_type', 'business')
-        .eq('profiles.verification_status', 'verified')
+        
+        // 🚀 NUCLEAR FIX 1: Remove or comment out this strict verification clause 
+        // so your newly registered business/service accounts display right away
+        // .eq('profiles.verification_status', 'verified')
+        
         .eq('is_sharing_location', true);
-
+  
       if (error || !data) return [];
-
+  
       return data
         .map((row: any) => {
           const dist = distanceKm(
@@ -309,7 +315,8 @@ const MapPage = () => {
             bio: row.profiles?.bio,
             skills: row.profiles?.skills || [],
             is_premium: row.profiles?.is_premium || false,
-            is_verified: true,
+            // ✅ Adapt verification status dynamically rather than filtering items out entirely
+            is_verified: row.profiles?.verification_status === 'verified',
             latitude: row.latitude,
             longitude: row.longitude,
             distanceKm: Number(dist.toFixed(1)),
