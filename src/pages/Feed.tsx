@@ -452,8 +452,11 @@ const Feed = () => {
   
     // 3. Apply sorting logic
     if (activeTab === 'for_you') {
-      // Keep your custom vibe/distance matching for the personalized feed
       filtered.sort((a, b) => {
+        // 🌟 IMPROVEMENT: Prioritize sponsored events in the layout
+        if (a.is_sponsored && !b.is_sponsored) return -1;
+        if (!a.is_sponsored && b.is_sponsored) return 1;
+    
         const da = a.distanceKm ?? 9999;
         const db = b.distanceKm ?? 9999;
         if (Math.abs(da - db) > 0.5) return da - db;
@@ -462,8 +465,12 @@ const Feed = () => {
         return scoreB - scoreA;
       });
     } else {
-      // Sort all other categories by earliest start time (ascending chronological order)
-      filtered.sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+      // Sort all other categories by sponsored status first, then by chronological order
+      filtered.sort((a, b) => {
+        if (a.is_sponsored && !b.is_sponsored) return -1;
+        if (!a.is_sponsored && b.is_sponsored) return 1;
+        return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
+      });
     }
   
     return filtered;
@@ -552,24 +559,38 @@ const Feed = () => {
                       displayEvents.length === 0 ? <div className="text-center py-16 flex flex-col items-center gap-4"><div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center"><Calendar className="w-10 h-10 text-muted-foreground/30" /></div><div><p className="font-semibold text-base">No events for this vibe yet in {milestone?.zone_name}</p></div><Button className="rounded-full px-6 gap-2 shadow-md" onClick={() => navigate('/create-event')}><Plus className="w-4 h-4" /> Create Event</Button></div> :
                       displayEvents.map((event) => {
                         const status = getEventStatus(event.start_date, event.end_date);
-                        return (
-                        <Card key={event.id} className="overflow-hidden border-0 shadow-md group cursor-pointer active:scale-[0.98] transition-transform" onClick={() => setSelectedEvent(event)}>
-                          <div className="relative h-48 w-full bg-muted">
-                            <img src={event.image_url || '/placeholder-event.jpg'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
-                            <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
-                                <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md`}>{status.label}</Badge>           {event.recurrence_rule && (
-                                  <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
-                                    <Repeat className="w-3 h-3 mr-1" /> {event.recurrence_rule.replace('FREQ=', '').charAt(0).toUpperCase() + event.recurrence_rule.replace('FREQ=', '').slice(1).toLowerCase()}
+                                                return (
+                          <Card 
+                            key={event.id} 
+                            className={`overflow-hidden border transition-all duration-300 group cursor-pointer active:scale-[0.98] ${
+                              event.is_sponsored 
+                                ? 'border-amber-500/40 shadow-md shadow-amber-500/5 bg-gradient-to-b from-transparent to-amber-500/[0.02]' 
+                                : 'border-transparent shadow-md'
+                            }`} 
+                            onClick={() => setSelectedEvent(event)}
+                          >
+                            <div className="relative h-48 w-full bg-muted">
+                              <img src={event.image_url || '/placeholder-event.jpg'} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+                              
+                              {/* Dynamic Ribbon Badges on Upper Left */}
+                              <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap items-center">
+                                {event.is_sponsored && (
+                                  <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold tracking-wide border-0 shadow-sm uppercase text-[9px] px-2 py-0.5 flex items-center gap-1 animate-pulse">
+                                    <Sparkles className="w-2.5 h-2.5 fill-current" />
+                                    Promoted
                                   </Badge>
                                 )}
+                                <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md text-[10px]`}>
+                                  {status.label}
+                                </Badge>
                                 {event.match_score && event.match_score > 80 && (
-                                  <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
-                                    <Sparkles className="w-3 h-3 mr-1 text-yellow-400" /> {event.match_score}% Vibe Match
+                                  <Badge className="bg-black/60 text-white border-0 backdrop-blur-md text-[10px]">
+                                    <Zap className="w-2.5 h-2.5 mr-0.5 text-yellow-400 fill-yellow-400" /> {event.match_score}% Vibe
                                   </Badge>
                                 )}
                               </div>
-
+                        
                               <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
                                 <button
                                   onClick={(e) => toggleFavorite(event.id, e)}
@@ -579,37 +600,43 @@ const Feed = () => {
                                   <Heart className={`w-4 h-4 transition-all ${favorites.has(event.id) ? 'fill-white text-white' : 'text-gray-500'}`} />
                                 </button>
                               </div>
+                        
+                              {/* Metadata Bottom Tags row overlay */}
                               <div className="absolute bottom-3 left-3 right-3 text-white">
-                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/90">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md"><Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}</span>
-                                  {event.distanceKm != null && <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">{event.distanceKm}km</span>}
-                                {event.is_verified && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
-                                  <ShieldCheck className="w-4 h-4 fill-white/20" />Verified                  </span>
-                                )}
-                                              {event.is_sponsored && (
-                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
-                                     <Megaphone className="w-3 h-3 mr-1" /> Sponsored
-                                   </span>
-                                )}
+                                <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-white/90">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium">
+                                    <Ticket className="w-3 h-3" /> {formatTicketPrice(event.ticket_price)}
+                                  </span>
+                                  {event.distanceKm != null && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium">
+                                      <MapPin className="w-3 h-3" /> {event.distanceKm}km
+                                    </span>
+                                  )}
+                                  {event.is_verified && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium text-cyan-300">
+                                      <ShieldCheck className="w-3 h-3 fill-cyan-400/20" /> Vouched
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
-
+                        
                             <CardContent className="p-3">
-                              <h3 className="font-bold text-sm leading-snug line-clamp-1 mb-1">{event.title}</h3>
+                              <h3 className="font-bold text-sm leading-snug line-clamp-1 mb-1 group-hover:text-primary transition-colors">
+                                {event.title}
+                              </h3>
                               <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-0.5">
                                 <span className="flex items-center gap-0.5 font-medium"><Calendar className="w-3 h-3 text-primary/70" /> {new Date(event.start_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                                 <span className="text-border">·</span>
                                 <span className="flex items-center gap-0.5 truncate max-w-[120px]"><MapPin className="w-3 h-3 shrink-0 text-primary/70" /> <span className="truncate">{event.event_type === 'virtual' ? 'Online' : (event.location || currentCityDisplay)}</span></span>
                               </div>
                               <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                                <span className="flex items-center gap-0.5"><Users className="w-3 h-3 text-primary/70" /> {event.attendee_count || 0}{event.max_attendees ? `/${event.max_attendees}` : ''} going{(event.attendee_count || 0) >= (event.max_attendees || Infinity) ? ' · Full' : ''}</span>
+                                <span className="flex items-center gap-0.5"><Users className="w-3 h-3 text-primary/70" /> {event.attendee_count || 0}{event.max_attendees ? `/${event.max_attendees}` : ''} going</span>
                                 <span className="text-border">·</span>
                                 <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
                               </div>
-                          </CardContent>
-                        </Card>
+                            </CardContent>
+                          </Card>
                         );
                       })}
                     </>
@@ -635,10 +662,25 @@ const Feed = () => {
                     <Badge className="bg-cyan-600/80 text-white border-0 backdrop-blur-md"><Video className="w-3 h-3 mr-1" /> Virtual</Badge>
                   )}
                 </div>
+                                {/* Find line 348 inside your code file, update the header image layout stack: */}
                 <div className="absolute bottom-0 left-0 p-5 text-white w-full">
-                  <Badge className="bg-white/20 mb-2 border-0 backdrop-blur-md italic font-bold">EVENT</Badge>
-                  <h2 className="text-2xl font-black leading-tight mb-1 italic uppercase tracking-tighter">{selectedEvent.title}</h2>
-                  <div className="flex items-center gap-2 text-white/80 text-sm font-medium"><Calendar className="w-4 h-4" /> {new Date(selectedEvent.start_date).toLocaleDateString()} in {milestone?.zone_name}</div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Badge className="bg-white/20 border-0 backdrop-blur-md italic font-bold text-[10px]">
+                      EVENT
+                    </Badge>
+                    {selectedEvent.is_sponsored && (
+                      <Badge className="bg-amber-500 text-white font-bold tracking-wide border-0 text-[10px] uppercase px-2 py-0.5 flex items-center gap-1 shadow-sm">
+                        <Sparkles className="w-2.5 h-2.5 fill-current" />
+                        Sponsored Vibe
+                      </Badge>
+                    )}
+                  </div>
+                  <h2 className="text-2xl font-black leading-tight mb-1 italic uppercase tracking-tighter">
+                    {selectedEvent.title}
+                  </h2>
+                  <div className="flex items-center gap-2 text-white/80 text-sm font-medium">
+                    <Calendar className="w-4 h-4" /> {new Date(selectedEvent.start_date).toLocaleDateString()} in {milestone?.zone_name}
+                  </div>
                 </div>
               </div>
               <div className="p-4 space-y-3 overflow-y-auto flex-1">
