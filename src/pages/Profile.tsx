@@ -62,7 +62,9 @@ interface ProfileData {
   preferences?: UserPreferences;
   user_type: UserType;
   verification_status: VerificationStatus;
-  trust_score?: number;
+  trust_score?: number; 
+  skills?: string[]; 
+  interests?: string[]; 
 }
 
 interface LocationData {
@@ -1064,13 +1066,14 @@ const Profile = () => {
           </div>
 
           {/* STATS CONTROL PANEL */}
+                    {/* FIXED: Safe Structuring for Personal vs Business Controls */}
           <div className="mt-6 inline-flex items-center bg-muted/30 backdrop-blur-sm rounded-2xl p-1 border border-border/40 shadow-sm">
             {/* Friends */}
             <button 
               onClick={() => navigate('/app/friends')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
             >
-              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.friends}</span>
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats?.friends || 0}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Friends</span>
             </button>
           
@@ -1081,35 +1084,35 @@ const Profile = () => {
               onClick={() => navigate('/app/events')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
             >
-              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.events}</span>
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats?.events || 0}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Events</span>
             </button>
-
-            {profile.user_type === 'business' && (
-              <>
-                <div className="w-[1px] h-8 bg-border/60" />
-                {/* Catalog */}
-                <button 
-                  onClick={() => navigate('/app/marketplace')}
-                  className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
-                >
-                  <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.events}</span>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
-                </button>
-
-                <div className="w-[1px] h-8 bg-border/60" />
-                {/* Trust */}
-                <button 
-                  onClick={() => navigate('/app/trust-center')}
-                  className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
-                >
-                  <span className="block font-bold text-lg group-hover:text-primary transition-colors">
-                    {profile.verification_status === 'verified' ? '✓' : '—'}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Trust</span>
-                </button>
-              </>
-            )}
+          
+            {/* Safe Dynamic Additions for Businesses using CSS Display visibility to protect Tab indices */}
+            <div className={`contents ${profile?.user_type !== 'business' ? 'hidden' : ''}`}>
+              <div className="w-[1px] h-8 bg-border/60" />
+              <button 
+                onClick={() => navigate('/app/marketplace')}
+                className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+              >
+                <span className="block font-bold text-lg group-hover:text-primary transition-colors">
+                  {/* Fixed data reference from stats.events to explicit count safely */}
+                  {((profile as any)?.skills?.length) || 0}
+                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
+              </button>
+          
+              <div className="w-[1px] h-8 bg-border/60" />
+              <button 
+                onClick={() => navigate('/app/trust-center')}
+                className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+              >
+                <span className="block font-bold text-lg group-hover:text-primary transition-colors">
+                  {profile?.verification_status === 'verified' ? '✓' : '—'}
+                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Trust</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1453,7 +1456,16 @@ const Profile = () => {
                     <span className="text-muted-foreground font-normal">({(profile as any).interests?.length || 0})</span>
                   </Label>
                   <Button size="sm" variant="ghost" className="h-7 text-xs text-primary px-2"
-                    onClick={() => { setSelectedSkills((profile as any).interests || []); setShowSkillsEditor(true); }}>
+                    onClick={() => {
+                      if (pendingUserType === 'business') { updateAccountTypeMutation.mutate({ userType: 'business', skills: selectedSkills });
+                      } else if (profile?.user_type === 'business') {
+                        saveSkillsMutation.mutate(selectedSkills);
+                      } else {
+                        // This safely targets interests accurately when operating personal scopes!
+                        saveInterestsMutation.mutate(selectedSkills); 
+                      }
+                    }}
+                    >
                     Edit
                   </Button>
                 </div>
