@@ -436,20 +436,31 @@ const Profile = () => {
   ];
   
   const updateAccountTypeMutation = useMutation({
-    mutationFn: async ({ userType, skills }: { userType: 'personal' | 'business'; skills?: string[] }) => {
+    mutationFn: async ({ userType, skills }: { userType: 'personal' | 'business'; skills: string[] }) => {
       if (!user?.id) throw new Error('Not authenticated');
-      const update: Record<string, any> = { user_type: userType, updated_at: new Date().toISOString() };
-      if (skills) update.skills = skills;
-      const { error } = await supabase.from('profiles').update(update).eq('user_id', user.id);
-      if (error) throw error;
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          user_type: userType,
+          account_type: userType, // 💡 THE FIX: Dynamically maps to 'business' instead of 'service'
+          skills: skills
+        })
+        .eq('user_id', user.id);
+
+      if (profileError) throw profileError;
     },
-    onSuccess: (_, vars) => {
-      toast.success(vars.userType === 'business' ? 'Switched to Business account' : 'Switched to Personal account');
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
+    onSuccess: (_, variables) => {
+      toast.success(`Successfully switched to ${variables.userType} account!`);
       setShowSkillsEditor(false);
       setPendingUserType(null);
+      // Invalidate the cache to instantly repaint the page as a Business layout
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
     },
-    onError: (err: any) => toast.error(err.message || 'Failed to update account type'),
+    onError: (error: any) => {
+      console.error('Error upgrading account type:', error);
+      toast.error(error.message || 'Failed to update account type');
+    }
   });
   
   const saveSkillsMutation = useMutation({
