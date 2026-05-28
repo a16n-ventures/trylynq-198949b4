@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Search, UserPlus, Users, MessageCircle, MoreVertical, 
-  X, Check, Loader2, Phone, Share2, Shield, UserMinus,
+  X, Check, Loader2, Phone, Share2, UserMinus,
   MapPin, Sparkles, QrCode
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -69,8 +69,11 @@ const Friends = () => {
   const [pendingConnectIds, setPendingConnectIds] = useState<Set<string>>(new Set());
   const [pendingAcceptIds, setPendingAcceptIds] = useState<Set<string>>(new Set());
   const [pendingDeclineIds, setPendingDeclineIds] = useState<Set<string>>(new Set()); 
-    const [isEditingCity, setIsEditingCity] = useState(false);
+  const [isEditingCity, setIsEditingCity] = useState(false);
   const [manualCityInput, setManualCityInput] = useState('');
+
+  // Fallback state context for off-app mock variables
+  const rawImportedContacts: any[] = [];
 
   const openProfilePreview = (friend: Friend) => {
     setPreviewProfile({
@@ -87,142 +90,104 @@ const Friends = () => {
   const { data: friends = [], isLoading: loadingFriends, error: friendsError } = useQuery({
     queryKey: ['my_friends_page', user?.id],
     queryFn: async () => {
-      if (!user?.id) {
-        console.log('No user ID available for friends query');
-        return [];
-      }
+      if (!user?.id) return [];
       
-      try {
-        const { data, error } = await supabase
-          .from('friendships')
-          .select('id, requester_id, addressee_id, status, created_at')
-          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-          .eq('status', 'accepted');
+      const { data, error } = await supabase
+        .from('friendships')
+        .select('id, requester_id, addressee_id, status, created_at')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .eq('status', 'accepted');
 
-        if (error) {
-          console.error('Friendships query error:', error);
-          throw error;
-        }
+      if (error) throw error;
+      if (!data) return [];
 
-        if (!data) {
-          console.log('No friendships data returned');
-          return [];
-        }
+      const userIds = new Set<string>();
+      data.forEach((f: any) => {
+        userIds.add(f.requester_id);
+        userIds.add(f.addressee_id);
+      });
 
-        // Fetch profiles for all users in these friendships
-        const userIds = new Set<string>();
-        (data || []).forEach((f: any) => {
-          userIds.add(f.requester_id);
-          userIds.add(f.addressee_id);
-        });
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, user_id, display_name, username, avatar_url')
+        .in('user_id', Array.from(userIds));
 
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, user_id, display_name, username, avatar_url')
-          .in('user_id', Array.from(userIds));
+      const profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p]));
 
-        const profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+      return data
+        .map((f: any) => {
+          const isRequester = f.requester_id === user.id;
+          const otherId = isRequester ? f.addressee_id : f.requester_id;
+          const profile = profileMap.get(otherId);
+          
+          if (!profile) return null;
 
-        const validFriends = (data || [])
-          .map((f: any) => {
-            const isRequester = f.requester_id === user.id;
-            const otherId = isRequester ? f.addressee_id : f.requester_id;
-            const profile = profileMap.get(otherId);
-            
-            if (!profile) {
-              console.warn('Skipping friendship with missing profile:', f.id);
-              return null;
-            }
-
-            return {
-              id: profile.id,
-              user_id: profile.user_id,
-              display_name: profile.display_name || 'User',
-              username: profile.username || 'user',
-              avatar_url: profile.avatar_url,
-              friendship_id: f.id,
-              is_contact: false
-            } as Friend;
-          })
-          .filter((f): f is Friend => f !== null);
-
-        console.log(`Loaded ${validFriends.length} friends`);
-        return validFriends;
-      } catch (error) {
-        console.error('Failed to fetch friends:', error);
-        throw error;
-      }
+          return {
+            id: profile.id,
+            user_id: profile.user_id,
+            display_name: profile.display_name || 'User',
+            username: profile.username || 'user',
+            avatar_url: profile.avatar_url,
+            friendship_id: f.id,
+            is_contact: false
+          } as Friend;
+        })
+        .filter((f): f is Friend => f !== null);
     },
     enabled: !!user?.id,
-    retry: 2,
-    retryDelay: 1000
   });
   
-  // Handle query errors
   useEffect(() => {
     if (friendsError) {
-      console.error('Friends query error:', friendsError);
-      const errorMessage = friendsError instanceof Error ? friendsError.message : 'Failed to load friends';
-      toast.error(errorMessage);
+      toast.error(friendsError instanceof Error ? friendsError.message : 'Failed to load friends');
     }
   }, [friendsError]);
 
-  // B. Fetch Imported Contacts (Who are on App but NOT friends yet)
+  // B. Fetch Imported Contacts
   const { data: contacts = [] } = useQuery({
     queryKey: ['app_contacts', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
       
-      try {
-        // 1. Get contacts marked as app users
-        const { data: myContacts } = await supabase
-          .from('contacts')
-          .select('matched_user_id, name')
-          .eq('user_id', user.id)
-          .eq('is_app_user', true)
-          .not('matched_user_id', 'is', null);
-    
-        if (!myContacts?.length) return [];
-    
-        const contactUserIds = myContacts.map(c => c.matched_user_id);
-        
-        // 2. Fetch existing friends to exclude them
-        const { data: existingFriends } = await supabase
-          .from('friendships')
-          .select('requester_id, addressee_id')
-          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
-          // Note: We check ALL friendships (pending or accepted) to avoid duplicate requests
-        
-        const friendIds = existingFriends?.map((f: any) => 
-          f.requester_id === user.id ? f.addressee_id : f.requester_id
-        ) || [];
-        
-        const newContactIds = contactUserIds.filter(id => !friendIds.includes(id) && id !== user.id);
-    
-        if (newContactIds.length === 0) return [];
-    
-        // 3. Fetch profiles
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, user_id, display_name, username, avatar_url')
-          .in('user_id', newContactIds);
-    
-        return (profiles || []).map((p: any) => ({
-          ...p,
-          is_contact: true,
-          // Prefer the contact name saved in phone, fallback to profile name
-          display_name: myContacts.find(c => c.matched_user_id === p.user_id)?.name || p.display_name
-        }));
-      } catch (error) {
-        console.error('Failed to fetch contacts:', error);
-        return [];
-      }
+      const { data: myContacts } = await supabase
+        .from('contacts')
+        .select('matched_user_id, name')
+        .eq('user_id', user.id)
+        .eq('is_app_user', true)
+        .not('matched_user_id', 'is', null);
+  
+      if (!myContacts?.length) return [];
+  
+      const contactUserIds = myContacts.map(c => c.matched_user_id);
+      
+      const { data: existingFriends } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+      
+      const friendIds = existingFriends?.map((f: any) => 
+        f.requester_id === user.id ? f.addressee_id : f.requester_id
+      ) || [];
+      
+      const newContactIds = contactUserIds.filter(id => !friendIds.includes(id) && id !== user.id);
+  
+      if (newContactIds.length === 0) return [];
+  
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, user_id, display_name, username, avatar_url')
+        .in('user_id', newContactIds);
+  
+      return (profiles || []).map((p: any) => ({
+        ...p,
+        is_contact: true,
+        display_name: myContacts.find(c => c.matched_user_id === p.user_id)?.name || p.display_name
+      }));
     },
     enabled: !!user?.id,
   });
 
-  // C. Fetch Smart Suggestions (Nearby + Mutual + Shared interests)
-  // Resolved city name for the RPC — reverse-geocoded lazily when GPS is ready
+  // C. Fetch Smart Suggestions
   const [resolvedCity, setResolvedCity] = useState<string>('');
   useEffect(() => {
     if (!location?.latitude || !location?.longitude || resolvedCity) return;
@@ -234,90 +199,68 @@ const Friends = () => {
       .then(r => r.json())
       .then(d => {
         if (cancelled) return;
-        const city =
-          d?.address?.city || d?.address?.town || d?.address?.county || d?.address?.state || '';
+        const city = d?.address?.city || d?.address?.town || d?.address?.county || d?.address?.state || '';
         setResolvedCity(city);
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [location?.latitude, location?.longitude]);
+  }, [location?.latitude, location?.longitude, resolvedCity]);
 
   const { data: suggestions = [], isLoading: loadingSuggestions } = useQuery({
     queryKey: ['friend_suggestions', user?.id, location?.latitude, location?.longitude, resolvedCity],
     queryFn: async () => {
       if (!user?.id) return [];
 
-      try {
-        // ── Path A: GPS available — call the RPC which handles proximity,
-        //   mutual count, new-user flag, and common interests in one query.
-        if (location?.latitude && location?.longitude) {
-          const { data: rpcData, error: rpcError } = await supabase.rpc('suggest_nearby_friends', {
-            p_user_id:   user.id,
-            p_lat:       location.latitude,
-            p_long:      location.longitude,
-            p_city:      resolvedCity || '',
-            p_is_premium: false, // TODO: wire up real premium status
-          });
-          
-          if (rpcError) {
-            console.error('[Suggestions] RPC error:', rpcError);
-            // Fall through to Path B below
-          } else if (rpcData?.length) {
-            // The Database RPC already returns perfectly ranked rows (Radius ring -> Mutuals -> Interests)
-            // Map rows directly to the Suggestion shape without re-scoring them on the client.
-            return (rpcData as any[]).map(s => ({
-              user_id:       s.id,           
-              display_name:  s.display_name || 'User',
-              username:      s.username || 'user',
-              avatar_url:    s.avatar_url ?? null,
-              distance_km:   typeof s.distance_km === 'number' ? s.distance_km : undefined,
-              mutual_count:  // Handle bigints coming from Postgres safely
-                typeof s.mutual_count === 'number' 
-                  ? s.mutual_count 
-                  : parseInt(s.mutual_count || '0', 10),
-              is_new:        !!s.is_new_user,
-              common_interests: Array.isArray(s.common_interests) ? s.common_interests : [],
-            } as Suggestion & { common_interests: string[] }));
-          }
+      if (location?.latitude && location?.longitude) {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('suggest_nearby_friends', {
+          p_user_id: user.id,
+          p_lat: location.latitude,
+          p_long: location.longitude,
+          p_city: resolvedCity || '',
+          p_is_premium: false,
+        });
+        
+        if (!rpcError && rpcData?.length) {
+          return (rpcData as any[]).map(s => ({
+            user_id: s.id,           
+            display_name: s.display_name || 'User',
+            username: s.username || 'user',
+            avatar_url: s.avatar_url ?? null,
+            distance_km: typeof s.distance_km === 'number' ? s.distance_km : undefined,
+            mutual_count: typeof s.mutual_count === 'number' ? s.mutual_count : parseInt(s.mutual_count || '0', 10),
+            is_new: !!s.is_new_user,
+            common_interests: Array.isArray(s.common_interests) ? s.common_interests : [],
+          } as Suggestion));
         }
-
-        // ── Path B: No GPS (or RPC failed) — pull a lightweight fallback:
-        //   profiles that are not yet friends, ordered by join date so new
-        //   users still surface even without location data.
-        const { data: existingFriends } = await supabase
-          .from('friendships')
-          .select('requester_id, addressee_id')
-          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
-
-        const excludeIds = new Set([
-          user.id,
-          ...(existingFriends || []).map((f: any) =>
-            f.requester_id === user.id ? f.addressee_id : f.requester_id
-          ),
-        ]);
-
-        const { data: fallback } = await supabase
-          .from('profiles')
-          .select('user_id, display_name, username, avatar_url, created_at')
-          .not('user_id', 'in', `(${Array.from(excludeIds).join(',')})`)
-          .order('created_at', { ascending: false })
-          .limit(8);
-
-        return (fallback || []).map(p => ({
-          user_id:      p.user_id,
-          display_name: p.display_name || 'User',
-          username:     p.username || 'user',
-          avatar_url:   p.avatar_url ?? null,
-          is_new:       new Date(p.created_at) > new Date(Date.now() - 7 * 86400000),
-        } as Suggestion));
-      } catch (e) {
-        console.error('[Suggestions] Fetch failed:', e);
-        return [];
       }
+
+      const { data: existingFriends } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+
+      const excludeIds = new Set([
+        user.id,
+        ...(existingFriends || []).map((f: any) => f.requester_id === user.id ? f.addressee_id : f.requester_id),
+      ]);
+
+      const { data: fallback } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, username, avatar_url, created_at')
+        .not('user_id', 'in', `(${Array.from(excludeIds).join(',')})`)
+        .order('created_at', { ascending: false })
+        .limit(8);
+
+      return (fallback || []).map(p => ({
+        user_id: p.user_id,
+        display_name: p.display_name || 'User',
+        username: p.username || 'user',
+        avatar_url: p.avatar_url ?? null,
+        is_new: new Date(p.created_at) > new Date(Date.now() - 7 * 86400000),
+      } as Suggestion));
     },
-    // Re-run when city resolves so the RPC gets the right p_city value
     enabled: !!user?.id,
-    staleTime: 5 * 60 * 1000, // 5 min — location doesn't change that fast
+    staleTime: 5 * 60 * 1000,
   });
 
   // D. Fetch Requests
@@ -326,57 +269,47 @@ const Friends = () => {
     queryFn: async () => {
       if (!user?.id) return [];
       
-      try {
-        const { data, error } = await supabase
-          .from('friendships')
-          .select('id, created_at, requester_id')
-          .eq('addressee_id', user.id)
-          .eq('status', 'pending');
+      const { data, error } = await supabase
+        .from('friendships')
+        .select('id, created_at, requester_id')
+        .eq('addressee_id', user.id)
+        .eq('status', 'pending');
 
-        if (error) {
-          console.error('Friend requests query error:', error);
-          throw error;
-        }
+      if (error) throw error;
 
-        const requesterIds = (data || []).map((r: any) => r.requester_id);
-        if (requesterIds.length === 0) return [];
+      const requesterIds = (data || []).map((r: any) => r.requester_id);
+      if (requesterIds.length === 0) return [];
 
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, user_id, display_name, username, avatar_url')
-          .in('user_id', requesterIds);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, user_id, display_name, username, avatar_url')
+        .in('user_id', requesterIds);
 
-        const profMap = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+      const profMap = new Map((profiles || []).map((p: any) => [p.user_id, p]));
 
-        return (data || [])
-          .map((r: any) => {
-            const p: any = profMap.get(r.requester_id);
-            if (!p) return null;
-            return {
-              id: r.id,
-              created_at: r.created_at,
-              requester: {
-                id: p.id,
-                display_name: p.display_name || 'User',
-                username: p.username || 'user',
-                avatar_url: p.avatar_url,
-              },
-            } as Request;
-          })
-          .filter(Boolean) as Request[];
-      } catch (error) {
-        console.error('Failed to fetch friend requests:', error);
-        return [];
-      }
+      return (data || [])
+        .map((r: any) => {
+          const p: any = profMap.get(r.requester_id);
+          if (!p) return null;
+          return {
+            id: r.id,
+            created_at: r.created_at,
+            requester: {
+              id: p.id,
+              display_name: p.display_name || 'User',
+              username: p.username || 'user',
+              avatar_url: p.avatar_url,
+            },
+          } as Request;
+        })
+        .filter(Boolean) as Request[];
     },
     enabled: !!user?.id
   });
 
   // --- 2. ACTIONS ---
-
   const handleConnect = useMutation({
     onMutate: (targetId: string) => {
-      // Optimistic: mark as pending immediately so button updates without waiting for DB
       setPendingConnectIds(prev => new Set(prev).add(targetId));
     },
     mutationFn: async (targetId: string) => {
@@ -389,13 +322,10 @@ const Friends = () => {
     },
     onSuccess: (_data, targetId) => {
       toast.success('Friend request sent!');
-      // Keep the sent state in pendingConnectIds so button stays 'Sent ✓' until
-      // suggestions list refreshes and this user disappears from it.
       queryClient.invalidateQueries({ queryKey: ['friend_suggestions'] });
       queryClient.invalidateQueries({ queryKey: ['app_contacts'] });
     },
     onError: (err: Error, targetId) => {
-      // Roll back optimistic state
       setPendingConnectIds(prev => { const s = new Set(prev); s.delete(targetId); return s; });
       toast.error(err.message || 'Could not send request');
     },
@@ -437,16 +367,13 @@ const Friends = () => {
     }
   });
 
-  // --- SEGREGATED FILTERED LISTS ---
   const searchLower = searchQuery.toLowerCase();
 
-  // Category 1: True Friends
   const filteredFriends = friends.filter(f => 
     f.display_name?.toLowerCase().includes(searchLower) || 
     f.username?.toLowerCase().includes(searchLower)
   );
 
-  // Category 2: Discovered Contacts on App (Not yet added)
   const filteredAppContacts = contacts
     .map(c => ({ 
       ...c, 
@@ -460,14 +387,13 @@ const Friends = () => {
       f.username?.toLowerCase().includes(searchLower)
     );
 
-  // Category 3: Off-App Contacts (Unmatched Device Imports)
   const filteredInvites = rawImportedContacts
     .filter(c => !c.is_app_user && !c.matched_user_id)
     .map(c => ({
       id: c.id,
       user_id: c.id,
       display_name: c.name,
-      username: c.username || c.phone || '', // phone stored safely here
+      username: c.username || c.phone || '',
       avatar_url: null,
       friendship_id: 'imported',
       is_contact: true,
@@ -477,30 +403,23 @@ const Friends = () => {
       f.username?.toLowerCase().includes(searchLower)
     );
 
-  // Native Invite Handler using Web Share API or SMS fallback
   const handleInviteShare = async (contact: Friend) => {
     const inviteUrl = `/u/${user?.id}`;
     const messageText = `Hey ${contact.display_name}, join my circle on Ahmia! Download here: ${inviteUrl}`;
 
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: 'Join me on Ahmia',
-          text: messageText,
-          url: inviteUrl,
-        });
+        await navigator.share({ title: 'Join me on Ahmia', text: messageText, url: inviteUrl });
       } catch (err) {
-        console.warn('Native share dismissed:', err);
+        console.warn('Share dismissed:', err);
       }
     } else {
-      // Fallback directly to device SMS protocol using the phone digits in username field
       window.open(`sms:${contact.username}?body=${encodeURIComponent(messageText)}`);
     }
   };
 
   return (
     <div className="min-h-screen bg-background pb-20">
-      
       {/* Header */}
       <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-xl border-b p-4">
         <div className="flex items-center justify-between mb-4">
@@ -548,9 +467,10 @@ const Friends = () => {
           {/* MY CIRCLE TAB */}
           <TabsContent value="circle" className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             
-            {/* 1. SUGGESTIONS */}
+            {/* 1. SUGGESTIONS CAROUSEL */}
             {(loadingSuggestions || suggestions.length > 0) && (
-              <div className="mb-6">                <div className="flex items-center justify-between mb-3 px-1 gap-2">
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3 px-1 gap-2">
                   <h3 className="font-semibold text-sm text-muted-foreground flex items-center gap-1 min-w-0">
                     <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
                     <span className="truncate">
@@ -558,7 +478,6 @@ const Friends = () => {
                     </span>
                   </h3>
 
-                  {/* Manual Override Fallback Trigger */}
                   {!location && (
                     <div className="text-xs shrink-0">
                       {isEditingCity ? (
@@ -600,12 +519,9 @@ const Friends = () => {
                   )}
                 </div>
 
-                
-
                 <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
                   {loadingSuggestions
-                    ? /* Skeleton cards while loading */
-                      Array.from({ length: 4 }).map((_, i) => (
+                    ? Array.from({ length: 4 }).map((_, i) => (
                         <div key={i} className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm animate-pulse">
                           <div className="h-16 w-16 rounded-full bg-muted mb-2" />
                           <div className="h-3 w-20 bg-muted rounded mb-1" />
@@ -617,11 +533,7 @@ const Friends = () => {
                         const sent = pendingConnectIds.has(s.user_id);
                         const commonInterests = (s as any).common_interests as string[] | undefined;
                         return (
-                          <div
-                            key={s.user_id}
-                            className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm relative hover:border-primary/50 transition-all mt-2"
-                          >
-                            {/* New account badge */}
+                          <div key={s.user_id} className="min-w-[150px] w-[150px] p-3 rounded-2xl border bg-card/50 flex flex-col items-center text-center shadow-sm relative hover:border-primary/50 transition-all mt-2">
                             {s.is_new && (
                               <Badge className="absolute -top-1 -right-1 bg-blue-500 hover:bg-blue-600 border-none px-1.5 py-0 text-[9px] h-4">
                                 NEW
@@ -636,21 +548,18 @@ const Friends = () => {
                             <h4 className="font-bold text-sm truncate w-full">{s.display_name}</h4>
                             <p className="text-[10px] text-muted-foreground truncate w-full mb-1">@{s.username}</p>
 
-                            {/* Distance — explicit null/undefined check so 0.0km still shows */}
                             {s.distance_km != null && (
                               <p className="text-[10px] font-bold text-primary flex items-center gap-1">
                                 <MapPin className="w-2.5 h-2.5" /> {s.distance_km.toFixed(1)}km away
                               </p>
                             )}
 
-                            {/* Mutuals */}
                             {(s.mutual_count ?? 0) > 0 && (
                               <p className="text-[9px] text-muted-foreground">
                                 {s.mutual_count} mutual {s.mutual_count === 1 ? 'friend' : 'friends'}
                               </p>
                             )}
 
-                            {/* Common interests chips (up to 2) */}
                             {commonInterests && commonInterests.length > 0 && (
                               <div className="flex flex-wrap justify-center gap-1 mt-1">
                                 {commonInterests.slice(0, 2).map(tag => (
@@ -659,11 +568,6 @@ const Friends = () => {
                                   </span>
                                 ))}
                               </div>
-                            )}
-
-                            {/* Fallback label when no signal at all */}
-                            {s.distance_km == null && !(s.mutual_count ?? 0) && !(commonInterests?.length) && (
-                              <p className="text-[10px] text-muted-foreground">Suggested</p>
                             )}
 
                             <Button
@@ -681,161 +585,127 @@ const Friends = () => {
               </div>
             )} 
 
-                {/* 2. MAIN LIST SEGMENTS */}
-                {friendsError ? (
-                  <div className="text-center py-12 text-destructive border-2 border-dashed border-destructive/50 rounded-xl bg-destructive/5">
-                    <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Users className="w-8 h-8 text-destructive/50" />
+            {/* 2. MAIN LIST SEGMENTS */}
+            {friendsError ? (
+              <div className="text-center py-12 text-destructive border-2 border-dashed border-destructive/50 rounded-xl bg-destructive/5">
+                <h3 className="font-semibold mb-2">Failed to load friends</h3>
+                <Button variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ['my_friends_page'] })}>
+                  Try Again
+                </Button>
+              </div>
+            ) : loadingFriends ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+            ) : filteredFriends.length === 0 && filteredAppContacts.length === 0 && filteredInvites.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl bg-muted/10">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                <p>No connections found.</p>
+                <Button variant="link" onClick={() => setIsImportOpen(true)}>Sync Contacts</Button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-primary/10 transition-colors" onClick={() => setIsImportOpen(true)}>
+                    <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                        <Phone className="w-4 h-4" />
                     </div>
-                    <h3 className="font-semibold mb-2">Failed to load friends</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      {friendsError instanceof Error ? friendsError.message : 'An error occurred'}
-                    </p>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => queryClient.invalidateQueries({ queryKey: ['my_friends_page'] })}
-                    >
-                      Try Again
-                    </Button>
-                  </div>
-                ) : loadingFriends ? (
-                  <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
-                ) : filteredFriends.length === 0 && filteredAppContacts.length === 0 && filteredInvites.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl bg-muted/10">
-                    <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>No connections found.</p>
-                    <Button variant="link" onClick={() => setIsImportOpen(true)}>Sync Contacts</Button>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Dynamic Contact Discovery Banner */}
-                    <div 
-                      className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-primary/10 transition-colors"
-                      onClick={() => setIsImportOpen(true)}
-                    >
-                        <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-                            <Phone className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1">
-                            <h4 className="font-semibold text-sm">Find from contacts</h4>
-                            <p className="text-xs text-muted-foreground">Sync your raw device address book</p>
-                        </div>
-                        <Check className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex-1">
+                        <h4 className="font-semibold text-sm">Find from contacts</h4>
+                        <p className="text-xs text-muted-foreground">Sync your raw device address book</p>
                     </div>
-    
-                    {/* SEGMENT 1: TRUE CONCURRENT CIRCLE */}
-                    {filteredFriends.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-xs font-bold text-muted-foreground px-1 uppercase tracking-wider mb-1">
-                            My Circle ({filteredFriends.length})
+                    <Check className="w-4 h-4 text-muted-foreground" />
+                </div>
+
+                {/* SEGMENT 1: TRUE CIRCLE */}
+                {filteredFriends.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-muted-foreground px-1 uppercase tracking-wider mb-1">
+                        My Circle ({filteredFriends.length})
+                    </div>
+                    {filteredFriends.map(friend => (
+                      <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm group hover:shadow-md transition-shadow">
+                        <Avatar className="h-12 w-12 cursor-pointer" onClick={() => openProfilePreview(friend)}>
+                          <AvatarImage src={friend.avatar_url || undefined} />
+                          <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
+                        </Avatar>
+                        
+                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openProfilePreview(friend)}>
+                          <h4 className="font-semibold text-sm truncate">{friend.display_name}</h4>
+                          <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
                         </div>
-                        {filteredFriends.map(friend => (
-                          <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm group hover:shadow-md transition-shadow">
-                            <Avatar className="h-12 w-12 cursor-pointer" onClick={() => openProfilePreview(friend)}>
-                              <AvatarImage src={friend.avatar_url || undefined} />
-                              <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
-                            </Avatar>
-                            
-                            <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openProfilePreview(friend)}>
-                              <h4 className="font-semibold text-sm truncate">{friend.display_name}</h4>
-                              <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
-                            </div>
-    
-                            <div className="flex items-center gap-1">
-                              <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="rounded-full h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                                  onClick={() => navigate(`/app/messages?userId=${friend.user_id}`)}
-                              >
-                                  <MessageCircle className="w-5 h-5" />
+
+                        <div className="flex items-center gap-1">
+                          <Button size="icon" variant="ghost" className="rounded-full h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10" onClick={() => navigate(`/app/messages?userId=${friend.user_id}`)}>
+                              <MessageCircle className="w-5 h-5" />
+                          </Button>
+                          <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                              <Button size="icon" variant="ghost" className="rounded-full h-9 w-9 text-muted-foreground">
+                                  <MoreVertical className="w-5 h-5" />
                               </Button>
-                              
-                              <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="rounded-full h-9 w-9 text-muted-foreground">
-                                      <MoreVertical className="w-5 h-5" />
-                                  </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => openProfilePreview(friend)}>
-                                      View Profile
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem className="text-red-600">
-                                      <UserMinus className="w-4 h-4 mr-2" /> Unfriend
-                                  </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-    
-                    {/* SEGMENT 2: CONTACT MATCHES ON THE APP */}
-                    {filteredAppContacts.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-xs font-bold text-blue-600 dark:text-blue-400 px-1 uppercase tracking-wider mb-1">
-                            Contacts Already on Ahmia ({filteredAppContacts.length})
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openProfilePreview(friend)}>
+                                  View Profile
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-red-600">
+                                  <UserMinus className="w-4 h-4 mr-2" /> Unfriend
+                              </DropdownMenuItem>
+                              </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                        {filteredAppContacts.map(friend => (
-                          <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm border-blue-100 dark:border-blue-900/30">
-                            <Avatar className="h-12 w-12">
-                              <AvatarImage src={friend.avatar_url || undefined} />
-                              <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
-                            </Avatar>
-                            
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-sm truncate flex items-center gap-2">
-                                  {friend.display_name}
-                                  <Badge variant="secondary" className="text-[9px] h-3.5 px-1 bg-blue-50 text-blue-600 border-blue-200">Phone Match</Badge>
-                              </h4>
-                              <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
-                            </div>
-    
-                            <Button 
-                              size="sm" 
-                              variant="default" 
-                              className="h-8 px-3 bg-blue-600 hover:bg-blue-700" 
-                              onClick={() => handleConnect.mutate(friend.user_id)}
-                              disabled={pendingConnectIds.has(friend.user_id)}
-                            >
-                              {pendingConnectIds.has(friend.user_id) ? 'Sent ✓' : <><UserPlus className="w-3.5 h-3.5 mr-1" /> Add</>}
-                            </Button>
-                          </div>
-                        ))}
                       </div>
-                    )}
-    
-                    {/* SEGMENT 3: OFF-APP CONTACT INVITES */}
-                    {filteredInvites.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-xs font-bold text-muted-foreground px-1 uppercase tracking-wider mb-1">
-                            Invite to App ({filteredInvites.length})
+                    ))}
+                  </div>
+                )}
+
+                {/* SEGMENT 2: ON APP */}
+                {filteredAppContacts.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-blue-600 dark:text-blue-400 px-1 uppercase tracking-wider mb-1">
+                        Contacts Already on Ahmia ({filteredAppContacts.length})
+                    </div>
+                    {filteredAppContacts.map(friend => (
+                      <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm border-blue-100 dark:border-blue-900/30">
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage src={friend.avatar_url || undefined} />
+                          <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
+                        </Avatar>
+                        
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm truncate flex items-center gap-2">
+                              {friend.display_name}
+                              <Badge variant="secondary" className="text-[9px] h-3.5 px-1 bg-blue-50 text-blue-600 border-blue-200">Phone Match</Badge>
+                          </h4>
+                          <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
                         </div>
-                        {filteredInvites.map(contact => (
-                          <div key={contact.id} className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-dashed opacity-80">
-                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground">
-                              {contact.display_name?.[0] || '?'}
-                            </div>
-                            
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-sm truncate text-muted-foreground">{contact.display_name}</h4>
-                              <p className="text-xs text-muted-foreground/60 truncate">{contact.username}</p>
-                            </div>
-    
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              className="h-8 px-3 border-primary/30 text-primary hover:bg-primary/5 gap-1"
-                              onClick={() => handleInviteShare(contact)}
-                            >
-                              <Share2 className="w-3.5 h-3.5" /> Invite
-                            </Button>
-                          </div>
-                        ))}
+
+                        <Button size="sm" variant="default" className="h-8 px-3 bg-blue-600 hover:bg-blue-700" onClick={() => handleConnect.mutate(friend.user_id)} disabled={pendingConnectIds.has(friend.user_id)}>
+                          {pendingConnectIds.has(friend.user_id) ? 'Sent ✓' : <><UserPlus className="w-3.5 h-3.5 mr-1" /> Add</>}
+                        </Button>
                       </div>
-                    )}
+                    ))}
+                  </div>
+                )}
+
+                {/* SEGMENT 3: INVITES */}
+                {filteredInvites.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-muted-foreground px-1 uppercase tracking-wider mb-1">
+                        Invite to App ({filteredInvites.length})
+                    </div>
+                    {filteredInvites.map(contact => (
+                      <div key={contact.id} className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-dashed opacity-80">
+                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground">
+                          {contact.display_name?.[0] || '?'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-sm truncate text-muted-foreground">{contact.display_name}</h4>
+                          <p className="text-xs text-muted-foreground/60 truncate">{contact.username}</p>
+                        </div>
+                        <Button size="sm" variant="outline" className="h-8 px-3 border-primary/30 text-primary hover:bg-primary/5 gap-1" onClick={() => handleInviteShare(contact)}>
+                          <Share2 className="w-3.5 h-3.5" /> Invite
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -848,17 +718,8 @@ const Friends = () => {
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : requests.length === 0 ? (
               <div className="text-center py-16 bg-muted/20 rounded-2xl border-2 border-dashed border-muted">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                  <UserPlus className="w-8 h-8 text-muted-foreground/30" />
-                </div>
                 <h3 className="font-semibold">No pending requests</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Share your profile to connect with more people.
-                </p>
-                <Button variant="link" className="mt-2" onClick={() => {
-                   navigator.clipboard.writeText(`/u/${user?.id}`);
-                   toast.success("Profile link copied!");
-                }}>
+                <Button variant="link" className="mt-2" onClick={() => { navigator.clipboard.writeText(`/u/${user?.id}`); toast.success("Link copied!"); }}>
                   <Share2 className="w-4 h-4 mr-2" /> Copy Link
                 </Button>
               </div>
@@ -876,21 +737,10 @@ const Friends = () => {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="h-9 w-9 p-0 rounded-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                      onClick={() => handleDecline.mutate(req.id)}
-                      disabled={pendingDeclineIds.has(req.id) || pendingAcceptIds.has(req.id)}
-                    >
+                    <Button size="sm" variant="outline" className="h-9 w-9 p-0 rounded-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => handleDecline.mutate(req.id)} disabled={pendingDeclineIds.has(req.id) || pendingAcceptIds.has(req.id)}>
                       {pendingDeclineIds.has(req.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-5 h-5" />}
                     </Button>
-                    <Button 
-                      size="sm" 
-                      className="h-9 w-9 p-0 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-sm"
-                      onClick={() => handleAccept.mutate(req.id)}
-                      disabled={pendingAcceptIds.has(req.id) || pendingDeclineIds.has(req.id)}
-                    >
+                    <Button size="sm" className="h-9 w-9 p-0 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-sm" onClick={() => handleAccept.mutate(req.id)} disabled={pendingAcceptIds.has(req.id) || pendingDeclineIds.has(req.id)}>
                       {pendingAcceptIds.has(req.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-5 h-5" />}
                     </Button>
                   </div>
@@ -909,20 +759,15 @@ const Friends = () => {
         onClose={() => { setPreviewProfile(null); setPreviewFriendshipId(undefined); }}
         friendshipId={previewFriendshipId}
         onRemoveFriend={async (fId) => {
-          const { error } = await supabase.from('friendships').delete().eq('id', fId);
-          if (error) { toast.error('Failed to remove friend'); return; }
-          toast.success('Friend removed');
+          await supabase.from('friendships').delete().eq('id', fId);
           queryClient.invalidateQueries({ queryKey: ['my_friends_page'] });
         }}
         onBlockUser={async (userId) => {
-          const { error } = await supabase.from('blocked_users').insert({ blocker_id: user!.id, blocked_id: userId });
-          if (error) { toast.error('Failed to block user'); return; }
-          toast.success('User blocked');
+          await supabase.from('blocked_users').insert({ blocker_id: user!.id, blocked_id: userId });
           queryClient.invalidateQueries({ queryKey: ['my_friends_page'] });
         }}
         onReportUser={async (userId) => {
-          const { error } = await supabase.from('reports').insert({ reporter_id: user!.id, target_id: userId, target_type: 'user', reason: 'Reported from friends list' });
-          if (error) { toast.error('Failed to report'); return; }
+          await supabase.from('reports').insert({ reporter_id: user!.id, target_id: userId, target_type: 'user', reason: 'Reported from friends list' });
           toast.success('Report submitted');
         }}
       />
