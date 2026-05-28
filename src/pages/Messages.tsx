@@ -51,7 +51,7 @@ interface ChatItem {
   meta?: any;
   partner_id?: string;
   is_verified?: boolean;
-  user_type?: 'personal' | 'business';
+  account_type?: 'personal' | 'business';
 }
 
 export default function Messages() {
@@ -113,14 +113,14 @@ export default function Messages() {
       if (!user?.id) return null;
       const { data } = await supabase
         .from('profiles')
-        .select('user_type')
+        .select('account_type')
         .eq('user_id', user.id)
         .single();
       return data;
     },
     enabled: !!user?.id,
   });
-  const myUserType = myProfile?.user_type;
+  const myUserType = myProfile?.account_type;
   
   const fetchChatDetails = async (type: ChatType, id: string): Promise<ChatItem | null> => {
     if (type === 'event') {
@@ -149,7 +149,7 @@ export default function Messages() {
         avatar: profile.avatar_url,
         partner_id: id,
         is_verified: profile.verification_status === 'verified',
-        user_type: 'business',
+        account_type: 'business',
         meta: { store_id: store?.id, store_name: store?.name, store_category: store?.category }
       } : null;
     } else {
@@ -157,7 +157,7 @@ export default function Messages() {
       return data ? {
         id: id, type: 'dm', name: data.display_name, avatar: data.avatar_url, partner_id: id,
         is_verified: data.verification_status === 'verified',
-        user_type: data.user_type
+        account_type: data.account_type
       } : null;
     }
   };
@@ -199,7 +199,7 @@ export default function Messages() {
       const partnerIds = Array.from(partnerMap.keys());
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url, user_type, verification_status') // Add these two
+        .select('user_id, display_name, avatar_url, account_type, verification_status') // Add these two
         .in('user_id', partnerIds);
       
       const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
@@ -215,7 +215,7 @@ export default function Messages() {
           partner_id: p.partner_id,
           badge: p.unread_count > 0 ? p.unread_count : undefined,
           is_verified: profile?.verification_status === 'verified',
-          user_type: profile?.user_type
+          account_type: profile?.account_type
         };
       });
     },
@@ -346,7 +346,7 @@ export default function Messages() {
           subtitle: `${r.item?.name || 'Service'} · ${statusLabel[r.status] || r.status}`,
           partner_id: partner?.user_id,
           is_verified: partner?.verification_status === 'verified',
-          user_type: 'business' as const,
+          account_type: 'business' as const,
           meta: {
             request_id: r.id,
             status: r.status,
@@ -490,7 +490,7 @@ export default function Messages() {
         avatar: selectedChat?.avatar,
         partner_id: data.seller_id,
         is_verified: true,
-        user_type: 'business',
+        account_type: 'business',
         meta: {
           request_id: data.id,
           status: 'pending',
@@ -842,7 +842,7 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
                 </p>
               </div>
             )}
-            {selectedChat.type === 'dm' && selectedChat.user_type === 'business' && selectedChat.is_verified && (
+            {selectedChat.type === 'dm' && selectedChat.account_type === 'business' && selectedChat.is_verified && (
               <div className="flex items-center gap-1.5 mt-0.5">
                 <ShieldCheck className="w-3 h-3 text-primary" />
                 <p className="text-[10px] text-primary/80 font-semibold">

@@ -11,6 +11,7 @@ import StoreFormDialog from '@/components/StoreFormDialog';
 import ItemFormDialog from '@/components/ItemFormDialog';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useGeolocation } from '@/contexts/LocationContext';
 
 export default function Marketplace() {
   const navigate = useNavigate();
@@ -30,7 +31,15 @@ export default function Marketplace() {
         setUserType(profile?.user_type || null);
       }
     });
-  }, []);
+  }, []); 
+  
+  const { location, requestLocation } = useGeolocation();
+  
+  useEffect(() => {
+    if (!location) {
+      requestLocation();
+    }
+  }, [location]);
 
   // ── Catalog: owner's store + items ────────────────────────────────────────
   const { data: userStore = null, isLoading: storeLoading } = useQuery({
@@ -44,7 +53,7 @@ export default function Marketplace() {
       return data;
     },
     enabled: !!currentUserId && userType === 'business',
-    staleTime: 60_000,
+    staleTime: 60000,
   });
 
   const { data: catalogItems = [], isLoading: itemsLoading } = useQuery({
@@ -63,7 +72,37 @@ export default function Marketplace() {
   });
 
   const hasStore = !!(userStore as any)?.id;
-  const catalogLoading = storeLoading || (hasStore && itemsLoading);
+    const catalogLoading = storeLoading || (hasStore && itemsLoading); 
+    
+  const deleteStoreMutation = useMutation({
+    mutationFn: async () => {
+      if (!(userStore as any)?.id) {
+        throw new Error('Store not found');
+      }
+  
+      const { error } = await (supabase.from('stores') as any)
+        .delete()
+        .eq('id', (userStore as any).id);
+  
+      if (error) throw error;
+    },
+  
+    onSuccess: () => {
+      toast.success('Store deleted');
+  
+      queryClient.invalidateQueries({
+        queryKey: ['user-catalog-store', currentUserId]
+      });
+  
+      queryClient.invalidateQueries({
+        queryKey: ['marketplace_items']
+      });
+    },
+  
+    onError: (err: any) => {
+      toast.error(err.message);
+    }
+  });
 
   const deleteItemMutation = useMutation({
     mutationFn: async (itemId: string) => {
@@ -158,6 +197,13 @@ export default function Marketplace() {
               <Button size="sm" variant="outline" className="h-8 text-xs"
                 onClick={() => navigate('/app/map?view=marketplace')}>
                 <MapPin className="w-3.5 h-3.5 mr-1" /> View on Map
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm" className="h-8 text-xs"
+                onClick={() => deleteStoreMutation.mutate()}
+              >
+                Delete Store
               </Button>
             </div>
           </div>

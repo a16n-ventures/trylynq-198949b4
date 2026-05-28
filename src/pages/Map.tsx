@@ -53,7 +53,7 @@ type FriendOnMap = {
   longitude?: number | null;
   is_premium?: boolean;
   is_verified?: boolean;
-  user_type?: string;
+  account_type?: string;
   profiles?: { display_name?: string | null; avatar_url?: string | null } | null;
 };
 
@@ -137,7 +137,7 @@ const MapPage = () => {
       if (friendIds.length === 0) return {};
       const { data } = await supabase
         .from('profiles')
-        .select('user_id, is_premium, user_type, verification_status') 
+        .select('user_id, is_premium, account_type, verification_status') 
         .in('user_id', friendIds);
       
       const metaMap: Record<string, any> = {};
@@ -152,7 +152,7 @@ const MapPage = () => {
     queryKey: ['user-profile', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase.from('profiles').select('preferences, user_type').eq('user_id', user.id).single();
+      const { data } = await supabase.from('profiles').select('preferences, account_type').eq('user_id', user.id).single();
       return data;
     },
     enabled: !!user?.id
@@ -230,7 +230,7 @@ const MapPage = () => {
           latitude: loc.latitude,
           longitude: loc.longitude,
           is_premium: friendMeta[loc.user_id]?.is_premium || false,
-          user_type: friendMeta[loc.user_id]?.user_type || 'personal',
+          account_type: friendMeta[loc.user_id]?.account_type || 'personal',
           is_verified: friendMeta[loc.user_id]?.verification_status === 'verified',
           profiles: loc.profiles
         };
@@ -283,14 +283,14 @@ const MapPage = () => {
             display_name,
             avatar_url,
             bio,
-            user_type,
+            account_type,
             verification_status,
             skills,
             is_premium
           )
         `)
         // ✅ Keep this filter to target business accounts
-        .eq('profiles.user_type', 'business')
+        .eq('profiles.account_type', 'business')
         
         // 🚀 NUCLEAR FIX 1: Remove or comment out this strict verification clause 
         // so your newly registered business/service accounts display right away
@@ -537,7 +537,7 @@ const MapPage = () => {
                         onClick={() => setActiveView('friends')}
                         className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${activeView === 'friends' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-white/10'}`}
                       >
-                        {userProfile?.user_type === 'business' ? 'Customer Heatmap' : 'Friends'}
+                        {userProfile?.account_type === 'business' ? 'Customer Heatmap' : 'Friends'}
                       </button>
                       <button 
                         onClick={() => setActiveView('events')}

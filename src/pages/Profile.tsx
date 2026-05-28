@@ -414,7 +414,13 @@ const Profile = () => {
   
   const [showSkillsEditor, setShowSkillsEditor] = useState(false);
   const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]); 
+  
+  useEffect(() => {
+    if (profile?.skills) {
+      setSelectedSkills(profile.skills);
+    }
+  }, [profile?.skills]);
   
   const SKILL_TAGS = [
     'Graphic Design','Video Editing','Photography','Social Media Management','Content Writing',
