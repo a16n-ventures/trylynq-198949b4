@@ -587,6 +587,11 @@ const Feed = () => {
                                 <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
                                   <ShieldCheck className="w-4 h-4 fill-white/20" />Verified                  </span>
                                 )}
+                                              {event.is_sponsored && (
+                                   <span className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-md">
+                                     <Megaphone className="w-3 h-3 mr-1" /> Sponsored
+                                   </span>
+                                )}
                                 </div>
                               </div>
                             </div>

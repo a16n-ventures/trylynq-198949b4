@@ -68,7 +68,9 @@ const Friends = () => {
   const [previewFriendshipId, setPreviewFriendshipId] = useState<string | undefined>();
   const [pendingConnectIds, setPendingConnectIds] = useState<Set<string>>(new Set());
   const [pendingAcceptIds, setPendingAcceptIds] = useState<Set<string>>(new Set());
-  const [pendingDeclineIds, setPendingDeclineIds] = useState<Set<string>>(new Set());
+  const [pendingDeclineIds, setPendingDeclineIds] = useState<Set<string>>(new Set()); 
+    const [isEditingCity, setIsEditingCity] = useState(false);
+  const [manualCityInput, setManualCityInput] = useState('');
 
   const openProfilePreview = (friend: Friend) => {
     setPreviewProfile({
@@ -438,52 +440,66 @@ const Friends = () => {
     }
   });
 
-  // Combined list: Friends first, then imported contacts (with label)
-  const allContactsList: Friend[] = [
-      ...friends,
-      ...contacts.map(c => ({ 
-        ...c, 
-        id: c.user_id || c.id, 
-        friendship_id: 'contact',
-        is_contact: true,
-        display_name: c.display_name || c.name || 'Contact'
-      })) 
-  ];
+  // --- SEGREGATED FILTERED LISTS ---
+  const searchLower = searchQuery.toLowerCase();
 
-  // Also fetch raw imported contacts (not matched to app users) to show with label
-  const { data: rawImportedContacts = [] } = useQuery({
-    queryKey: ['raw_imported_contacts', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return [];
-      const { data } = await supabase
-        .from('contacts')
-        .select('id, name, phone, username, is_app_user, matched_user_id')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      return data || [];
-    },
-    enabled: !!user?.id,
-  });
+  // Category 1: True Friends
+  const filteredFriends = friends.filter(f => 
+    f.display_name?.toLowerCase().includes(searchLower) || 
+    f.username?.toLowerCase().includes(searchLower)
+  );
 
-  // Imported contacts that are NOT yet matched / not app users
-  const unmatchedImports = rawImportedContacts
+  // Category 2: Discovered Contacts on App (Not yet added)
+  const filteredAppContacts = contacts
+    .map(c => ({ 
+      ...c, 
+      id: c.user_id || c.id, 
+      friendship_id: 'contact',
+      is_contact: true,
+      display_name: c.display_name || c.name || 'Contact'
+    } as Friend))
+    .filter(f => 
+      f.display_name?.toLowerCase().includes(searchLower) || 
+      f.username?.toLowerCase().includes(searchLower)
+    );
+
+  // Category 3: Off-App Contacts (Unmatched Device Imports)
+  const filteredInvites = rawImportedContacts
     .filter(c => !c.is_app_user && !c.matched_user_id)
     .map(c => ({
       id: c.id,
       user_id: c.id,
       display_name: c.name,
-      username: c.username || c.phone || '',
+      username: c.username || c.phone || '', // phone stored safely here
       avatar_url: null,
       friendship_id: 'imported',
       is_contact: true,
-    }));
+    } as Friend))
+    .filter(f => 
+      f.display_name?.toLowerCase().includes(searchLower) || 
+      f.username?.toLowerCase().includes(searchLower)
+    );
 
-  const fullList = [...allContactsList, ...unmatchedImports];
+  // Native Invite Handler using Web Share API or SMS fallback
+  const handleInviteShare = async (contact: Friend) => {
+    const inviteUrl = `/u/${user?.id}`;
+    const messageText = `Hey ${contact.display_name}, join my circle on Ahmia! Download here: ${inviteUrl}`;
 
-  const filteredList = fullList.filter(f => 
-    f.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    f.username?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Join me on Ahmia',
+          text: messageText,
+          url: inviteUrl,
+        });
+      } catch (err) {
+        console.warn('Native share dismissed:', err);
+      }
+    } else {
+      // Fallback directly to device SMS protocol using the phone digits in username field
+      window.open(`sms:${contact.username}?body=${encodeURIComponent(messageText)}`);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -537,13 +553,57 @@ const Friends = () => {
             
             {/* 1. SUGGESTIONS */}
             {(loadingSuggestions || suggestions.length > 0) && (
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-semibold text-sm text-muted-foreground flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                    {location ? 'People nearby' : 'Suggested for you'}
+              <div className="mb-6">                <div className="flex items-center justify-between mb-3 px-1 gap-2">
+                  <h3 className="font-semibold text-sm text-muted-foreground flex items-center gap-1 min-w-0">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                    <span className="truncate">
+                      {location ? `Near ${resolvedCity || 'People nearby'}` : 'Suggested for you'}
+                    </span>
                   </h3>
+
+                  {/* Manual Override Fallback Trigger */}
+                  {!location && (
+                    <div className="text-xs shrink-0">
+                      {isEditingCity ? (
+                        <div className="flex gap-1 items-center">
+                          <Input 
+                            placeholder="Type city..." 
+                            className="h-7 text-xs w-28 bg-muted border-0 rounded-lg focus-visible:ring-1"
+                            value={manualCityInput}
+                            onChange={(e) => setManualCityInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && manualCityInput.trim()) {
+                                setResolvedCity(manualCityInput.trim());
+                                setIsEditingCity(false);
+                              }
+                            }}
+                          />
+                          <Button 
+                            size="sm" 
+                            className="h-7 px-2 text-xs" 
+                            onClick={() => {
+                              if (manualCityInput.trim()) setResolvedCity(manualCityInput.trim());
+                              setIsEditingCity(false);
+                            }}
+                          >
+                            Set
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button 
+                          variant="ghost" 
+                          className="h-7 px-2 text-xs text-primary bg-primary/5 hover:bg-primary/10 rounded-lg flex items-center gap-1"
+                          onClick={() => setIsEditingCity(true)}
+                        >
+                          <MapPin className="w-3 h-3" /> 
+                          {resolvedCity ? resolvedCity : 'Set City'}
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
+
+                
 
                 <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
                   {loadingSuggestions
@@ -670,64 +730,163 @@ const Friends = () => {
                     All Friends ({friends.length})
                 </div>
 
-                {filteredList.map(friend => (
-                  <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm group hover:shadow-md transition-shadow">
-                    <Avatar className="h-12 w-12 cursor-pointer" onClick={() => openProfilePreview(friend)}>
-                      <AvatarImage src={friend.avatar_url || undefined} />
-                      <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
-                    </Avatar>
-                    
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openProfilePreview(friend)}>
-                      <h4 className="font-semibold text-sm truncate flex items-center gap-2">
-                          {friend.display_name}
-                          {friend.friendship_id === 'imported' && <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-blue-50 text-blue-600 border-blue-200">Imported from contacts</Badge>}
-                          {friend.friendship_id === 'contact' && friend.is_contact && <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-muted text-muted-foreground">From Contacts</Badge>}
-                      </h4>
-                      <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
+                                {/* 2. MAIN LIST SEGMENTS */}
+                {friendsError ? (
+                  <div className="text-center py-12 text-destructive border-2 border-dashed border-destructive/50 rounded-xl bg-destructive/5">
+                    <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Users className="w-8 h-8 text-destructive/50" />
                     </div>
-
-                    <div className="flex items-center gap-1">
-                      {friend.friendship_id === 'contact' || friend.friendship_id === 'imported' ? (
-                          <Button 
-                            size="sm" 
-                            variant="secondary" 
-                            className="h-8 px-3" 
-                            onClick={() => friend.friendship_id !== 'imported' && handleConnect.mutate(friend.user_id)}
-                            disabled={pendingConnectIds.has(friend.user_id) || friend.friendship_id === 'imported'}
-                          >
-                              {friend.friendship_id === 'imported' ? 'Not on app' : pendingConnectIds.has(friend.user_id) ? 'Sent ✓' : <><UserPlus className="w-4 h-4 mr-1.5" /> Add</>}
-                          </Button>
-                      ) : (
-                          <>
-                            <Button 
-                                size="icon" 
-                                variant="ghost" 
-                                className="rounded-full h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                                onClick={() => navigate(`/app/messages?userId=${friend.user_id}`)}
-                            >
-                                <MessageCircle className="w-5 h-5" />
-                            </Button>
-                            
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="ghost" className="rounded-full h-9 w-9 text-muted-foreground">
-                                    <MoreVertical className="w-5 h-5" />
-                                </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openProfilePreview(friend)}>
-                                    View Profile
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600">
-                                    <UserMinus className="w-4 h-4 mr-2" /> Unfriend
-                                </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                          </>
-                      )}
-                    </div>
+                    <h3 className="font-semibold mb-2">Failed to load friends</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {friendsError instanceof Error ? friendsError.message : 'An error occurred'}
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => queryClient.invalidateQueries({ queryKey: ['my_friends_page'] })}
+                    >
+                      Try Again
+                    </Button>
                   </div>
-                ))}
+                ) : loadingFriends ? (
+                  <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+                ) : filteredFriends.length === 0 && filteredAppContacts.length === 0 && filteredInvites.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl bg-muted/10">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p>No connections found.</p>
+                    <Button variant="link" onClick={() => setIsImportOpen(true)}>Sync Contacts</Button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Dynamic Contact Discovery Banner */}
+                    <div 
+                      className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-primary/10 transition-colors"
+                      onClick={() => setIsImportOpen(true)}
+                    >
+                        <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                            <Phone className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1">
+                            <h4 className="font-semibold text-sm">Find from contacts</h4>
+                            <p className="text-xs text-muted-foreground">Sync your raw device address book</p>
+                        </div>
+                        <Check className="w-4 h-4 text-muted-foreground" />
+                    </div>
+    
+                    {/* SEGMENT 1: TRUE CONCURRENT CIRCLE */}
+                    {filteredFriends.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-bold text-muted-foreground px-1 uppercase tracking-wider mb-1">
+                            My Circle ({filteredFriends.length})
+                        </div>
+                        {filteredFriends.map(friend => (
+                          <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm group hover:shadow-md transition-shadow">
+                            <Avatar className="h-12 w-12 cursor-pointer" onClick={() => openProfilePreview(friend)}>
+                              <AvatarImage src={friend.avatar_url || undefined} />
+                              <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
+                            </Avatar>
+                            
+                            <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openProfilePreview(friend)}>
+                              <h4 className="font-semibold text-sm truncate">{friend.display_name}</h4>
+                              <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
+                            </div>
+    
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  className="rounded-full h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                  onClick={() => navigate(`/app/messages?userId=${friend.user_id}`)}
+                              >
+                                  <MessageCircle className="w-5 h-5" />
+                              </Button>
+                              
+                              <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                  <Button size="icon" variant="ghost" className="rounded-full h-9 w-9 text-muted-foreground">
+                                      <MoreVertical className="w-5 h-5" />
+                                  </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => openProfilePreview(friend)}>
+                                      View Profile
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-red-600">
+                                      <UserMinus className="w-4 h-4 mr-2" /> Unfriend
+                                  </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+    
+                    {/* SEGMENT 2: CONTACT MATCHES ON THE APP */}
+                    {filteredAppContacts.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-bold text-blue-600 dark:text-blue-400 px-1 uppercase tracking-wider mb-1">
+                            Contacts Already on Ahmia ({filteredAppContacts.length})
+                        </div>
+                        {filteredAppContacts.map(friend => (
+                          <div key={friend.user_id} className="flex items-center gap-3 p-3 bg-card rounded-xl border shadow-sm border-blue-100 dark:border-blue-900/30">
+                            <Avatar className="h-12 w-12">
+                              <AvatarImage src={friend.avatar_url || undefined} />
+                              <AvatarFallback>{friend.display_name?.[0] || '?'}</AvatarFallback>
+                            </Avatar>
+                            
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-sm truncate flex items-center gap-2">
+                                  {friend.display_name}
+                                  <Badge variant="secondary" className="text-[9px] h-3.5 px-1 bg-blue-50 text-blue-600 border-blue-200">Phone Match</Badge>
+                              </h4>
+                              <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
+                            </div>
+    
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              className="h-8 px-3 bg-blue-600 hover:bg-blue-700" 
+                              onClick={() => handleConnect.mutate(friend.user_id)}
+                              disabled={pendingConnectIds.has(friend.user_id)}
+                            >
+                              {pendingConnectIds.has(friend.user_id) ? 'Sent ✓' : <><UserPlus className="w-3.5 h-3.5 mr-1" /> Add</>}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+    
+                    {/* SEGMENT 3: OFF-APP CONTACT INVITES */}
+                    {filteredInvites.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-bold text-muted-foreground px-1 uppercase tracking-wider mb-1">
+                            Invite to App ({filteredInvites.length})
+                        </div>
+                        {filteredInvites.map(contact => (
+                          <div key={contact.id} className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-dashed opacity-80">
+                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground">
+                              {contact.display_name?.[0] || '?'}
+                            </div>
+                            
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-sm truncate text-muted-foreground">{contact.display_name}</h4>
+                              <p className="text-xs text-muted-foreground/60 truncate">{contact.username}</p>
+                            </div>
+    
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-8 px-3 border-primary/30 text-primary hover:bg-primary/5 gap-1"
+                              onClick={() => handleInviteShare(contact)}
+                            >
+                              <Share2 className="w-3.5 h-3.5" /> Invite
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </TabsContent>
@@ -746,7 +905,7 @@ const Friends = () => {
                   Share your profile to connect with more people.
                 </p>
                 <Button variant="link" className="mt-2" onClick={() => {
-                   navigator.clipboard.writeText(`https://clyx.app/u/${user?.id}`);
+                   navigator.clipboard.writeText(`/u/${user?.id}`);
                    toast.success("Profile link copied!");
                 }}>
                   <Share2 className="w-4 h-4 mr-2" /> Copy Link
