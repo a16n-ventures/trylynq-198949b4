@@ -864,7 +864,11 @@ const Profile = () => {
   // --- 3. LOADING & ERROR STATES ---
 
   // Combined loading check to prevent blank screen
-  const isPageLoading = isProfileLoading || !user;
+  const isPageLoading = isProfileLoading || !user; 
+  
+  const isBusiness = profile?.user_type === 'business' || (profile as any)?.account_type === 'business';
+  const safeSkills = Array.isArray((profile as any)?.skills) ? (profile as any).skills : [];
+  const safeInterests = Array.isArray((profile as any)?.interests) ? (profile as any).interests : [];
 
   if (isPageLoading) {
     return (
@@ -1423,33 +1427,40 @@ const Profile = () => {
             </div>
 
             {/* Skills — business only */}
-            {profile.user_type === 'business' && (
+            {isBusiness && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-muted-foreground" />
-                    Skills & Services
-                    <span className="text-muted-foreground font-normal">({(profile as any).skills?.length || 0})</span>
+                    <Briefcase className="w-4 h-4 text-cyan-500" />
+                    Services / Skills
+                    <span className="text-muted-foreground font-normal">({safeSkills.length})</span>
                   </Label>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs text-primary px-2"
-                    onClick={() => { setSelectedSkills((profile as any).skills || []); setShowSkillsEditor(true); }}>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="h-7 text-xs text-cyan-600 px-2" 
+                    onClick={() => { 
+                      setSelectedSkills(safeSkills); 
+                      setShowSkillsEditor(true); 
+                    }}>
                     Edit
                   </Button>
                 </div>
-                {((profile as any).skills?.length > 0) ? (
+            
+                {safeSkills.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {(((profile as any).skills as string[]) || []).slice(0, 6).map((skill) => (
-                      <Badge key={skill} variant="secondary"
-                        className="text-[10px] bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200">
+                    {safeSkills.slice(0, 6).map((skill: string) => (
+                      <Badge key={skill} variant="secondary" className="text-[10px] bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200">
                         {skill}
                       </Badge>
                     ))}
-                    {(profile as any).skills?.length > 6 && (
-                      <Badge variant="outline" className="text-[10px]">+{(profile as any).skills.length - 6} more</Badge>
+                    {safeSkills.length > 6 && (
+                      <Badge variant="outline" className="text-[10px]">+{safeSkills.length - 6} more</Badge>
                     )}
                   </div>
                 ) : (
-                  <button onClick={() => { setSelectedSkills([]); setShowSkillsEditor(true); }}
+                  <button 
+                    onClick={() => { setSelectedSkills([]); setShowSkillsEditor(true); }}
                     className="w-full h-9 rounded-xl border-2 border-dashed border-border text-xs text-muted-foreground hover:border-cyan-400 hover:text-cyan-600 transition-colors">
                     + Add skills
                   </button>
@@ -1458,40 +1469,42 @@ const Profile = () => {
             )}
 
             {/* Interests — personal only */}
-            {profile.user_type !== 'business' && (
+            {/* Interests — personal only */}
+            {!isBusiness && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-2">
                     <Heart className="w-4 h-4 text-muted-foreground" />
                     Interests
-                    <span className="text-muted-foreground font-normal">({(profile as any).interests?.length || 0})</span>
+                    <span className="text-muted-foreground font-normal">({safeInterests.length})</span>
                   </Label>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs text-primary px-2"
-                    onClick={() => {
-                      if (pendingUserType === 'business') { updateAccountTypeMutation.mutate({ userType: 'business', skills: selectedSkills });
-                      } else if (profile?.user_type === 'business') {
-                        saveSkillsMutation.mutate(selectedSkills);
-                      } else {
-                        // This safely targets interests accurately when operating personal scopes!
-                        saveInterestsMutation.mutate(selectedSkills); 
-                      }
-                    }}
-                    >
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="h-7 text-xs text-primary px-2" 
+                    onClick={() => { 
+                      setSelectedSkills(safeInterests); // Reuse the same modal state
+                      setShowSkillsEditor(true);
+                    }}>
                     Edit
                   </Button>
                 </div>
-                {((profile as any).interests?.length > 0) ? (
+            
+                {safeInterests.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {(((profile as any).interests as string[]) || []).slice(0, 6).map((interest) => (
-                      <Badge key={interest} variant="secondary" className="text-[10px]">{interest}</Badge>
+                    {safeInterests.slice(0, 6).map((interest: string) => (
+                      <Badge key={interest} variant="secondary" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                        {interest}
+                      </Badge>
                     ))}
-                    {(profile as any).interests?.length > 6 && (
-                      <Badge variant="outline" className="text-[10px]">+{(profile as any).interests.length - 6} more</Badge>
+                    {safeInterests.length > 6 && (
+                      <Badge variant="outline" className="text-[10px]">+{safeInterests.length - 6} more</Badge>
                     )}
                   </div>
                 ) : (
-                  <button onClick={() => { setSelectedSkills([]); setShowSkillsEditor(true); }}
-                    className="w-full h-9 rounded-xl border-2 border-dashed border-border text-xs text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors">
+                  <button 
+                    onClick={() => { setSelectedSkills([]); setShowSkillsEditor(true); }}
+                    className="w-full h-9 rounded-xl border-2 border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                     + Add interests
                   </button>
                 )}
