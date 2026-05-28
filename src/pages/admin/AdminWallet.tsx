@@ -4,177 +4,235 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ArrowUpRight, ShieldCheck, History, TrendingUp, Wallet, ArrowDownLeft } from "lucide-react";
+import { 
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
+} from "@/components/ui/table";
+import { 
+  Loader2, ArrowUpRight, ShieldCheck, History, 
+  TrendingUp, Wallet, ArrowDownLeft, DollarSign, 
+  ArrowUp, ArrowDown, RefreshCw
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = (n: number) => `₦${n.toLocaleString()}`;
+
+function StatTile({ icon: Icon, label, value, sub, color = "text-muted-foreground" }: {
+  icon: any; label: string; value: string | number; sub?: string; color?: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-muted-foreground">{label}</span>
+          <Icon className={`w-4 h-4 ${color}`} />
+        </div>
+        <p className="text-2xl font-bold">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AdminWallet() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [loading, setLoading] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [txFilter, setTxFilter] = useState<'all' | 'credit' | 'debit'>('all');
 
-  // Fetch Platform Wallet
-  const { data: wallet } = useQuery({
-    queryKey: ["admin-wallet", user?.id],
+  // ── Platform wallet ────────────────────────────────────────────────────────
+  const { data: wallet, isLoading: walletLoading } = useQuery({
+    queryKey: ['admin-wallet', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('wallets')
-        .select('*')
-        .eq('is_platform_wallet', true)
-        .maybeSingle();
-      
+        .from('wallets').select('*').eq('is_platform_wallet', true).maybeSingle();
       if (error) throw error;
       return data;
     },
     enabled: !!user,
   });
 
-  // Fetch recent transactions
-  const { data: transactions = [] } = useQuery({
-    queryKey: ["admin-transactions"],
+  // ── Transactions ───────────────────────────────────────────────────────────
+  const { data: transactions = [], isLoading: txLoading } = useQuery({
+    queryKey: ['admin-transactions', txFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
-      
+      let q = supabase.from('transactions').select('*').order('created_at', { ascending: false }).limit(50);
+      if (txFilter !== 'all') q = q.eq('type', txFilter);
+      const { data, error } = await q;
       if (error) throw error;
       return data || [];
     },
   });
 
-  // Fetch revenue stats
+  // ── Revenue stats ──────────────────────────────────────────────────────────
   const { data: stats } = useQuery({
-    queryKey: ["admin-revenue-stats"],
+    queryKey: ['admin-revenue-stats'],
     queryFn: async () => {
       const now = new Date();
-      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      
-      const [{ data: thisMonthData }, { data: lastMonthData }] = await Promise.all([
-        supabase.from('transactions').select('amount').gte('created_at', thisMonth.toISOString()).eq('type', 'credit'),
-        supabase.from('transactions').select('amount').gte('created_at', lastMonth.toISOString()).lt('created_at', thisMonth.toISOString()).eq('type', 'credit'),
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+      const [thisMonth, lastMonth, totalCredits, totalDebits, pendingPayouts] = await Promise.all([
+        supabase.from('transactions').select('amount').gte('created_at', thisMonthStart.toISOString()).eq('type', 'credit'),
+        supabase.from('transactions').select('amount').gte('created_at', lastMonthStart.toISOString()).lt('created_at', thisMonthStart.toISOString()).eq('type', 'credit'),
+        supabase.from('transactions').select('amount').eq('type', 'credit'),
+        supabase.from('transactions').select('amount').eq('type', 'debit'),
+        supabase.from('payout_requests').select('amount').eq('status', 'pending'),
       ]);
-      
-      const thisMonthTotal = thisMonthData?.reduce((acc, t) => acc + (t.amount || 0), 0) || 0;
-      const lastMonthTotal = lastMonthData?.reduce((acc, t) => acc + (t.amount || 0), 0) || 0;
-      
-      return { thisMonth: thisMonthTotal, lastMonth: lastMonthTotal };
+
+      const sum = (rows: any[]) => rows?.reduce((acc, r) => acc + (r.amount || 0), 0) || 0;
+
+      return {
+        thisMonth:      sum(thisMonth.data || []),
+        lastMonth:      sum(lastMonth.data || []),
+        totalCredits:   sum(totalCredits.data || []),
+        totalDebits:    sum(totalDebits.data || []),
+        pendingPayouts: sum(pendingPayouts.data || []),
+        growth: lastMonth.data?.length
+          ? Math.round(((sum(thisMonth.data || []) - sum(lastMonth.data || [])) / Math.max(sum(lastMonth.data || []), 1)) * 100)
+          : 0,
+      };
     },
   });
 
   const handleWithdraw = async () => {
     if (!wallet || wallet.balance <= 0) return;
-    setLoading(true);
+    setWithdrawing(true);
     try {
       const { error } = await supabase.functions.invoke('request-payout', {
-        body: { amount: wallet.balance }
+        body: { amount: wallet.balance },
       });
       if (error) throw error;
-      toast.success("Admin withdrawal initiated successfully");
-      queryClient.invalidateQueries({ queryKey: ["admin-wallet"] });
+      toast.success("Withdrawal initiated successfully");
+      queryClient.invalidateQueries({ queryKey: ['admin-wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-transactions'] });
     } catch (e: any) {
       toast.error("Withdrawal failed: " + e.message);
     } finally {
-      setLoading(false);
+      setWithdrawing(false);
     }
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-2 mb-4">
-        <ShieldCheck className="w-6 h-6 text-purple-600" />
-        <h1 className="text-2xl font-bold">Platform Revenue</h1>
+    <div className="space-y-5 pb-20 max-w-5xl">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <ShieldCheck className="w-5 h-5 text-purple-500" />
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Platform Revenue</h2>
+          <p className="text-sm text-muted-foreground">Platform wallet, earnings and transaction history.</p>
+        </div>
       </div>
 
+      {/* Balance hero + stats row */}
       <div className="grid md:grid-cols-3 gap-4">
-        {/* Main Balance Card */}
-        <Card className="bg-gradient-to-br from-gray-900 to-gray-800 text-white border-0 shadow-xl md:col-span-2">
-          <CardContent className="p-6">
-            <p className="text-gray-400 text-sm font-medium uppercase tracking-wider mb-2">
-              Platform Balance
-            </p>
-            <div className="flex items-baseline gap-1 mb-6">
-              <span className="text-4xl font-bold">
-                ₦{(wallet?.balance || 0).toLocaleString()}
-              </span>
-              <span className="text-sm text-gray-400">.00</span>
+        {/* Balance card */}
+        <Card className="md:col-span-1 border-0 shadow-xl overflow-hidden"
+          style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
+          <CardContent className="p-5 flex flex-col h-full justify-between text-white">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-widest text-white/50 mb-1">Platform Balance</p>
+              {walletLoading
+                ? <div className="h-10 w-32 bg-white/10 rounded-lg animate-pulse mt-1" />
+                : <p className="text-4xl font-black">{fmt(wallet?.balance || 0)}</p>
+              }
+              {stats && (
+                <div className="flex items-center gap-1.5 mt-2">
+                  {stats.growth >= 0
+                    ? <ArrowUp className="w-3.5 h-3.5 text-green-400" />
+                    : <ArrowDown className="w-3.5 h-3.5 text-red-400" />}
+                  <span className={`text-xs font-semibold ${stats.growth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {Math.abs(stats.growth)}% vs last month
+                  </span>
+                </div>
+              )}
             </div>
-            
-            <Button 
+            <Button
               onClick={handleWithdraw}
-              disabled={loading || !wallet || wallet.balance <= 0}
-              className="w-full bg-white text-black hover:bg-gray-200 font-semibold"
+              disabled={withdrawing || !wallet || wallet.balance <= 0}
+              className="mt-5 w-full bg-white text-black hover:bg-gray-100 font-semibold h-10"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <ArrowUpRight className="w-4 h-4 mr-2"/>}
-              Withdraw to Admin Bank
+              {withdrawing
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Processing…</>
+                : <><ArrowUpRight className="w-4 h-4 mr-2" /> Withdraw to Bank</>}
             </Button>
           </CardContent>
         </Card>
 
-        {/* Stats Cards */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-green-500" /> This Month
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">₦{(stats?.thisMonth || 0).toLocaleString()}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Wallet className="w-4 h-4" /> Last Month
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">₦{(stats?.lastMonth || 0).toLocaleString()}</div>
-            </CardContent>
-          </Card>
+        {/* Stats */}
+        <div className="md:col-span-2 grid grid-cols-2 gap-3">
+          <StatTile icon={TrendingUp}  label="This Month"       value={stats ? fmt(stats.thisMonth)    : '—'} color="text-green-500"
+            sub={stats?.lastMonth ? `vs ${fmt(stats.lastMonth)} last month` : undefined} />
+          <StatTile icon={DollarSign}  label="Total Credits"    value={stats ? fmt(stats.totalCredits)  : '—'} color="text-blue-500" />
+          <StatTile icon={ArrowUpRight} label="Total Paid Out"  value={stats ? fmt(stats.totalDebits)   : '—'} color="text-orange-400" />
+          <StatTile icon={Wallet}       label="Pending Payouts" value={stats ? fmt(stats.pendingPayouts): '—'} color="text-yellow-500"
+            sub="awaiting approval" />
         </div>
       </div>
 
-      {/* Transaction History */}
+      {/* Transaction history */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="w-4 h-4" /> Recent Transactions
-          </CardTitle>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <History className="w-4 h-4" /> Transactions
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1">
+                {(['all', 'credit', 'debit'] as const).map(f => (
+                  <Button key={f} size="sm" variant={txFilter === f ? 'default' : 'outline'}
+                    className="h-7 text-xs capitalize" onClick={() => setTxFilter(f)}>
+                    {f}
+                  </Button>
+                ))}
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['admin-transactions'] })}>
+                <RefreshCw className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          {transactions.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No transactions yet</p>
+        <CardContent className="p-0">
+          {txLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+          ) : transactions.length === 0 ? (
+            <p className="text-center text-muted-foreground py-10 text-sm">No transactions found.</p>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-muted/30">
                   <TableHead>Type</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Reference</TableHead>
                   <TableHead>Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {transactions.map((tx: any) => (
-                  <TableRow key={tx.id}>
+                  <TableRow key={tx.id} className="hover:bg-muted/20">
                     <TableCell>
-                      <Badge variant={tx.type === 'credit' ? 'default' : 'secondary'} className={tx.type === 'credit' ? 'bg-green-500' : ''}>
-                        {tx.type === 'credit' ? <ArrowDownLeft className="w-3 h-3 mr-1" /> : <ArrowUpRight className="w-3 h-3 mr-1" />}
+                      <Badge className={`border-0 text-[10px] gap-1 ${tx.type === 'credit' ? 'bg-green-500 text-white' : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'}`}>
+                        {tx.type === 'credit'
+                          ? <ArrowDownLeft className="w-2.5 h-2.5" />
+                          : <ArrowUpRight className="w-2.5 h-2.5" />}
                         {tx.type}
                       </Badge>
                     </TableCell>
-                    <TableCell className="capitalize">{tx.category?.replace('_', ' ') || '-'}</TableCell>
-                    <TableCell className={tx.type === 'credit' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                      {tx.type === 'credit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                    <TableCell className="capitalize text-sm">
+                      {tx.category?.replace(/_/g, ' ') || '—'}
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {format(new Date(tx.created_at), 'MMM d, yyyy HH:mm')}
+                    <TableCell className={`font-semibold text-sm ${tx.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
+                      {tx.type === 'credit' ? '+' : '−'}{fmt(tx.amount)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground font-mono">
+                      {tx.reference ? tx.reference.slice(0, 12) + '…' : '—'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {format(new Date(tx.created_at), 'MMM d, yyyy · HH:mm')}
                     </TableCell>
                   </TableRow>
                 ))}
