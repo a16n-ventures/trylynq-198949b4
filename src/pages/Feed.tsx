@@ -583,7 +583,12 @@ const Feed = () => {
                                 )}
                                 <Badge className={`${status.color} text-white border-0 shadow-sm backdrop-blur-md text-[10px]`}>
                                   {status.label}
-                                </Badge>
+                                </Badge> 
+                                {event.recurrence_rule && (
+                                  <Badge className="bg-black/60 text-white border-0 backdrop-blur-md">
+                                    <Repeat className="w-3 h-3 mr-1" /> {event.recurrence_rule.replace('FREQ=', '').charAt(0).toUpperCase() + event.recurrence_rule.replace('FREQ=', '').slice(1).toLowerCase()}
+                                  </Badge>
+                                )}
                                 {event.match_score && event.match_score > 80 && (
                                   <Badge className="bg-black/60 text-white border-0 backdrop-blur-md text-[10px]">
                                     <Zap className="w-2.5 h-2.5 mr-0.5 text-yellow-400 fill-yellow-400" /> {event.match_score}% Vibe
