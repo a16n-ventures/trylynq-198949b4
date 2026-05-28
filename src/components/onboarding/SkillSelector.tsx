@@ -132,7 +132,7 @@ export function SkillSelector({
             // skills-based ranking is shipped.
             interests: selected,
             preferences: mergedPrefs,
-            user_type: "service", // redundant safety write
+            user_type: "business", // redundant safety write
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" }
