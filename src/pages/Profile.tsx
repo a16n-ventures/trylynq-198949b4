@@ -60,7 +60,7 @@ interface ProfileData {
   is_premium?: boolean;
   profile_views_30d?: number;
   preferences?: UserPreferences;
-  user_type: UserType;
+  account_type: UserType;
   verification_status: VerificationStatus;
   trust_score?: number; 
   skills?: string[]; 
@@ -189,9 +189,12 @@ const FavoritesTab = ({ userId, onEventClick }: { userId: string; onEventClick: 
 
   // Load favorites from localStorage (same key as Feed.tsx)
   const favoriteIds = useMemo<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('feed_favorites') || '[]'); }
+    try { 
+      // Scope key directly to the active profile owner matching user.id
+      return JSON.parse(localStorage.getItem(`feed_favorites_${userId}`) || '[]'); 
+    }
     catch { return []; }
-  }, []);
+  }, [userId]);
 
   const { data: favoriteEvents = [], isLoading } = useQuery({
     queryKey: ['favorite-events', favoriteIds.join(',')],
@@ -442,7 +445,6 @@ const Profile = () => {
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
-          user_type: userType,
           account_type: userType, // 💡 THE FIX: Dynamically maps to 'business' instead of 'service'
           skills: skills
         })
@@ -522,8 +524,20 @@ const Profile = () => {
   });
 
   // Destructure safely to handle cases where profile is still creating
+  // 🚀 FIXED: Guarantees profile structural safety preventing runtime null crashes
   const { profile, location, stats } = data || { 
-    profile: null, 
+    profile: {
+      user_id: user?.id || '',
+      display_name: 'User',
+      username: 'user',
+      email: user?.email || '',
+      bio: '',
+      avatar_url: '',
+      created_at: new Date().toISOString(),
+      account_type: 'personal',
+      verification_status: 'unverified',
+      preferences: { notifications: true, discovery_radius: 25000 }
+    }, 
     location: null, 
     stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 } 
   };
@@ -866,7 +880,7 @@ const Profile = () => {
   // Combined loading check to prevent blank screen
   const isPageLoading = isProfileLoading || !user; 
   
-  const isBusiness = profile?.user_type === 'business' || (profile as any)?.account_type === 'business';
+  const isBusiness = profile?.account_type === 'business';
   const safeSkills = Array.isArray((profile as any)?.skills) ? (profile as any).skills : [];
   const safeInterests = Array.isArray((profile as any)?.interests) ? (profile as any).interests : [];
 
@@ -1104,7 +1118,7 @@ const Profile = () => {
             </button>
           
             {/* Safe Dynamic Additions for Businesses using CSS Display visibility to protect Tab indices */}
-            <div className={`contents ${profile?.user_type !== 'business' ? 'hidden' : ''}`}>
+            <div className={`contents ${profile?.account_type !== 'business' ? 'hidden' : ''}`}>
               <div className="w-[1px] h-8 bg-border/60" />
               <button 
                 onClick={() => navigate('/app/marketplace')}
@@ -1391,15 +1405,15 @@ const Profile = () => {
             {/* Account Type */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
-                {profile.user_type === 'business' ? <Briefcase className="w-4 h-4 text-muted-foreground" /> : <User className="w-4 h-4 text-muted-foreground" />}
+                {profile.account_type === 'business' ? <Briefcase className="w-4 h-4 text-muted-foreground" /> : <User className="w-4 h-4 text-muted-foreground" />}
                 Account Type
               </Label>
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => { if (profile.user_type !== 'personal') updateAccountTypeMutation.mutate({ userType: 'personal' }); }}
+                  onClick={() => { if (profile.account_type !== 'personal') updateAccountTypeMutation.mutate({ userType: 'personal' }); }}
                   disabled={updateAccountTypeMutation.isPending}
                   className={`flex items-center justify-center gap-2 h-10 rounded-xl text-xs font-semibold border transition-all ${
-                    profile.user_type !== 'business'
+                    profile.account_type !== 'business'
                       ? 'bg-primary text-white border-primary shadow-sm'
                       : 'bg-background text-muted-foreground border-border hover:border-primary/50'
                   }`}
@@ -1408,7 +1422,7 @@ const Profile = () => {
                 </button>
                 <button
                   onClick={() => {
-                    if (profile.user_type !== 'business') {
+                    if (profile.account_type !== 'business') {
                       setSelectedSkills((profile as any).skills || []);
                       setPendingUserType('business');
                       setShowSkillsEditor(true);
@@ -1416,7 +1430,7 @@ const Profile = () => {
                   }}
                   disabled={updateAccountTypeMutation.isPending}
                   className={`flex items-center justify-center gap-2 h-10 rounded-xl text-xs font-semibold border transition-all ${
-                    profile.user_type === 'business'
+                    profile.account_type === 'business'
                       ? 'bg-cyan-500 text-white border-cyan-500 shadow-sm'
                       : 'bg-background text-muted-foreground border-border hover:border-cyan-400'
                   }`}
@@ -1582,7 +1596,7 @@ const Profile = () => {
         <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {pendingUserType === 'business' || profile?.user_type === 'business'
+              {pendingUserType === 'business' || profile?.account_type === 'business'
                 ? <><Briefcase className="w-5 h-5 text-cyan-500" /> {pendingUserType === 'business' ? 'Set Up Business Profile' : 'Edit Skills'}</>
                 : <><Heart className="w-5 h-5 text-primary" /> Edit Interests</>}
             </DialogTitle>
@@ -1600,7 +1614,7 @@ const Profile = () => {
               {selectedSkills.map((s) => (
                 <button key={s} onClick={() => setSelectedSkills(prev => prev.filter(x => x !== s))}
                   className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-white transition-colors ${
-                    pendingUserType === 'business' || profile?.user_type === 'business' ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-primary hover:bg-primary/90'
+                    pendingUserType === 'business' || profile?.account_type === 'business' ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-primary hover:bg-primary/90'
                   }`}>
                   {s} <X className="w-3 h-3" />
                 </button>
@@ -1610,7 +1624,7 @@ const Profile = () => {
       
           <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">
             <div className="flex flex-wrap gap-2 py-2">
-              {(pendingUserType === 'business' || profile?.user_type === 'business' ? SKILL_TAGS : INTEREST_TAGS)
+              {(pendingUserType === 'business' || profile?.account_type === 'business' ? SKILL_TAGS : INTEREST_TAGS)
                 .filter(s => !selectedSkills.includes(s))
                 .map((tag) => (
                   <button key={tag} onClick={() => setSelectedSkills(prev => [...prev, tag])}
@@ -1624,12 +1638,12 @@ const Profile = () => {
           <DialogFooter className="pt-3 border-t gap-2">
             <Button variant="outline" onClick={() => { setShowSkillsEditor(false); setPendingUserType(null); }}>Cancel</Button>
             <Button
-              className={`flex-1 text-white ${pendingUserType === 'business' || profile?.user_type === 'business' ? 'bg-cyan-500 hover:bg-cyan-600' : ''}`}
+              className={`flex-1 text-white ${pendingUserType === 'business' || profile?.account_type === 'business' ? 'bg-cyan-500 hover:bg-cyan-600' : ''}`}
               disabled={selectedSkills.length === 0 || updateAccountTypeMutation.isPending || saveSkillsMutation.isPending || saveInterestsMutation.isPending}
               onClick={() => {
                 if (pendingUserType === 'business') {
                   updateAccountTypeMutation.mutate({ userType: 'business', skills: selectedSkills });
-                } else if (profile?.user_type === 'business') {
+                } else if (profile?.account_type === 'business') {
                   saveSkillsMutation.mutate(selectedSkills);
                 } else {
                   saveInterestsMutation.mutate(selectedSkills);

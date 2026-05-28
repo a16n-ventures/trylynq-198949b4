@@ -353,8 +353,8 @@ const MapPage = () => {
     }));
   }, [nearbyBusinesses]);
 
-  const handleMarkerSelect = (id: string, markerType?: 'friend' | 'event') => {
-    if (activeView === 'marketplace') {
+  const handleMarkerSelect = (id: string, markerType?: 'friend' | 'event' | 'business') => {
+    if (activeView === 'marketplace' || markerType === 'business') {
       const biz = nearbyBusinesses.find((b: any) => b.id === id);
       if (biz) {
         setSelectedFriend(null);

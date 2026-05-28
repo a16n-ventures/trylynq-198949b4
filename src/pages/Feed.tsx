@@ -144,20 +144,48 @@ const Feed = () => {
   const [selectedCommunity, setSelectedCommunity] = useState<FeedCommunity | null>(null);
   const [previewProfile, setPreviewProfile] = useState<any | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('feed_favorites') || '[]')); }
-    catch { return new Set(); }
-  });
+      try {
+      // We fetch a temporary guest instance or safely fallback
+      const dynamicKey = `feed_favorites_guest`;
+      return new Set(JSON.parse(localStorage.getItem(dynamicKey) || '[]'));
+    } catch { return new Set(); }
+  }); 
+    
+  useEffect(() => {
+    if (user?.id) {
+      try {
+        const userKey = `feed_favorites_${user.id}`;
+        const saved = localStorage.getItem(userKey);
+        setFavorites(new Set(saved ? JSON.parse(saved) : []));
+      } catch (e) {
+        console.error("Failed loading user favorites collection", e);
+      }
+    }
+  }, [user?.id]);
 
   const toggleFavorite = (eventId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!user?.id) {
+      toast.error("Please log in to save favorites.");
+      return;
+    }
+    
     setFavorites(prev => {
       const next = new Set(prev);
-      if (next.has(eventId)) { next.delete(eventId); toast('Removed from favorites'); }
-      else { next.add(eventId); toast.success('Added to favorites ❤️'); }
-      localStorage.setItem('feed_favorites', JSON.stringify([...next]));
+      if (next.has(eventId)) { 
+        next.delete(eventId); 
+        {/* toast('Removed from favorites'); */}
+      } else { 
+        next.add(eventId); 
+        {/* toast.success('Added to favorites ❤️'); */}
+      }
+      
+      // Scopes storage keys safely under individual unique IDs
+      localStorage.setItem(`feed_favorites_${user.id}`, JSON.stringify([...next]));
       return next;
     });
   };
+  
   const [isPremium, setIsPremium] = useState(false);
 
   // Pioneer milestone derived from launch zone hook
