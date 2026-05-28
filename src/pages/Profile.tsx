@@ -403,6 +403,8 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
   );
 };
 
+// EventsProfileTab removed - now handled in Events page
+
 const Profile = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -412,9 +414,7 @@ const Profile = () => {
   
   const [showSkillsEditor, setShowSkillsEditor] = useState(false);
   const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
-  
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]); 
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([]); 
   
   const SKILL_TAGS = [
     'Graphic Design','Video Editing','Photography','Social Media Management','Content Writing',
@@ -430,6 +430,7 @@ const Profile = () => {
     'Translation','Driving / Logistics','Tailoring / Fashion','Laundry Services',
   ];
   
+  // Also used for personal interest updates
   const INTEREST_TAGS = [
     'Music','Art','Sports','Gaming','Food & Drink','Travel','Fashion','Fitness',
     'Technology','Business','Politics','Education','Health','Photography','Film',
@@ -444,7 +445,7 @@ const Profile = () => {
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
-          account_type: userType,
+          account_type: userType, // 💡 THE FIX: Dynamically maps to 'business' instead of 'service'
           skills: skills
         })
         .eq('user_id', user.id);
@@ -455,6 +456,7 @@ const Profile = () => {
       toast.success(`Successfully switched to ${variables.userType} account!`);
       setShowSkillsEditor(false);
       setPendingUserType(null);
+      // Invalidate the cache to instantly repaint the page as a Business layout
       queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
     },
     onError: (error: any) => {
@@ -495,9 +497,12 @@ const Profile = () => {
     onError: (err: any) => toast.error(err.message || 'Failed to update interests'),
   });
 
+  // Local state for smooth slider dragging
   const [localRadius, setLocalRadius] = useState<number>(25);
+
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
+  // Profile Settings Dialog State
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
@@ -505,9 +510,10 @@ const Profile = () => {
     username: '',
     email: '',
     bio: '',
-    phone: ''
+    phone: '' // Added missing field
   });
 
+  // --- 1. DATA FETCHING (Fixed) ---
   const { data, isLoading: isProfileLoading, error, refetch } = useQuery<CombinedProfile, Error>({
     queryKey: ['profile', user?.id],
     queryFn: () => fetchProfileData(user!.id),
@@ -517,6 +523,8 @@ const Profile = () => {
     retry: 2,
   });
 
+  // Destructure safely to handle cases where profile is still creating
+  // 🚀 FIXED: Guarantees profile structural safety preventing runtime null crashes
   const { profile, location, stats } = data || { 
     profile: {
       user_id: user?.id || '',
@@ -534,7 +542,7 @@ const Profile = () => {
     stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 } 
   }; 
   
-  // --- FIX 1: Track the stable data object to avoid merged render loop crashes ---
+    // --- FIX 1: Track the stable data object to avoid merged render loop crashes ---
   useEffect(() => {
     if (data?.profile) {
       if (data.profile.skills) {
@@ -733,6 +741,7 @@ const Profile = () => {
     }
   });
 
+  // Handlers
   const handleAvatarSelect = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -746,6 +755,8 @@ const Profile = () => {
     const previewUrl = URL.createObjectURL(file);
     setAvatarPreview(previewUrl);
     uploadAvatarMutation.mutate(file);
+
+    // note: cleanup of preview URL is handled in the mutation callbacks (onSuccess/onError)
   }, [uploadAvatarMutation]);
 
   const handleProfileSettingsSave = useCallback(() => {
@@ -792,6 +803,7 @@ const Profile = () => {
     enabled: !!user?.id,
   });
 
+  // --- 2. ACTIONS ---
   const handleLogout = async () => {
     await signOut();
     navigate('/', { replace: true });
@@ -800,12 +812,23 @@ const Profile = () => {
   const updatePreference = async (key: string, value: any) => {
     if (!user?.id || !profile) return;
 
+    // Create new preferences object merging existing ones safely
     const currentPrefs = (profile.preferences || {}) as UserPreferences;
-    const newPreferences = { ...currentPrefs, [key]: value };
+    const newPreferences = {
+      ...currentPrefs,
+      [key]: value
+    };
 
+    // Optimistic cache update
     queryClient.setQueryData(['profile', user.id], (old: CombinedProfile | undefined) => {
       if (!old || !old.profile) return old;
-      return { ...old, profile: { ...old.profile, preferences: newPreferences } };
+      return {
+        ...old,
+        profile: {
+          ...old.profile,
+          preferences: newPreferences
+        }
+      };
     });
 
     const { error } = await supabase
@@ -824,7 +847,11 @@ const Profile = () => {
     }
   };
 
+  // --- 3. LOADING & ERROR STATES ---
+
+  // Combined loading check to prevent blank screen
   const isPageLoading = isProfileLoading || !user; 
+  
   const isBusiness = profile?.account_type === 'business';
   const safeSkills = Array.isArray((profile as any)?.skills) ? (profile as any).skills : [];
   const safeInterests = Array.isArray((profile as any)?.interests) ? (profile as any).interests : [];
@@ -854,8 +881,12 @@ const Profile = () => {
             {(error && (error as any).message) || 'Profile not found'}
           </p>
           <div className="flex gap-3 justify-center">
-            <Button variant="outline" onClick={() => window.location.reload()}>Retry</Button>
-            <Button onClick={() => navigate('/app/feed')}>Go to Feed</Button>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Retry
+            </Button>
+            <Button onClick={() => navigate('/app/feed')}>
+              Go to Feed
+            </Button>
           </div>
         </div>
       </div>
@@ -864,16 +895,19 @@ const Profile = () => {
 
   const displayName = profile.display_name || 'User';
   const username = profile.username || 'user';
-  
-  const isGhostMode = profile?.preferences?.ghost_mode === true;
-  const targetTagInstance = isBusiness || pendingUserType === 'business' ? selectedSkills : selectedInterests;
+
+  // Safely access properties
+  const isGhostMode = profile.preferences?.ghost_mode === true;
 
   return (
     <div className="min-h-screen bg-background pb-24">
+
       {/* 1. HEADER (Identity) */}
       <div className="relative">
+        {/* Cover Image Placeholder */}
         <div className="h-36 bg-gradient-to-r from-primary/10 via-purple-500/10 to-orange-500/10 w-full" />
 
+        {/* Settings Dialog (FIXED) */}
         <div className="absolute top-4 right-4">
           <Dialog>
             <DialogTrigger asChild>
@@ -887,6 +921,7 @@ const Profile = () => {
               </DialogHeader>
 
               <div className="space-y-6 py-4">
+                {/* Account Section */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Account</h3>
 
@@ -916,9 +951,11 @@ const Profile = () => {
                   </div>
                 </div>
 
+                {/* Preferences Section (FIXED) */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Discovery</h3>
 
+                  {/* Radius Slider */}
                   <div className="space-y-4 px-1">
                     <div className="flex justify-between text-sm">
                       <Label>Max Distance</Label>
@@ -926,28 +963,33 @@ const Profile = () => {
                     </div>
                     <Slider
                       value={[localRadius]}
-                      max={25}
-                      min={5}
+                      max={25} // 25km max
+                      min={5}  // 5km min
                       step={1}
+                      // 1. Update visual state immediately
                       onValueChange={(val) => setLocalRadius(val[0])}
+                      // 2. Commit to DB only when user stops dragging
                       onValueCommit={(val) => updatePreference('discovery_radius', val[0] * 1000)}
                     />
                   </div>
 
+                  {/* Ghost Mode Toggle */}
                   <div className="flex items-center justify-between">
                     <Label className="flex flex-col gap-1">
                       <span>Ghost Mode</span>
                       <span className="font-normal text-xs text-muted-foreground">Hide location on map</span>
                     </Label>
                     <Switch
-                      checked={isGhostMode}
+                      checked={isGhostMode} // Controlled component
                       onCheckedChange={(v) => updatePreference('ghost_mode', v)}
                     />
                   </div>
                 </div>
 
+                {/* Admin Portal (for admin users) */}
                 <AdminPortalButton />
 
+                {/* Actions & Danger Zone */}
                 <div className="pt-2 border-t space-y-3">
                   <Button variant="outline" className="w-full justify-start" onClick={handleLogout}>
                     <LogOut className="w-4 h-4 mr-2" /> Log Out
@@ -968,6 +1010,7 @@ const Profile = () => {
           </Dialog>
         </div>
 
+        {/* Avatar & Info */}
         <div className="px-6 -mt-12 mb-6">
           <div className="relative inline-block">
             <Avatar className="w-28 h-28 border-[6px] border-background shadow-2xl relative z-10">
@@ -979,6 +1022,7 @@ const Profile = () => {
               <AvatarFallback className="text-2xl bg-muted text-muted-foreground">{displayName.slice(0, 2).toUpperCase() || '?'}</AvatarFallback>
             </Avatar>
 
+            {/* Avatar upload button */}
             <label
               htmlFor="avatar-upload"
               className="absolute bottom-0 right-0 w-10 h-10 bg-white dark:bg-slate-800 text-primary rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform z-20"
@@ -998,6 +1042,8 @@ const Profile = () => {
               disabled={uploadAvatarMutation.isPending}
               aria-label="Upload avatar"
             />
+
+            {/* Premium badge shown next to name, not overlapping avatar upload button */}
           </div>
 
           <div className="mt-4 flex justify-between items-start">
@@ -1020,7 +1066,10 @@ const Profile = () => {
             </Button>
           </div>
 
+          {/* STATS CONTROL PANEL */}
+                    {/* FIXED: Safe Structuring for Personal vs Business Controls */}
           <div className="mt-6 inline-flex items-center bg-muted/30 backdrop-blur-sm rounded-2xl p-1 border border-border/40 shadow-sm">
+            {/* Friends */}
             <button 
               onClick={() => navigate('/app/friends')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
@@ -1031,6 +1080,7 @@ const Profile = () => {
           
             <div className="w-[1px] h-8 bg-border/60" />
           
+            {/* Events */}
             <button 
               onClick={() => navigate('/app/events')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
@@ -1039,6 +1089,7 @@ const Profile = () => {
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Events</span>
             </button>
           
+            {/* Safe Dynamic Additions for Businesses using CSS Display visibility to protect Tab indices */}
             <div className={`contents ${profile?.account_type !== 'business' ? 'hidden' : ''}`}>
               <div className="w-[1px] h-8 bg-border/60" />
               <button 
@@ -1046,6 +1097,7 @@ const Profile = () => {
                 className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
               >
                 <span className="block font-bold text-lg group-hover:text-primary transition-colors">
+                  {/* Fixed data reference from stats.events to explicit count safely */}
                   {((profile as any)?.skills?.length) || 0}
                 </span>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
@@ -1090,6 +1142,7 @@ const Profile = () => {
             <Grid className="w-4 h-4 mr-2" /> Views
           </TabsTrigger>
           
+          {/* Use CSS hidden — conditional rendering breaks Radix TabsList child indexing */}
           <TabsTrigger
             value="analytics"
             className={`rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0 ${!profile.is_premium ? 'hidden' : ''}`}
@@ -1098,6 +1151,7 @@ const Profile = () => {
           </TabsTrigger>
         </TabsList>
 
+        {/* A. MY TICKETS (Wallet View) */}
         <TabsContent value="tickets" className="p-4 space-y-4 min-h-[300px]">
           {myTickets.length > 0 ? (
             (myTickets as any[]).map((event: any) => (
@@ -1107,6 +1161,7 @@ const Profile = () => {
                 onClick={() => navigate(`/app/events/${event.id}`)}
               >
                 <div className="flex">
+                  {/* Use a thinner, more elegant accent line */}
                   <div className="w-1.5 bg-primary/80" /> 
                   <div className="flex-1 p-5">
                     <div className="flex items-center gap-2 mb-2">
@@ -1136,14 +1191,17 @@ const Profile = () => {
           )}
         </TabsContent>
 
+        {/* B. FAVORITES TAB */}
         <TabsContent value="favorites" className="p-4 space-y-4 min-h-[300px]">
           <FavoritesTab userId={user!.id} onEventClick={(id) => navigate(`/app/events/${id}`)} />
         </TabsContent>
 
+        {/* C. VIEWS TAB */}
         <TabsContent value="views" className="p-4 space-y-4 min-h-[300px]">
           <ProfileViewsTab userId={user!.id} isPremium={!!profile.is_premium} />
         </TabsContent>
 
+        {/* D. PREMIUM INSIGHTS (Analytics for premium users) */}
         <TabsContent value="analytics" className={`p-4 space-y-4 min-h-[300px] ${!profile.is_premium ? 'hidden' : ''}`}>
             <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-amber-500/5 to-transparent overflow-hidden relative">
               <div className="absolute -right-8 -top-8 w-28 h-28 bg-primary/10 rounded-full blur-3xl" />
@@ -1178,6 +1236,7 @@ const Profile = () => {
               </div>
             </Card>
 
+            {/* Subscription Management */}
             <Card className="border-border shadow-sm">
               <div className="p-5 space-y-3">
                 <h3 className="font-bold text-base flex items-center gap-2">
@@ -1217,6 +1276,7 @@ const Profile = () => {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Full Name */}
             <div className="space-y-2">
               <Label htmlFor="settings-fullname" className="flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
@@ -1236,6 +1296,7 @@ const Profile = () => {
               </p>
             </div>
 
+            {/* Username */}
             <div className="space-y-2">
               <Label htmlFor="settings-username" className="flex items-center gap-2">
                 <AtSign className="w-4 h-4 text-muted-foreground" />
@@ -1258,6 +1319,7 @@ const Profile = () => {
               </p>
             </div>
 
+            {/* Bio - MOVED HERE */}
             <div className="space-y-2">
               <Label htmlFor="settings-bio" className="flex items-center gap-2">
                 <Heart className="w-4 h-4 text-muted-foreground" />
@@ -1276,6 +1338,7 @@ const Profile = () => {
               </div>
             </div>
 
+            {/* Email */}
             <div className="space-y-2">
               <Label htmlFor="settings-email" className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-muted-foreground" />
@@ -1295,6 +1358,7 @@ const Profile = () => {
               </p>
             </div>
 
+             {/* Phone (Added) */}
              <div className="space-y-2">
               <Label htmlFor="settings-phone" className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-muted-foreground" />
@@ -1310,6 +1374,7 @@ const Profile = () => {
               />
             </div>
 
+            {/* Account Type */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 {profile.account_type === 'business' ? <Briefcase className="w-4 h-4 text-muted-foreground" /> : <User className="w-4 h-4 text-muted-foreground" />}
@@ -1347,6 +1412,7 @@ const Profile = () => {
               </div>
             </div>
 
+            {/* Skills — business only */}
             {isBusiness && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1388,6 +1454,8 @@ const Profile = () => {
               </div>
             )}
 
+            {/* Interests — personal only */}
+            {/* Interests — personal only */}
             {!isBusiness && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1401,7 +1469,7 @@ const Profile = () => {
                     variant="ghost" 
                     className="h-7 text-xs text-primary px-2" 
                     onClick={() => { 
-                      setSelectedInterests(safeInterests);
+                      setSelectedSkills(safeInterests); // Reuse the same modal state
                       setShowSkillsEditor(true);
                     }}>
                     Edit
@@ -1421,7 +1489,7 @@ const Profile = () => {
                   </div>
                 ) : (
                   <button 
-                    onClick={() => { setSelectedInterests([]); setShowSkillsEditor(true); }}
+                    onClick={() => { setSelectedSkills([]); setShowSkillsEditor(true); }}
                     className="w-full h-9 rounded-xl border-2 border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                     + Add interests
                   </button>
@@ -1496,7 +1564,6 @@ const Profile = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
       <Dialog open={showSkillsEditor} onOpenChange={(open) => { if (!open) { setShowSkillsEditor(false); setPendingUserType(null); } }}>
         <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
           <DialogHeader>
@@ -1508,39 +1575,19 @@ const Profile = () => {
           </DialogHeader>
       
           <div className="flex items-center justify-between text-sm px-1">
-            <span className="text-muted-foreground">{targetTagInstance.length} selected</span>
-            {targetTagInstance.length > 0 && (
-              <button 
-                onClick={() => {
-                  if (pendingUserType === 'business' || profile?.account_type === 'business') {
-                    setSelectedSkills([]);
-                  } else {
-                    setSelectedInterests([]);
-                  }
-                }} 
-                className="text-xs text-muted-foreground hover:text-destructive"
-              >
-                Clear all
-              </button>
+            <span className="text-muted-foreground">{selectedSkills.length} selected</span>
+            {selectedSkills.length > 0 && (
+              <button onClick={() => setSelectedSkills([])} className="text-xs text-muted-foreground hover:text-destructive">Clear all</button>
             )}
           </div>
       
-          {targetTagInstance.length > 0 && (
+          {selectedSkills.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-1 py-2 bg-muted/30 rounded-xl border border-border/50">
-              {targetTagInstance.map((s) => (
-                <button 
-                  key={s} 
-                  onClick={() => {
-                    if (pendingUserType === 'business' || profile?.account_type === 'business') {
-                      setSelectedSkills(prev => prev.filter(x => x !== s));
-                    } else {
-                      setSelectedInterests(prev => prev.filter(x => x !== s));
-                    }
-                  }}
+              {selectedSkills.map((s) => (
+                <button key={s} onClick={() => setSelectedSkills(prev => prev.filter(x => x !== s))}
                   className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-white transition-colors ${
                     pendingUserType === 'business' || profile?.account_type === 'business' ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-primary hover:bg-primary/90'
-                  }`}
-                >
+                  }`}>
                   {s} <X className="w-3 h-3" />
                 </button>
               ))}
@@ -1550,19 +1597,10 @@ const Profile = () => {
           <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">
             <div className="flex flex-wrap gap-2 py-2">
               {(pendingUserType === 'business' || profile?.account_type === 'business' ? SKILL_TAGS : INTEREST_TAGS)
-                .filter(s => !targetTagInstance.includes(s))
+                .filter(s => !selectedSkills.includes(s))
                 .map((tag) => (
-                  <button 
-                    key={tag} 
-                    onClick={() => {
-                      if (pendingUserType === 'business' || profile?.account_type === 'business') {
-                        setSelectedSkills(prev => [...prev, tag]);
-                      } else {
-                        setSelectedInterests(prev => [...prev, tag]);
-                      }
-                    }}
-                    className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all"
-                  >
+                  <button key={tag} onClick={() => setSelectedSkills(prev => [...prev, tag])}
+                    className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all">
                     {tag}
                   </button>
                 ))}
@@ -1573,14 +1611,14 @@ const Profile = () => {
             <Button variant="outline" onClick={() => { setShowSkillsEditor(false); setPendingUserType(null); }}>Cancel</Button>
             <Button
               className={`flex-1 text-white ${pendingUserType === 'business' || profile?.account_type === 'business' ? 'bg-cyan-500 hover:bg-cyan-600' : ''}`}
-              disabled={targetTagInstance.length === 0 || updateAccountTypeMutation.isPending || saveSkillsMutation.isPending || saveInterestsMutation.isPending}
+              disabled={selectedSkills.length === 0 || updateAccountTypeMutation.isPending || saveSkillsMutation.isPending || saveInterestsMutation.isPending}
               onClick={() => {
                 if (pendingUserType === 'business') {
                   updateAccountTypeMutation.mutate({ userType: 'business', skills: selectedSkills });
                 } else if (profile?.account_type === 'business') {
                   saveSkillsMutation.mutate(selectedSkills);
                 } else {
-                  saveInterestsMutation.mutate(selectedInterests);
+                  saveInterestsMutation.mutate(selectedSkills);
                 }
               }}
             >
@@ -1591,6 +1629,7 @@ const Profile = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 };
