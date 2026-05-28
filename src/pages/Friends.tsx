@@ -258,29 +258,26 @@ const Friends = () => {
             p_city:      resolvedCity || '',
             p_is_premium: false, // TODO: wire up real premium status
           });
-
+          
           if (rpcError) {
             console.error('[Suggestions] RPC error:', rpcError);
             // Fall through to Path B below
           } else if (rpcData?.length) {
-            // RPC already returns ranked rows — map directly to Suggestion shape
+            // The Database RPC already returns perfectly ranked rows (Radius ring -> Mutuals -> Interests)
+            // Map rows directly to the Suggestion shape without re-scoring them on the client.
             return (rpcData as any[]).map(s => ({
-              user_id:       s.id,           // RPC returns `id`, not `friend_id`
+              user_id:       s.id,           
               display_name:  s.display_name || 'User',
               username:      s.username || 'user',
               avatar_url:    s.avatar_url ?? null,
               distance_km:   typeof s.distance_km === 'number' ? s.distance_km : undefined,
-              mutual_count:  Number(s.mutual_count ?? 0),
+              mutual_count:  // Handle bigints coming from Postgres safely
+                typeof s.mutual_count === 'number' 
+                  ? s.mutual_count 
+                  : parseInt(s.mutual_count || '0', 10),
               is_new:        !!s.is_new_user,
               common_interests: Array.isArray(s.common_interests) ? s.common_interests : [],
-              // Client-side composite score for display ordering — mirrors DB ORDER BY
-              score:
-                (typeof s.distance_km === 'number' ? Math.max(0, 25 - s.distance_km) * 4 : 0) +
-                Number(s.mutual_count ?? 0) * 10 +
-                (Array.isArray(s.common_interests) ? s.common_interests.length * 5 : 0) +
-                (s.is_new_user ? 2 : 0),
-            } as Suggestion & { score: number; common_interests: string[] }))
-              .slice(0, 8);
+            } as Suggestion & { common_interests: string[] }));
           }
         }
 
@@ -682,55 +679,9 @@ const Friends = () => {
                       })}
                 </div>
               </div>
-            )}
+            )} 
 
-            {/* 2. MAIN LIST */}
-            {friendsError ? (
-              <div className="text-center py-12 text-destructive border-2 border-dashed border-destructive/50 rounded-xl bg-destructive/5">
-                <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Users className="w-8 h-8 text-destructive/50" />
-                </div>
-                <h3 className="font-semibold mb-2">Failed to load friends</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {friendsError instanceof Error ? friendsError.message : 'An error occurred'}
-                </p>
-                <Button 
-                  variant="outline" 
-                  onClick={() => queryClient.invalidateQueries({ queryKey: ['my_friends_page'] })}
-                >
-                  Try Again
-                </Button>
-              </div>
-            ) : loadingFriends ? (
-              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
-            ) : filteredList.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl bg-muted/10">
-                <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p>No friends found.</p>
-                <Button variant="link" onClick={() => setIsImportOpen(true)}>Sync Contacts</Button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {/* Import Banner */}
-                <div 
-                  className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-primary/10 transition-colors mb-4"
-                  onClick={() => setIsImportOpen(true)}
-                >
-                    <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-                        <Phone className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1">
-                        <h4 className="font-semibold text-sm">Find from contacts</h4>
-                        <p className="text-xs text-muted-foreground">See who's already here</p>
-                    </div>
-                    <Check className="w-4 h-4 text-muted-foreground" />
-                </div>
-
-                <div className="text-xs font-semibold text-muted-foreground px-1 uppercase tracking-wider mb-2">
-                    All Friends ({friends.length})
-                </div>
-
-                                {/* 2. MAIN LIST SEGMENTS */}
+                {/* 2. MAIN LIST SEGMENTS */}
                 {friendsError ? (
                   <div className="text-center py-12 text-destructive border-2 border-dashed border-destructive/50 rounded-xl bg-destructive/5">
                     <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">

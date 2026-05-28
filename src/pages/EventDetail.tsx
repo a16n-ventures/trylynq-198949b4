@@ -91,7 +91,6 @@ type Event = {
   event_type: 'physical' | 'virtual';
   meeting_link?: string | null;
   meeting_status?: string; 
-  is_sponsored?: boolean; 
   creator: {
     user_id: string;
     display_name: string;
