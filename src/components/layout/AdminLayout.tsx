@@ -115,7 +115,7 @@ export default function AdminLayout() {
     { label: 'Events', path: '/admin/events', icon: Calendar },
     { label: 'Marketplace', path: '/admin/marketplace', icon: ShoppingBasket },
     { label: 'Moderation', path: '/admin/moderation', icon: ShieldAlert },
-    { label: 'Transactions', path: '/admin/finance', icon: TrendingUp },
+    { label: 'Transactions', path: '/admin/subscription', icon: TrendingUp },
     { label: 'Revenue', path: '/admin/revenue', icon: Wallet },
     { label: 'System & Billing', path: '/admin/settings', icon: Settings }, 
   ];
