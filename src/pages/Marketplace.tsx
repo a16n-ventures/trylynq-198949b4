@@ -27,8 +27,8 @@ export default function Marketplace() {
       setCurrentUserId(uid);
       if (uid) {
         const { data: profile } = await (supabase.from('profiles') as any)
-          .select('user_type').eq('user_id', uid).maybeSingle();
-        setUserType(profile?.user_type || null);
+          .select('account_type').eq('user_id', uid).maybeSingle();
+        setUserType(profile?.account_type || null);
       }
     });
   }, []); 
