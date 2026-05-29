@@ -94,7 +94,7 @@ export function FriendProfilePreview({
     enabled: open && !!profile?.user_id,
   });
 
-  const isBusinessUser  = fullProfile?.user_type === 'business';
+  const isBusinessUser  = fullProfile?.account_type === 'business';
   const isVerified      = fullProfile?.verification_status === 'verified';
   
   // 💡 NUCLEAR FIX: Enforce arrays aggressively to prevent .map() crashes
