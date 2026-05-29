@@ -1630,11 +1630,9 @@ export type Database = {
           interest_embedding: string | null
           interests: string[] | null
           is_banned: boolean | null
-          is_pioneer: boolean | null
           is_premium: boolean
           is_verified: boolean | null
           phone: string | null
-          pioneer_number: number | null
           preferences: Json | null
           premium_tier: string | null
           profile_views_30d: number | null
@@ -1643,7 +1641,7 @@ export type Database = {
           trust_score: number | null
           updated_at: string
           user_id: string
-          user_type: Database["public"]["Enums"]["account_type"]
+          account_type: Database["public"]["Enums"]["account_type"]
           username: string | null
           verification_status: Database["public"]["Enums"]["verification_status"]
         }
@@ -1657,11 +1655,9 @@ export type Database = {
           interest_embedding?: string | null
           interests?: string[] | null
           is_banned?: boolean | null
-          is_pioneer?: boolean | null
           is_premium?: boolean
           is_verified?: boolean | null
           phone?: string | null
-          pioneer_number?: number | null
           preferences?: Json | null
           premium_tier?: string | null
           profile_views_30d?: number | null
@@ -1670,7 +1666,7 @@ export type Database = {
           trust_score?: number | null
           updated_at?: string
           user_id: string
-          user_type?: Database["public"]["Enums"]["account_type"]
+          account_type?: Database["public"]["Enums"]["account_type"]
           username?: string | null
           verification_status?: Database["public"]["Enums"]["verification_status"]
         }
@@ -1684,11 +1680,9 @@ export type Database = {
           interest_embedding?: string | null
           interests?: string[] | null
           is_banned?: boolean | null
-          is_pioneer?: boolean | null
           is_premium?: boolean
           is_verified?: boolean | null
           phone?: string | null
-          pioneer_number?: number | null
           preferences?: Json | null
           premium_tier?: string | null
           profile_views_30d?: number | null
@@ -1697,7 +1691,7 @@ export type Database = {
           trust_score?: number | null
           updated_at?: string
           user_id?: string
-          user_type?: Database["public"]["Enums"]["account_type"]
+          account_type?: Database["public"]["Enums"]["account_type"]
           username?: string | null
           verification_status?: Database["public"]["Enums"]["verification_status"]
         }
