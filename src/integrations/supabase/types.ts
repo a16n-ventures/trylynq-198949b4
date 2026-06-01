@@ -3851,7 +3851,7 @@ export type Database = {
       suggest_nearby_friends:
         | {
             Args: {
-              p_city: string
+              p_city?: string
               p_is_premium?: boolean
               p_lat: number
               p_long: number
