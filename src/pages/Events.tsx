@@ -460,7 +460,7 @@ export default function Events() {
       }
 
       // Avg rating — reads from service_ratings if it exists, gracefully skips if not
-      const { data: ratings } = await (supabase.from('service_ratings') as any)
+      const { data: ratings } = await (supabase.from as any)('service_ratings')
         .select('rating').eq('seller_id', userId);
       if (ratings?.length) {
         avgRating = parseFloat(
