@@ -45,7 +45,7 @@ export const ProtectedRoute = ({
       try {
         const { data: profile, error } = await supabase
           .from("profiles")
-          .select("interests, skills, preferences, user_type")
+          .select("interests, skills, preferences, account_type")
           .eq("user_id", user.id)
           .maybeSingle();
 
@@ -55,13 +55,13 @@ export const ProtectedRoute = ({
           return;
         }
 
-        const prefs = (profile?.preferences || {}) as {
+        const prefs = ((profile as any)?.preferences || {}) as {
           discovery_radius?: number;
         };
         const hasRadius =
           typeof prefs.discovery_radius === "number" && prefs.discovery_radius > 0;
 
-        const userType: string = profile?.user_type ?? "personal";
+        const userType: string = (profile as any)?.account_type ?? "personal";
 
         // ── Onboarding completeness rules ───────────────────────────────────
         // personal: must have interests + discovery_radius
