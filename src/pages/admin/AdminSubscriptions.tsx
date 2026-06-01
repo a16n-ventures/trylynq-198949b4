@@ -108,7 +108,7 @@ export default function AdminSubscriptions() {
       let result = subs.map(s => ({
         ...s,
         profile: profileMap.get(s.user_id) ?? { display_name: null, email: null, avatar_url: null },
-      })) as Subscription[];
+      })) as unknown as Subscription[];
 
       if (search) {
         const q = search.toLowerCase();

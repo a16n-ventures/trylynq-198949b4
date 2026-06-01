@@ -467,7 +467,7 @@ const Profile = () => {
   const saveSkillsMutation = useMutation({
     mutationFn: async (skills: string[]) => {
       if (!user?.id) throw new Error('Not authenticated');
-      const { error } = await supabase.from('profiles')
+      const { error } = await (supabase.from('profiles') as any)
         .update({ skills, updated_at: new Date().toISOString() })
         .eq('user_id', user.id);
       if (error) throw error;

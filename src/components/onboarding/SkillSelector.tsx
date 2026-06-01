@@ -119,20 +119,15 @@ export function SkillSelector({
         discovery_radius: currentPrefs.discovery_radius ?? 25000, // 25 km default
       };
 
-      const { data, error } = await supabase
-        .from("profiles")
+      const { data, error } = await (supabase
+        .from("profiles") as any)
         .upsert(
           {
             user_id: user.id,
-            // Store skills in a dedicated column so personal interests and
-            // service skills stay separate and both can be queried independently.
             skills: selected,
-            // Also mirror into interests so existing feed-ranking queries
-            // that read interests still get signal until a dedicated
-            // skills-based ranking is shipped.
             interests: selected,
             preferences: mergedPrefs,
-            user_type: "business", // redundant safety write
+            account_type: "business",
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" }

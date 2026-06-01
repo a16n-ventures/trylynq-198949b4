@@ -244,7 +244,7 @@ export default function AdminSettings() {
         .select('*')
         .order('city_name', { ascending: true });
       if (error) throw error;
-      return data as CityMilestone[];
+      return data as unknown as CityMilestone[];
     },
   });
 

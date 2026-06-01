@@ -217,7 +217,6 @@ export type Database = {
           center_long: number
           city_name: string
           created_at: string | null
-          current_count: number | null
           id: string
           is_unlocked: boolean | null
           radius_km: number | null
@@ -228,7 +227,6 @@ export type Database = {
           center_long: number
           city_name: string
           created_at?: string | null
-          current_count?: number | null
           id?: string
           is_unlocked?: boolean | null
           radius_km?: number | null
@@ -239,7 +237,6 @@ export type Database = {
           center_long?: number
           city_name?: string
           created_at?: string | null
-          current_count?: number | null
           id?: string
           is_unlocked?: boolean | null
           radius_km?: number | null
@@ -250,23 +247,37 @@ export type Database = {
       city_pioneers: {
         Row: {
           city_name: string
+          created_at: string | null
           id: string
           joined_at: string | null
+          milestone_id: string | null
           user_id: string | null
         }
         Insert: {
           city_name: string
+          created_at?: string | null
           id?: string
           joined_at?: string | null
+          milestone_id?: string | null
           user_id?: string | null
         }
         Update: {
           city_name?: string
+          created_at?: string | null
           id?: string
           joined_at?: string | null
+          milestone_id?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "city_pioneers_milestone_id_fkey"
+            columns: ["milestone_id"]
+            isOneToOne: false
+            referencedRelation: "city_milestones"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       comment_likes: {
         Row: {
@@ -924,10 +935,10 @@ export type Database = {
           event_views_30d: number | null
           id: string
           image_url: string | null
-          is_boosted: boolean | null
           is_locked: boolean | null
           is_official: boolean | null
           is_public: boolean | null
+          is_sponsored: boolean | null
           match_score: number | null
           max_attendees: number | null
           meeting_link: string | null
@@ -951,10 +962,10 @@ export type Database = {
           event_views_30d?: number | null
           id?: string
           image_url?: string | null
-          is_boosted?: boolean | null
           is_locked?: boolean | null
           is_official?: boolean | null
           is_public?: boolean | null
+          is_sponsored?: boolean | null
           match_score?: number | null
           max_attendees?: number | null
           meeting_link?: string | null
@@ -978,10 +989,10 @@ export type Database = {
           event_views_30d?: number | null
           id?: string
           image_url?: string | null
-          is_boosted?: boolean | null
           is_locked?: boolean | null
           is_official?: boolean | null
           is_public?: boolean | null
+          is_sponsored?: boolean | null
           match_score?: number | null
           max_attendees?: number | null
           meeting_link?: string | null
@@ -1237,6 +1248,7 @@ export type Database = {
           is_read: boolean | null
           message_type: string | null
           receiver_id: string
+          request_id: string | null
           sender_id: string
           updated_at: string | null
         }
@@ -1249,6 +1261,7 @@ export type Database = {
           is_read?: boolean | null
           message_type?: string | null
           receiver_id: string
+          request_id?: string | null
           sender_id: string
           updated_at?: string | null
         }
@@ -1261,6 +1274,7 @@ export type Database = {
           is_read?: boolean | null
           message_type?: string | null
           receiver_id?: string
+          request_id?: string | null
           sender_id?: string
           updated_at?: string | null
         }
@@ -1292,6 +1306,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "public_profiles"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "messages_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "service_requests"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "messages_sender_id_fkey"
@@ -1621,6 +1642,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          account_type: Database["public"]["Enums"]["account_type"]
           avatar_url: string | null
           bio: string | null
           created_at: string
@@ -1637,15 +1659,16 @@ export type Database = {
           premium_tier: string | null
           profile_views_30d: number | null
           referral_code: string | null
+          skills: string | null
           travel_propensity: number | null
           trust_score: number | null
           updated_at: string
           user_id: string
-          account_type: Database["public"]["Enums"]["account_type"]
           username: string | null
           verification_status: Database["public"]["Enums"]["verification_status"]
         }
         Insert: {
+          account_type?: Database["public"]["Enums"]["account_type"]
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
@@ -1662,15 +1685,16 @@ export type Database = {
           premium_tier?: string | null
           profile_views_30d?: number | null
           referral_code?: string | null
+          skills?: string | null
           travel_propensity?: number | null
           trust_score?: number | null
           updated_at?: string
           user_id: string
-          account_type?: Database["public"]["Enums"]["account_type"]
           username?: string | null
           verification_status?: Database["public"]["Enums"]["verification_status"]
         }
         Update: {
+          account_type?: Database["public"]["Enums"]["account_type"]
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
@@ -1687,11 +1711,11 @@ export type Database = {
           premium_tier?: string | null
           profile_views_30d?: number | null
           referral_code?: string | null
+          skills?: string | null
           travel_propensity?: number | null
           trust_score?: number | null
           updated_at?: string
           user_id?: string
-          account_type?: Database["public"]["Enums"]["account_type"]
           username?: string | null
           verification_status?: Database["public"]["Enums"]["verification_status"]
         }
@@ -1811,6 +1835,93 @@ export type Database = {
           {
             foreignKeyName: "saved_places_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      service_requests: {
+        Row: {
+          accepted_at: string | null
+          amount: number
+          buyer_id: string
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          disputed_at: string | null
+          escrow_status: string
+          id: string
+          item_id: string | null
+          item_name: string
+          seller_id: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          amount: number
+          buyer_id: string
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          disputed_at?: string | null
+          escrow_status?: string
+          id?: string
+          item_id?: string | null
+          item_name: string
+          seller_id: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          amount?: number
+          buyer_id?: string
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          disputed_at?: string | null
+          escrow_status?: string
+          id?: string
+          item_id?: string | null
+          item_name?: string
+          seller_id?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_requests_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "service_requests_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "service_requests_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "store_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_requests_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "service_requests_seller_id_fkey"
+            columns: ["seller_id"]
             isOneToOne: false
             referencedRelation: "public_profiles"
             referencedColumns: ["user_id"]
@@ -1956,8 +2067,10 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          latitude: number | null
           location: string | null
           logo_url: string | null
+          longitude: number | null
           name: string
           owner_id: string
           updated_at: string
@@ -1969,8 +2082,10 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          latitude?: number | null
           location?: string | null
           logo_url?: string | null
+          longitude?: number | null
           name: string
           owner_id: string
           updated_at?: string
@@ -1982,8 +2097,10 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          latitude?: number | null
           location?: string | null
           logo_url?: string | null
+          longitude?: number | null
           name?: string
           owner_id?: string
           updated_at?: string
@@ -2976,12 +3093,22 @@ export type Database = {
       get_my_role: { Args: never; Returns: string }
       get_nearby_users:
         | {
-            Args: { p_radius_km?: number; p_user_id: string }
+            Args: {
+              p_city: string
+              p_is_premium?: boolean
+              p_lat: number
+              p_long: number
+              p_user_id: string
+            }
             Returns: {
               avatar_url: string
+              common_interests: string[]
               display_name: string
               distance_km: number
-              user_id: string
+              id: string
+              is_new_user: boolean
+              mutual_count: number
+              username: string
             }[]
           }
         | {
@@ -3722,6 +3849,25 @@ export type Database = {
         Returns: unknown
       }
       suggest_nearby_friends:
+        | {
+            Args: {
+              p_city?: string
+              p_is_premium?: boolean
+              p_lat: number
+              p_long: number
+              p_user_id: string
+            }
+            Returns: {
+              avatar_url: string
+              common_interests: string[]
+              display_name: string
+              distance_km: number
+              id: string
+              is_new_user: boolean
+              mutual_count: number
+              username: string
+            }[]
+          }
         | {
             Args: {
               limit_count: number

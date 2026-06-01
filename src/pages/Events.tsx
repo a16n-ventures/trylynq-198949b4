@@ -190,7 +190,7 @@ export default function Events() {
     queryKey: ['user-profile-type', userId],
     queryFn: async () => {
       if (!userId) return null;
-      const { data } = await supabase.from('profiles').select('user_type, verification_status').eq('user_id', userId).single();
+      const { data } = await supabase.from('profiles').select('account_type, verification_status').eq('user_id', userId).single();
       return data;
     },
     enabled: !!userId,
@@ -460,7 +460,7 @@ export default function Events() {
       }
 
       // Avg rating — reads from service_ratings if it exists, gracefully skips if not
-      const { data: ratings } = await (supabase.from('service_ratings') as any)
+      const { data: ratings } = await (supabase.from as any)('service_ratings')
         .select('rating').eq('seller_id', userId);
       if (ratings?.length) {
         avgRating = parseFloat(
@@ -645,7 +645,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             </div>
             
             {/* --- MODIFIED: Performance-First View for Builders --- */}
-            {type === 'mine' && (userProfile?.user_type === 'business' || userProfile?.user_type === 'personal') ? (
+            {type === 'mine' && (userProfile?.account_type === 'business' || userProfile?.account_type === 'personal') ? (
               <div className="flex items-center gap-3 mt-1">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Users className="w-3 h-3" /> {event.attendee_count || 0} {isEventPast ? 'attended' : 'attending'}
@@ -744,7 +744,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
           <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-xl">
             {/* --- MODIFIED: Dynamic Dashboard Tab --- */}
             <TabsTrigger value="my" className="rounded-lg text-xs">
-              {userProfile?.user_type === 'business' || userProfile?.user_type === 'personal' ? 'Dashboard' : 'Hosted'}
+              {userProfile?.account_type === 'business' || userProfile?.account_type === 'personal' ? 'Dashboard' : 'Hosted'}
             </TabsTrigger>
             <TabsTrigger value="attending" className="rounded-lg text-xs">Attending</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-lg text-xs">Stats</TabsTrigger>
@@ -825,7 +825,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
           <TabsContent value="analytics" className="space-y-5 mt-6 animate-in fade-in-50">
             
             {/* Hero Stats Row — business sees service KPIs, personal sees event KPIs */}
-            {userProfile?.user_type === 'business' ? (
+            {userProfile?.account_type === 'business' ? (
               <div className="grid grid-cols-2 gap-3">
                 {/* Jobs Completed */}
                 <Card className="border-0 shadow-md bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent overflow-hidden relative">
@@ -932,7 +932,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
             )}
             
             {/* PAYOUT WALLET CARD — ticket sellers AND business service providers */}
-            {(userProfile?.user_type === 'business' || userProfile?.user_type === 'personal') && (
+            {(userProfile?.account_type === 'business' || userProfile?.account_type === 'personal') && (
               <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 shadow-lg overflow-hidden relative mt-3">
                 <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
                 <div className="absolute -left-10 -bottom-10 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
@@ -944,7 +944,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                     <div>
                       <h3 className="font-bold text-foreground">Earnings Wallet</h3>
                       <p className="text-xs text-muted-foreground">
-                        {userProfile?.user_type === 'business'
+                        {userProfile?.account_type === 'business'
                           ? 'Ticket sales + completed services'
                           : 'Available for withdrawal'}
                       </p>
@@ -956,7 +956,7 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
                 <div className="bg-background/60 backdrop-blur-sm rounded-xl p-4 mb-4 border border-border/50">
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Withdrawable Balance</p>
                   <span className="text-4xl font-black text-foreground tracking-tight">₦{(stats?.walletBalance || 0).toLocaleString()}<span className="text-xl">.00</span></span>
-                  {userProfile?.user_type === 'business' && (stats?.serviceRevenue || 0) > 0 && (
+                  {userProfile?.account_type === 'business' && (stats?.serviceRevenue || 0) > 0 && (
                     <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
                       <Check className="w-3 h-3 text-green-500" />
                       Includes ₦{(stats?.serviceRevenue || 0).toLocaleString()} from {stats?.jobsCompleted} completed {stats?.jobsCompleted === 1 ? 'service' : 'services'}
@@ -1000,11 +1000,11 @@ const renderEventCard = (event: EventWithStats, type: 'mine' | 'attending') => {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-blue-600" />
-                  {userProfile?.user_type === 'business' ? 'Business Insights' : 'Growth Insights'}
+                  {userProfile?.account_type === 'business' ? 'Business Insights' : 'Growth Insights'}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {userProfile?.user_type === 'business' ? (
+                {userProfile?.account_type === 'business' ? (
                   <>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Services Completed</span>

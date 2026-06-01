@@ -258,7 +258,7 @@ export function LaunchZoneGuard({
   }
 
   // Transparent pass-through states
-  if (state === 'PASS_THROUGH' || state === 'LOADING') return <>{children}</>;
+  if (state === 'PASS_THROUGH' || (state as string) === 'LOADING') return <>{children}</>;
 
   // ── Overlay content per state ──────────────────────────────────────────────
   const icon = {
