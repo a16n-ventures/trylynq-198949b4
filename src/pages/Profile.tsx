@@ -5,9 +5,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Settings, MapPin, Calendar, Grid, Ticket, Store as StoreIcon,
+  Settings, MapPin, Calendar, Grid, Ticket,
   LogOut, Sparkles, QrCode, Share2,
-  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield, ShieldCheck, Plus, Briefcase, X
+  ChevronRight, Crown, Loader2, Edit2, AlertCircle, AtSign, Mail, User, Phone, Heart, Check, Trash2, Camera, Copy, Gift, Shield
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -45,9 +45,7 @@ interface UserPreferences {
   [key: string]: any;
 }
 
-// FIX 1: Unified account type — 'business' aligns with the DB column `account_type`.
-// Profile (1) used 'vendor' which does not exist in the schema.
-type UserType = 'personal' | 'business';
+type UserType = 'personal' | 'vendor';
 type VerificationStatus = 'unverified' | 'pending' | 'verified';
 
 interface ProfileData {
@@ -62,13 +60,9 @@ interface ProfileData {
   is_premium?: boolean;
   profile_views_30d?: number;
   preferences?: UserPreferences;
-  // FIX 2: Renamed from `user_type` to `account_type` to match DB schema and Profile.tsx
-  account_type: UserType;
+  user_type: UserType;
   verification_status: VerificationStatus;
   trust_score?: number;
-  // FIX 3: Added missing skills/interests arrays that Profile (1) omitted entirely
-  skills?: string[];
-  interests?: string[];
 }
 
 interface LocationData {
@@ -108,12 +102,12 @@ const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
   ]);
 
   if (profileError && profileError.code !== 'PGRST116') throw profileError;
-
+  
   const totalEventViews = eventViewsData?.reduce((acc, curr) => acc + (curr.event_views_30d || 0), 0) || 0;
   const preferences = profileData?.preferences as any || {};
 
   return {
-    profile: profileData ? {
+    profile: profileData ? { 
       ...profileData,
       phone: profileData.phone != null ? String(profileData.phone) : null,
       preferences: preferences || { notifications: true }
@@ -153,11 +147,10 @@ const getAvatarPath = (url: string): string | null => {
   return match ? match[1] : null;
 };
 
-// --- ADMIN PORTAL BUTTON ---
 const AdminPortalButton = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-
+  
   const { data: isAdmin } = useQuery({
     queryKey: ['is-admin', user?.id],
     queryFn: async () => {
@@ -188,92 +181,6 @@ const AdminPortalButton = () => {
   );
 };
 
-// --- FAVORITES TAB ---
-// FIX 4: FavoritesTab was entirely missing from Profile (1). Restored from Profile.tsx.
-const FavoritesTab = ({ userId, onEventClick }: { userId: string; onEventClick: (id: string) => void }) => {
-  const navigate = useNavigate();
-
-  const favoriteIds = useMemo<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(`feed_favorites_${userId}`) || '[]');
-    } catch { return []; }
-  }, [userId]);
-
-  const { data: favoriteEvents = [], isLoading } = useQuery({
-    queryKey: ['favorite-events', favoriteIds.join(',')],
-    queryFn: async () => {
-      if (favoriteIds.length === 0) return [];
-      const { data, error } = await supabase
-        .from('events')
-        .select('id, title, start_date, image_url, category, ticket_price')
-        .in('id', favoriteIds)
-        .gt('start_date', new Date().toISOString())
-        .order('start_date', { ascending: true });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: favoriteIds.length > 0,
-  });
-
-  if (isLoading) return (
-    <div className="space-y-3">
-      {[1, 2, 3].map(i => (
-        <div key={i} className="flex gap-3 p-3 bg-muted/30 rounded-xl animate-pulse">
-          <div className="w-16 h-16 bg-muted rounded-xl shrink-0" />
-          <div className="flex-1 space-y-2 py-1">
-            <div className="h-4 bg-muted rounded w-2/3" />
-            <div className="h-3 bg-muted rounded w-1/2" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  if (favoriteIds.length === 0 || favoriteEvents.length === 0) {
-    return (
-      <div className="text-center py-16 bg-muted/20 rounded-3xl border-2 border-dashed border-muted">
-        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-          <Heart className="w-8 h-8 text-muted-foreground/40" />
-        </div>
-        <h3 className="font-semibold text-lg">No favorites yet</h3>
-        <p className="text-sm text-muted-foreground mt-1 mb-4">Tap the heart on any event in the feed to save it here.</p>
-        <Button onClick={() => navigate('/app/feed')}>Browse Events</Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">{favoriteEvents.length} saved event{favoriteEvents.length !== 1 ? 's' : ''}</p>
-      {(favoriteEvents as any[]).map((event: any) => (
-        <div
-          key={event.id}
-          className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer group"
-          onClick={() => onEventClick(event.id)}
-        >
-          <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-muted">
-            {event.image_url
-              ? <img src={event.image_url} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-              : <div className="w-full h-full flex items-center justify-center"><Calendar className="w-5 h-5 text-muted-foreground/40" /></div>
-            }
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{event.title}</p>
-            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-              <Calendar className="w-3 h-3" />
-              {new Date(event.start_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-            </p>
-            {event.ticket_price && event.ticket_price > 0 && (
-              <p className="text-xs font-semibold text-primary mt-0.5">₦{event.ticket_price.toLocaleString()}</p>
-            )}
-          </div>
-          <Heart className="w-4 h-4 fill-red-500 text-red-500 shrink-0" />
-        </div>
-      ))}
-    </div>
-  );
-};
-
 // --- PROFILE VIEWS TAB ---
 const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boolean }) => {
   const navigate = useNavigate();
@@ -281,6 +188,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
   const { data: recentViewers = [], isLoading } = useQuery({
     queryKey: ['profile-viewers', userId],
     queryFn: async () => {
+      // Use a raw query approach since profile_views isn't in generated types yet
       const { data, error } = await supabase
         .from('profile_views' as any)
         .select('viewer_id, viewed_at')
@@ -290,6 +198,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
 
       if (error || !data) return [];
 
+      // Fetch viewer profiles
       const viewerIds = [...new Set((data as any[]).map((v: any) => v.viewer_id))] as string[];
       if (viewerIds.length === 0) return [];
 
@@ -349,28 +258,22 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground mb-3">
-        {isPremium
-          ? `${uniqueViewers.length} unique viewer${uniqueViewers.length !== 1 ? 's' : ''} in the last 30 days`
-          : 'Upgrade to PRO for detailed viewer analytics'}
+        {isPremium ? `${uniqueViewers.length} unique viewer${uniqueViewers.length !== 1 ? 's' : ''} in the last 30 days` : 'Upgrade to Premium for detailed viewer analytics'}
       </p>
-      {/* FIX 5: Profile (1) showed all viewers to non-premium users unblurred.
-          Restored blur + slice(0,3) gate from Profile.tsx. */}
-      {(isPremium ? uniqueViewers : uniqueViewers.slice(0, 3)).map((viewer: any, idx: number) => (
+      {uniqueViewers.map((viewer: any, idx: number) => (
         <div
           key={viewer.viewer_id + '-' + idx}
           className="flex items-center gap-3 p-3 bg-card rounded-xl border border-border/40 hover:bg-accent/5 transition-colors cursor-pointer"
-          onClick={() => navigate('/app/friends')}
+          onClick={() => navigate(`/app/friends`)}
         >
-          <Avatar className={`w-10 h-10 border border-border/50 transition-all ${!isPremium ? 'blur-sm select-none pointer-events-none' : ''}`}>
+          <Avatar className="w-10 h-10 border border-border/50">
             <AvatarImage src={viewer.profile.avatar_url || undefined} className="object-cover" />
             <AvatarFallback className="bg-muted text-muted-foreground text-sm">
               {viewer.profile.display_name?.[0]?.toUpperCase() || '?'}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className={`font-semibold text-sm truncate transition-all ${!isPremium ? 'blur-sm select-none' : ''}`}>
-              {viewer.profile.display_name}
-            </p>
+            <p className="font-semibold text-sm truncate">{isPremium ? viewer.profile.display_name : '••••••'}</p>
             <p className="text-xs text-muted-foreground">
               {new Date(viewer.viewed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
             </p>
@@ -378,26 +281,21 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
           {!isPremium && (
             <Badge className="bg-amber-100 text-amber-800 border-0 text-[9px]">PRO</Badge>
           )}
+          {profile.user_type === 'vendor' && profile.verification_status === 'verified' && (
+            <div className="bg-primary/10 p-1 rounded-full border border-primary/20" title="Ahmia-Verified Vendor">
+              <ShieldCheck className="w-4 h-4 text-primary fill-primary/20" />
+            </div>
+          )}
         </div>
       ))}
-      {/* FIX 6: Profile (1) had a "+X others" upsell card without blurred avatars.
-          Restored the blurred stacked-avatar overflow row from Profile.tsx. */}
-      {!isPremium && uniqueViewers.length > 3 && (
-        <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-dashed border-border/40">
-          <div className="flex -space-x-2">
-            {uniqueViewers.slice(3, 6).map((v: any, i: number) => (
-              <div key={i} className="w-8 h-8 rounded-full bg-muted border-2 border-background blur-sm flex items-center justify-center text-xs font-bold">
-                {v.profile.display_name?.[0] || '?'}
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground flex-1">
-            <span className="font-semibold text-foreground">+{uniqueViewers.length - 3} others</span> also viewed your profile
-          </p>
-          <Button size="sm" onClick={() => navigate('/premium')} className="gap-1 shrink-0">
+      {!isPremium && uniqueViewers.length > 0 && (
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent p-4 mt-4">
+          <p className="text-sm font-semibold mb-1">Want to see who viewed your profile?</p>
+          <p className="text-xs text-muted-foreground mb-3">Upgrade to Premium to see full viewer details.</p>
+          <Button size="sm" onClick={() => navigate('/premium')} className="gap-1">
             <Crown className="w-3.5 h-3.5" /> Upgrade
           </Button>
-        </div>
+        </Card>
       )}
     </div>
   );
@@ -409,93 +307,8 @@ const Profile = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('tickets');
-  const { shareInvite, referralCode } = useReferrals();
-
-  // FIX 7: All skills/interests editor state was missing from Profile (1). Restored.
-  const [showSkillsEditor, setShowSkillsEditor] = useState(false);
-  const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-
-  // FIX 8: SKILL_TAGS and INTEREST_TAGS constants were entirely absent from Profile (1).
-  const SKILL_TAGS = [
-    'Graphic Design', 'Video Editing', 'Photography', 'Social Media Management', 'Content Writing',
-    'Web Design', 'Animation', 'Music Production', 'Voiceover', 'Illustration',
-    'Web Development', 'Mobile App Development', 'Data Analysis', 'IT Support', 'Cybersecurity',
-    'UI/UX Design', 'SEO & Marketing', 'AI / Automation',
-    'Electrical Work', 'Plumbing', 'Carpentry', 'Painting & Decorating', 'AC Repair',
-    'Generator Repair', 'Tiling', 'Masonry', 'Cleaning Services', 'Landscaping', 'Moving & Hauling',
-    'Hair Styling', 'Makeup Artist', 'Nail Technician', 'Barbing', 'Personal Training',
-    'Massage Therapy', 'Spa Services',
-    'Event Planning', 'Catering', 'DJ / Music', 'MC / Host', 'Decoration', 'Security / Ushering',
-    'Tutoring', 'Legal Services', 'Accounting / Bookkeeping', 'Business Consulting',
-    'Translation', 'Driving / Logistics', 'Tailoring / Fashion', 'Laundry Services',
-  ];
-
-  const INTEREST_TAGS = [
-    'Music', 'Art', 'Sports', 'Gaming', 'Food & Drink', 'Travel', 'Fashion', 'Fitness',
-    'Technology', 'Business', 'Politics', 'Education', 'Health', 'Photography', 'Film',
-    'Books', 'Nature', 'Spirituality', 'Comedy', 'Dance', 'Nightlife', 'Volunteering',
-    'Entrepreneurship', 'Cooking', 'Pets', 'Cars', 'DIY', 'Podcasts', 'Crypto', 'Real Estate',
-  ];
-
-  // FIX 9: updateAccountTypeMutation was missing from Profile (1). Restored.
-  const updateAccountTypeMutation = useMutation({
-    mutationFn: async ({ userType, skills }: { userType: 'personal' | 'business'; skills?: string[] }) => {
-      if (!user?.id) throw new Error('Not authenticated');
-      const updatePayload: any = { account_type: userType };
-      if (skills !== undefined) updatePayload.skills = skills;
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update(updatePayload)
-        .eq('user_id', user.id);
-      if (profileError) throw profileError;
-    },
-    onSuccess: (_, variables) => {
-      toast.success(`Successfully switched to ${variables.userType} account!`);
-      setShowSkillsEditor(false);
-      setPendingUserType(null);
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to update account type');
-    }
-  });
-
-  // FIX 10: saveSkillsMutation was missing from Profile (1). Restored.
-  const saveSkillsMutation = useMutation({
-    mutationFn: async (skills: string[]) => {
-      if (!user?.id) throw new Error('Not authenticated');
-      const { error } = await (supabase.from('profiles') as any)
-        .update({ skills, updated_at: new Date().toISOString() })
-        .eq('user_id', user.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success('Skills updated');
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
-      setShowSkillsEditor(false);
-    },
-    onError: (err: any) => toast.error(err.message || 'Failed to update skills'),
-  });
-
-  // FIX 11: saveInterestsMutation was missing from Profile (1). Restored.
-  const saveInterestsMutation = useMutation({
-    mutationFn: async (interests: string[]) => {
-      if (!user?.id) throw new Error('Not authenticated');
-      const { error } = await supabase.from('profiles')
-        .update({ interests, updated_at: new Date().toISOString() })
-        .eq('user_id', user.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success('Interests updated');
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
-      setShowSkillsEditor(false);
-    },
-    onError: (err: any) => toast.error(err.message || 'Failed to update interests'),
-  });
+  const [activeTab, setActiveTab] = useState('tickets'); 
+  const { shareInvite, referralCode } = useReferrals(); 
 
   // Local state for smooth slider dragging
   const [localRadius, setLocalRadius] = useState<number>(25);
@@ -510,10 +323,10 @@ const Profile = () => {
     username: '',
     email: '',
     bio: '',
-    phone: ''
+    phone: '' // Added missing field
   });
 
-  // --- 1. DATA FETCHING ---
+  // --- 1. DATA FETCHING (Fixed) ---
   const { data, isLoading: isProfileLoading, error, refetch } = useQuery<CombinedProfile, Error>({
     queryKey: ['profile', user?.id],
     queryFn: () => fetchProfileData(user!.id),
@@ -523,66 +336,43 @@ const Profile = () => {
     retry: 2,
   });
 
-  // FIX 12: Profile (1) used `profile: null` as fallback, causing runtime crashes on
-  // `profile.preferences`, `profile.account_type`, etc. before data loads.
-  // Restored the safe default object from Profile.tsx.
-  const { profile, location, stats } = data || {
-    profile: {
-      user_id: user?.id || '',
-      display_name: 'User',
-      username: 'user',
-      email: user?.email || '',
-      bio: '',
-      avatar_url: '',
-      created_at: new Date().toISOString(),
-      account_type: 'personal' as UserType,
-      verification_status: 'unverified' as VerificationStatus,
-      preferences: { notifications: true, discovery_radius: 25000 } as UserPreferences,
-      skills: [] as string[],
-      interests: [] as string[],
-    } as ProfileData,
-    location: null,
-    stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 },
+  // Destructure safely to handle cases where profile is still creating
+  const { profile, location, stats } = data || { 
+    profile: null, 
+    location: null, 
+    stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 } 
   };
 
-  // Sync selectedSkills/selectedInterests with loaded profile data
-  useEffect(() => {
-    if (data?.profile) {
-      if (data.profile.skills) setSelectedSkills(data.profile.skills);
-      if (data.profile.interests) setSelectedInterests(data.profile.interests);
-    }
-  }, [data?.profile]);
-
-  // Auth redirect guard
+  // Handle Authentication Redirect safely
   useEffect(() => {
     if (!user) {
       const timer = setTimeout(() => {
-        navigate('/');
+        navigate('/ahmia');
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [user, navigate]);
 
-  // Sync form + radius with loaded profile
+  // Sync local radius state with fetched profile data
   useEffect(() => {
-    if (data?.profile) {
-      if (data.profile.preferences?.discovery_radius) {
-        // FIX 13: Profile (1) didn't clamp the radius, allowing out-of-range slider values.
-        // Restored the min/max clamp from Profile.tsx.
-        const km = data.profile.preferences.discovery_radius / 1000;
-        setLocalRadius(Math.min(25, Math.max(5, km)));
+    // Only sync if profile is loaded
+    if (profile) {
+      if (profile.preferences?.discovery_radius) {
+        setLocalRadius(profile.preferences.discovery_radius / 1000); // Convert meters to km
       }
+
+      // Always sync form data when profile is loaded
       setSettingsForm({
-        display_name: data.profile.display_name || '',
-        username: data.profile.username || '',
-        email: data.profile.email || user?.email || '',
-        bio: data.profile.bio || '',
-        phone: data.profile.phone || ''
+        display_name: profile.display_name || '',
+        username: profile.username || '',
+        email: profile.email || user?.email || '',
+        bio: profile.bio || '',
+        phone: profile.phone || ''
       });
     }
-  }, [data?.profile, user?.email]);
+  }, [profile, user?.email]);
 
-  // Profile Settings Update Mutation
+  // Profile Settings Update Mutation (Unified)
   const updateProfileSettingsMutation = useMutation({
     mutationFn: async (updates: {
       display_name?: string;
@@ -612,6 +402,7 @@ const Profile = () => {
           throw new Error('Username can only contain lowercase letters, numbers, and underscores');
         }
 
+        // Check username uniqueness
         const { data: existingUser, error: checkError } = await supabase
           .from('profiles')
           .select('user_id')
@@ -625,6 +416,7 @@ const Profile = () => {
         dbUpdates.username = trimmedUsername;
       }
 
+      // Updated Email Logic
       if (updates.email !== undefined) {
         const trimmedEmail = updates.email.trim().toLowerCase();
         if (!trimmedEmail) throw new Error('Email cannot be empty');
@@ -632,14 +424,23 @@ const Profile = () => {
         if (!emailRegex.test(trimmedEmail)) throw new Error('Please enter a valid email address');
 
         if (trimmedEmail !== user?.email?.toLowerCase()) {
-          const { error: authError } = await supabase.auth.updateUser({ email: trimmedEmail });
+          const { error: authError } = await supabase.auth.updateUser({
+            email: trimmedEmail
+          });
           if (authError) throw authError;
           dbUpdates.email = trimmedEmail;
         }
       }
 
-      if (updates.bio !== undefined) dbUpdates.bio = updates.bio.trim();
-      if (updates.phone !== undefined) dbUpdates.phone = updates.phone.trim();
+      // Bio Logic
+      if (updates.bio !== undefined) {
+        dbUpdates.bio = updates.bio.trim();
+      }
+
+      // Phone Logic
+      if (updates.phone !== undefined) {
+        dbUpdates.phone = updates.phone.trim();
+      }
 
       const { error } = await supabase
         .from('profiles')
@@ -653,6 +454,7 @@ const Profile = () => {
       toast.success('Profile updated successfully!');
       setShowProfileSettings(false);
 
+      // FIXED: Update the nested 'profile' object inside CombinedProfile
       queryClient.setQueryData(['profile', user!.id], (oldData: CombinedProfile | undefined) => {
         if (!oldData || !oldData.profile) return oldData;
         return {
@@ -667,19 +469,24 @@ const Profile = () => {
 
       queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     },
+
     onError: (error: Error) => {
       toast.error((error && error.message) || 'Failed to update profile');
     }
   });
 
+  // Enhanced avatar upload mutation with proper error handling
   const uploadAvatarMutation = useMutation({
     mutationFn: async (file: File) => {
       const validation = validateImageFile(file);
-      if (!validation.valid) throw new Error(validation.error);
+      if (!validation.valid) {
+        throw new Error(validation.error);
+      }
 
       const fileExt = file.name.split('.').pop()?.toLowerCase();
       const fileName = `${user!.id}/${Date.now()}.${fileExt}`;
 
+      // Delete old avatar if exists
       if (profile?.avatar_url) {
         const oldPath = getAvatarPath(profile.avatar_url);
         if (oldPath && !oldPath.includes('default')) {
@@ -689,41 +496,64 @@ const Profile = () => {
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, file, { upsert: true, contentType: file.type });
+        .upload(fileName, file, {
+          upsert: true,
+          contentType: file.type
+        });
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
 
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
+        .update({
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
         .eq('user_id', user!.id);
 
       if (updateError) throw updateError;
+
       return publicUrl;
     },
     onSuccess: (newAvatarUrl) => {
       toast.success('Avatar updated successfully!');
+
       if (avatarPreview) {
-        try { URL.revokeObjectURL(avatarPreview); } catch (e) {}
+        try { URL.revokeObjectURL(avatarPreview); } catch (e) { /* noop */ }
       }
+
+      // FIXED: Update nested profile object
       queryClient.setQueryData(['profile', user!.id], (oldData: CombinedProfile | undefined) => {
         if (!oldData || !oldData.profile) return oldData;
-        return { ...oldData, profile: { ...oldData.profile, avatar_url: newAvatarUrl } };
+        return {
+          ...oldData,
+          profile: {
+            ...oldData.profile,
+            avatar_url: newAvatarUrl
+          }
+        };
       });
+
       setAvatarPreview(null);
       queryClient.invalidateQueries({ queryKey: ['profile', user!.id] });
     },
+
     onError: (error: any) => {
       toast.error((error && error.message) || 'Upload failed');
+
+      // Revoke preview url to avoid leaks
       if (avatarPreview) {
-        try { URL.revokeObjectURL(avatarPreview); } catch (e) {}
+        try { URL.revokeObjectURL(avatarPreview); } catch (e) { /* noop */ }
       }
       setAvatarPreview(null);
     }
   });
 
+  // Delete account mutation with cascade handling
   const deleteAccountMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.rpc('delete_user');
@@ -743,14 +573,18 @@ const Profile = () => {
   const handleAvatarSelect = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const validation = validateImageFile(file);
     if (!validation.valid) {
       toast.error(validation.error);
       return;
     }
+
     const previewUrl = URL.createObjectURL(file);
     setAvatarPreview(previewUrl);
     uploadAvatarMutation.mutate(file);
+
+    // note: cleanup of preview URL is handled in the mutation callbacks (onSuccess/onError)
   }, [uploadAvatarMutation]);
 
   const handleProfileSettingsSave = useCallback(() => {
@@ -763,8 +597,6 @@ const Profile = () => {
     });
   }, [settingsForm, updateProfileSettingsMutation]);
 
-  // FIX 14: Profile (1) fetched `location` directly from events table (column doesn't exist).
-  // Restored the correct event_locations join from Profile.tsx.
   const { data: myTickets = [] } = useQuery({
     queryKey: ['my-tickets', user?.id],
     queryFn: async () => {
@@ -778,23 +610,15 @@ const Profile = () => {
 
       if (attError || !attendances?.length) return [];
 
-      const eventIds = attendances.map((a: any) => a.event_id);
-
-      const [{ data: events, error: eventsError }, { data: locs }] = await Promise.all([
-        supabase
-          .from('events')
-          .select('id, title, start_date, image_url')
-          .in('id', eventIds)
-          .order('start_date', { ascending: true }),
-        supabase
-          .from('event_locations')
-          .select('event_id, location_name')
-          .in('event_id', eventIds),
-      ]);
+      const { data: events, error: eventsError } = await supabase
+        .from('events')
+        .select('id, title, start_date, location, image_url')
+        .in('id', attendances.map((a: any) => a.event_id))
+        .gte('start_date', new Date().toISOString())
+        .order('start_date', { ascending: true });
 
       if (eventsError) return [];
-      const locByEvent = new Map((locs || []).map((l: any) => [l.event_id, l.location_name]));
-      return (events || []).map((e: any) => ({ ...e, location: locByEvent.get(e.id) || 'TBA' }));
+      return events || [];
     },
     enabled: !!user?.id,
   });
@@ -802,18 +626,29 @@ const Profile = () => {
   // --- 2. ACTIONS ---
   const handleLogout = async () => {
     await signOut();
-    navigate('/', { replace: true });
+    navigate('/ahmia', { replace: true });
   };
 
   const updatePreference = async (key: string, value: any) => {
     if (!user?.id || !profile) return;
 
+    // Create new preferences object merging existing ones safely
     const currentPrefs = (profile.preferences || {}) as UserPreferences;
-    const newPreferences = { ...currentPrefs, [key]: value };
+    const newPreferences = {
+      ...currentPrefs,
+      [key]: value
+    };
 
+    // Optimistic cache update
     queryClient.setQueryData(['profile', user.id], (old: CombinedProfile | undefined) => {
       if (!old || !old.profile) return old;
-      return { ...old, profile: { ...old.profile, preferences: newPreferences } };
+      return {
+        ...old,
+        profile: {
+          ...old.profile,
+          preferences: newPreferences
+        }
+      };
     });
 
     const { error } = await supabase
@@ -828,16 +663,14 @@ const Profile = () => {
     }
 
     if (key !== 'discovery_radius') {
-      toast.success('Preference updated');
+      toast.success("Preference updated");
     }
   };
 
   // --- 3. LOADING & ERROR STATES ---
-  const isPageLoading = isProfileLoading || !user;
 
-  const isBusiness = profile?.account_type === 'business';
-  const safeSkills = Array.isArray(profile?.skills) ? profile.skills : [];
-  const safeInterests = Array.isArray(profile?.interests) ? profile.interests : [];
+  // Combined loading check to prevent blank screen
+  const isPageLoading = isProfileLoading || !user;
 
   if (isPageLoading) {
     return (
@@ -878,6 +711,8 @@ const Profile = () => {
 
   const displayName = profile.display_name || 'User';
   const username = profile.username || 'user';
+
+  // Safely access properties
   const isGhostMode = profile.preferences?.ghost_mode === true;
 
   return (
@@ -888,7 +723,7 @@ const Profile = () => {
         {/* Cover Image Placeholder */}
         <div className="h-36 bg-gradient-to-r from-primary/10 via-purple-500/10 to-orange-500/10 w-full" />
 
-        {/* Settings Dialog */}
+        {/* Settings Dialog (FIXED) */}
         <div className="absolute top-4 right-4">
           <Dialog>
             <DialogTrigger asChild>
@@ -916,6 +751,22 @@ const Profile = () => {
                     </div>
                     <Button variant="outline" size="sm" onClick={() => navigate('/premium')}>Manage</Button>
                   </div>
+                  
+                    {/* --- INSERT THIS BLOCK --- */}
+                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg text-primary"><Shield className="w-5 h-5" /></div>
+                      <div>
+                        <p className="font-semibold text-sm">Account Path</p>
+                        <p className="text-xs text-muted-foreground">
+                          {profile.user_type === 'vendor' ? 'Business / Vendor' : 'Explorer (Social)'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => navigate('/vouch-it')}>
+                      {profile.verification_status === 'verified' ? 'Verified' : 'Verify'}
+                    </Button>
+                  </div>
 
                   <div className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
                     <div className="flex items-center gap-3">
@@ -932,11 +783,11 @@ const Profile = () => {
                   </div>
                 </div>
 
-                {/* Preferences / Discovery Section */}
+                {/* Preferences Section (FIXED) */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Discovery</h3>
 
-                  {/* FIX 15: Profile (1) had max=75 min=25 step=10. Restored correct range from Profile.tsx. */}
+                  {/* Radius Slider */}
                   <div className="space-y-4 px-1">
                     <div className="flex justify-between text-sm">
                       <Label>Max Distance</Label>
@@ -944,10 +795,12 @@ const Profile = () => {
                     </div>
                     <Slider
                       value={[localRadius]}
-                      max={25}
-                      min={5}
-                      step={1}
+                      max={75} // 75km max
+                      min={25}
+                      step={10}
+                      // 1. Update visual state immediately
                       onValueChange={(val) => setLocalRadius(val[0])}
+                      // 2. Commit to DB only when user stops dragging
                       onValueCommit={(val) => updatePreference('discovery_radius', val[0] * 1000)}
                     />
                   </div>
@@ -959,13 +812,13 @@ const Profile = () => {
                       <span className="font-normal text-xs text-muted-foreground">Hide location on map</span>
                     </Label>
                     <Switch
-                      checked={isGhostMode}
+                      checked={isGhostMode} // Controlled component
                       onCheckedChange={(v) => updatePreference('ghost_mode', v)}
                     />
                   </div>
                 </div>
 
-                {/* Admin Portal */}
+                {/* Admin Portal (for admin users) */}
                 <AdminPortalButton />
 
                 {/* Actions & Danger Zone */}
@@ -1001,6 +854,7 @@ const Profile = () => {
               <AvatarFallback className="text-2xl bg-muted text-muted-foreground">{displayName.slice(0, 2).toUpperCase() || '?'}</AvatarFallback>
             </Avatar>
 
+            {/* Avatar upload button */}
             <label
               htmlFor="avatar-upload"
               className="absolute bottom-0 right-0 w-10 h-10 bg-white dark:bg-slate-800 text-primary rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform z-20"
@@ -1020,6 +874,8 @@ const Profile = () => {
               disabled={uploadAvatarMutation.isPending}
               aria-label="Upload avatar"
             />
+
+            {/* Premium badge shown next to name, not overlapping avatar upload button */}
           </div>
 
           <div className="mt-4 flex justify-between items-start">
@@ -1032,114 +888,107 @@ const Profile = () => {
               {profile.bio && <p className="text-sm mt-3 text-foreground/80 leading-relaxed max-w-xs">{profile.bio}</p>}
             </div>
 
-            <Button
-              size="sm"
-              variant="outline"
+            <Button 
+              size="sm" 
+              variant="outline" 
               className="rounded-full gap-2 h-9 px-4 shadow-sm bg-background hover:bg-primary/5 active:scale-95 transition-all"
-              onClick={shareInvite}
+              onClick={shareInvite} 
             >
               <Share2 className="w-4 h-4" /> Share
             </Button>
           </div>
 
           {/* STATS CONTROL PANEL */}
-          {/* FIX 16: Profile (1) conditionally rendered business stats with JSX conditional
-              which breaks Radix child indexing. Restored CSS `contents hidden` pattern from Profile.tsx. */}
           <div className="mt-6 inline-flex items-center bg-muted/30 backdrop-blur-sm rounded-2xl p-1 border border-border/40 shadow-sm">
-            {/* Friends */}
-            <button
+            {/* Friends Stat */}
+            <button 
               onClick={() => navigate('/app/friends')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
             >
-              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats?.friends || 0}</span>
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.friends}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Friends</span>
             </button>
-
+          
+            {/* Vertical Divider */}
             <div className="w-[1px] h-8 bg-border/60" />
-
-            {/* Events */}
-            <button
+          
+            {/* Events Stat */}
+            <button 
               onClick={() => navigate('/app/events')}
               className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
             >
-              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats?.events || 0}</span>
+              <span className="block font-bold text-lg group-hover:text-primary transition-colors">{stats.events}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Events</span>
             </button>
-
-            {/* Business-only stats — hidden via CSS to preserve Radix child indices */}
-            <div className={`contents ${!isBusiness ? 'hidden' : ''}`}>
-              <div className="w-[1px] h-8 bg-border/60" />
-              <button
-                onClick={() => navigate('/app/marketplace')}
-                className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
-              >
-                <span className="block font-bold text-lg group-hover:text-primary transition-colors">
-                  {safeSkills.length || 0}
-                </span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
-              </button>
-
-              <div className="w-[1px] h-8 bg-border/60" />
-              <button
-                onClick={() => navigate('/app/trust-center')}
-                className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
-              >
-                <span className="block font-bold text-lg group-hover:text-primary transition-colors">
-                  {profile?.verification_status === 'verified' ? '✓' : '—'}
-                </span>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Trust</span>
-              </button>
-            </div>
+          
+            {profile.is_premium && (
+              <>
+                {/* Vertical Divider */}
+                <div className="w-[1px] h-8 bg-border/60" />
+          
+                {/* Views Stat */}
+                <button 
+                  onClick={() => setActiveTab('views')}
+                  className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
+                >
+                  <span className="block font-bold text-lg group-hover:text-primary transition-colors">{profile.profile_views_30d || 0}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Views</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       {/* 2. CONTENT TABS */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {/* FIX 17: Profile (1) was missing overflow-x-auto and shrink-0 on triggers,
-            causing horizontal overflow on small screens. Also missing Favorites tab entirely. */}
-        <TabsList className="w-full bg-transparent border-b rounded-none h-12 px-6 gap-6 justify-start overflow-x-auto">
+        <TabsList className="w-full bg-transparent border-b rounded-none h-12 px-6 gap-6 justify-start">
           <TabsTrigger
             value="tickets"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
           >
             <Ticket className="w-4 h-4 mr-2" /> My Tickets
           </TabsTrigger>
-
-          <TabsTrigger
-            value="favorites"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0"
-          >
-            <Heart className="w-4 h-4 mr-2" /> Favorites
-          </TabsTrigger>
-
+          
           <TabsTrigger
             value="views"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
           >
             <Grid className="w-4 h-4 mr-2" /> Views
           </TabsTrigger>
 
-          {/* Use CSS hidden — conditional rendering breaks Radix TabsList child indexing */}
-          <TabsTrigger
-            value="analytics"
-            className={`rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all shrink-0 ${!profile.is_premium ? 'hidden' : ''}`}
-          >
-            <Sparkles className="w-4 h-4 mr-2" /> Insights
-          </TabsTrigger>
+          {profile.is_premium && (
+            <TabsTrigger
+              value="analytics"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+            >
+              <Sparkles className="w-4 h-4 mr-2" /> Insights
+            </TabsTrigger>
+          )} 
+          
+          {/* --- INSERT THIS BLOCK --- */}
+          {profile.user_type === 'vendor' && (
+            <TabsTrigger
+              value="trust"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary px-0 pb-3 pt-2 text-muted-foreground transition-all"
+            >
+              <ShieldCheck className="w-4 h-4 mr-2" /> Trust Center
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* A. MY TICKETS (Wallet View) */}
         <TabsContent value="tickets" className="p-4 space-y-4 min-h-[300px]">
           {myTickets.length > 0 ? (
             (myTickets as any[]).map((event: any) => (
-              <Card
+            <Card 
                 key={event.id}
                 className="overflow-hidden border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 cursor-pointer bg-card/50 group"
                 onClick={() => navigate(`/app/events/${event.id}`)}
               >
                 <div className="flex">
-                  <div className="w-1.5 bg-primary/80" />
+                  {/* Use a thinner, more elegant accent line */}
+                  <div className="w-1.5 bg-primary/80" /> 
                   <div className="flex-1 p-5">
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="text-[10px] font-bold bg-green-500/10 text-green-600 border-none">CONFIRMED</Badge>
@@ -1168,75 +1017,72 @@ const Profile = () => {
           )}
         </TabsContent>
 
-        {/* B. FAVORITES TAB — restored from Profile.tsx */}
-        <TabsContent value="favorites" className="p-4 space-y-4 min-h-[300px]">
-          <FavoritesTab userId={user!.id} onEventClick={(id) => navigate(`/app/events/${id}`)} />
-        </TabsContent>
-
-        {/* C. VIEWS TAB */}
+        {/* B. VIEWS TAB */}
         <TabsContent value="views" className="p-4 space-y-4 min-h-[300px]">
           <ProfileViewsTab userId={user!.id} isPremium={!!profile.is_premium} />
         </TabsContent>
 
-        {/* D. PREMIUM INSIGHTS */}
-        <TabsContent value="analytics" className={`p-4 space-y-4 min-h-[300px] ${!profile.is_premium ? 'hidden' : ''}`}>
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-amber-500/5 to-transparent overflow-hidden relative">
-            <div className="absolute -right-8 -top-8 w-28 h-28 bg-primary/10 rounded-full blur-3xl" />
-            <div className="p-5 space-y-4 relative z-10">
-              <h3 className="font-bold text-base flex items-center gap-2">
-                <Crown className="w-5 h-5 text-amber-500" /> Profile Analytics
-                <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] ml-auto">PRO</Badge>
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
-                  <p className="text-2xl font-bold text-primary">{profile.profile_views_30d || 0}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Profile Views</p>
-                  <p className="text-[9px] text-muted-foreground">Last 30 days</p>
+        {/* C. PREMIUM INSIGHTS (Analytics for premium users) */}
+        {profile.is_premium && (
+          <TabsContent value="analytics" className="p-4 space-y-4 min-h-[300px]">
+            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-amber-500/5 to-transparent overflow-hidden relative">
+              <div className="absolute -right-8 -top-8 w-28 h-28 bg-primary/10 rounded-full blur-3xl" />
+              <div className="p-5 space-y-4 relative z-10">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-amber-500" /> Profile Analytics
+                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[9px] ml-auto">Premium</Badge>
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
+                    <p className="text-2xl font-bold text-primary">{profile.profile_views_30d || 0}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Profile Views</p>
+                    <p className="text-[9px] text-muted-foreground">Last 30 days</p>
+                  </div>
+                  <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
+                    <p className="text-2xl font-bold text-primary">{stats.event_views_30d || 0}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Event Views</p>
+                    <p className="text-[9px] text-muted-foreground">Last 30 days</p>
+                  </div>
+                  <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
+                    <p className="text-2xl font-bold text-foreground">{stats.friends}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Total Friends</p>
+                  </div>
+                  <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
+                    <p className="text-2xl font-bold text-foreground">{stats.events}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Events Attended</p>
+                  </div>
                 </div>
-                <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
-                  <p className="text-2xl font-bold text-primary">{stats.event_views_30d || 0}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Event Views</p>
-                  <p className="text-[9px] text-muted-foreground">Last 30 days</p>
-                </div>
-                <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
-                  <p className="text-2xl font-bold text-foreground">{stats.friends}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Total Friends</p>
-                </div>
-                <div className="bg-background rounded-xl p-4 border text-center shadow-sm">
-                  <p className="text-2xl font-bold text-foreground">{stats.events}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider font-medium">Events Attended</p>
-                </div>
+                <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border/50">
+                  ✨ Premium members get detailed analytics on their profile and event performance.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border/50">
-                ✨ PRO members get detailed analytics on their profile and event performance.
-              </p>
-            </div>
-          </Card>
+            </Card>
 
-          {/* Subscription Management */}
-          <Card className="border-border shadow-sm">
-            <div className="p-5 space-y-3">
-              <h3 className="font-bold text-base flex items-center gap-2">
-                <Settings className="w-5 h-5 text-muted-foreground" /> Subscription
-              </h3>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Plan</span>
-                <Badge className="bg-amber-100 text-amber-800 border-0">PRO</Badge>
+            {/* Subscription Management */}
+            <Card className="border-border shadow-sm">
+              <div className="p-5 space-y-3">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-muted-foreground" /> Subscription
+                </h3>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Plan</span>
+                  <Badge className="bg-amber-100 text-amber-800 border-0">Premium Active</Badge>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Ad-Free</span>
+                  <span className="font-semibold text-green-600 flex items-center gap-1"><Check className="w-4 h-4" /> Enabled</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Discovery Radius</span>
+                  <span className="font-semibold">Extended (150km)</span>
+                </div>
+                <Button variant="outline" className="w-full mt-2" onClick={() => navigate('/premium')}>
+                  Manage Subscription
+                </Button>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Ad-Free</span>
-                <span className="font-semibold text-green-600 flex items-center gap-1"><Check className="w-4 h-4" /> Enabled</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Discovery Radius</span>
-                <span className="font-semibold">Extended (75km)</span>
-              </div>
-              <Button variant="outline" className="w-full mt-2" onClick={() => navigate('/premium')}>
-                Manage Subscription
-              </Button>
-            </div>
-          </Card>
-        </TabsContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Profile Settings Dialog */}
@@ -1296,7 +1142,7 @@ const Profile = () => {
               </p>
             </div>
 
-            {/* Bio */}
+            {/* Bio - MOVED HERE */}
             <div className="space-y-2">
               <Label htmlFor="settings-bio" className="flex items-center gap-2">
                 <Heart className="w-4 h-4 text-muted-foreground" />
@@ -1335,8 +1181,8 @@ const Profile = () => {
               </p>
             </div>
 
-            {/* Phone */}
-            <div className="space-y-2">
+             {/* Phone (Added) */}
+             <div className="space-y-2">
               <Label htmlFor="settings-phone" className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-muted-foreground" />
                 Phone Number
@@ -1350,123 +1196,6 @@ const Profile = () => {
                 className="h-11"
               />
             </div>
-
-            {/* FIX 18: Account Type toggle was missing from Profile (1)'s Profile Settings Dialog.
-                Restored the Personal/Business toggle + inline switch-to-business flow. */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                {isBusiness ? <Briefcase className="w-4 h-4 text-muted-foreground" /> : <User className="w-4 h-4 text-muted-foreground" />}
-                Account Type
-              </Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => { if (isBusiness) updateAccountTypeMutation.mutate({ userType: 'personal' }); }}
-                  disabled={updateAccountTypeMutation.isPending}
-                  className={`flex items-center justify-center gap-2 h-10 rounded-xl text-xs font-semibold border transition-all ${
-                    !isBusiness
-                      ? 'bg-primary text-white border-primary shadow-sm'
-                      : 'bg-background text-muted-foreground border-border hover:border-primary/50'
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5" /> Personal
-                </button>
-                <button
-                  onClick={() => {
-                    if (!isBusiness) {
-                      setSelectedSkills(safeSkills);
-                      setPendingUserType('business');
-                      setShowSkillsEditor(true);
-                    }
-                  }}
-                  disabled={updateAccountTypeMutation.isPending}
-                  className={`flex items-center justify-center gap-2 h-10 rounded-xl text-xs font-semibold border transition-all ${
-                    isBusiness
-                      ? 'bg-cyan-500 text-white border-cyan-500 shadow-sm'
-                      : 'bg-background text-muted-foreground border-border hover:border-cyan-400'
-                  }`}
-                >
-                  <Briefcase className="w-3.5 h-3.5" /> Business
-                </button>
-              </div>
-            </div>
-
-            {/* FIX 19: Skills section was missing from Profile (1)'s Profile Settings Dialog. */}
-            {isBusiness && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="flex items-center gap-2">
-                    <Briefcase className="w-4 h-4 text-cyan-500" />
-                    Services / Skills
-                    <span className="text-muted-foreground font-normal">({safeSkills.length})</span>
-                  </Label>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-cyan-600 px-2"
-                    onClick={() => { setSelectedSkills(safeSkills); setShowSkillsEditor(true); }}
-                  >
-                    Edit
-                  </Button>
-                </div>
-                {safeSkills.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {safeSkills.slice(0, 6).map((skill: string) => (
-                      <Badge key={skill} variant="secondary" className="text-[10px] bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200">
-                        {skill}
-                      </Badge>
-                    ))}
-                    {safeSkills.length > 6 && (
-                      <Badge variant="outline" className="text-[10px]">+{safeSkills.length - 6} more</Badge>
-                    )}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setSelectedSkills([]); setShowSkillsEditor(true); }}
-                    className="w-full h-9 rounded-xl border-2 border-dashed border-border text-xs text-muted-foreground hover:border-cyan-400 hover:text-cyan-600 transition-colors">
-                    + Add skills
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* FIX 20: Interests section was missing from Profile (1)'s Profile Settings Dialog. */}
-            {!isBusiness && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="flex items-center gap-2">
-                    <Heart className="w-4 h-4 text-muted-foreground" />
-                    Interests
-                    <span className="text-muted-foreground font-normal">({safeInterests.length})</span>
-                  </Label>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-primary px-2"
-                    onClick={() => { setSelectedSkills(safeInterests); setShowSkillsEditor(true); }}
-                  >
-                    Edit
-                  </Button>
-                </div>
-                {safeInterests.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {safeInterests.slice(0, 6).map((interest: string) => (
-                      <Badge key={interest} variant="secondary" className="text-[10px] bg-primary/10 text-primary border-primary/20">
-                        {interest}
-                      </Badge>
-                    ))}
-                    {safeInterests.length > 6 && (
-                      <Badge variant="outline" className="text-[10px]">+{safeInterests.length - 6} more</Badge>
-                    )}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setSelectedSkills([]); setShowSkillsEditor(true); }}
-                    className="w-full h-9 rounded-xl border-2 border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                    + Add interests
-                  </button>
-                )}
-              </div>
-            )}
           </div>
 
           <DialogFooter className="gap-2">
@@ -1535,74 +1264,6 @@ const Profile = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* FIX 21: Skills / Interests Editor Dialog was entirely absent from Profile (1). Restored. */}
-      <Dialog open={showSkillsEditor} onOpenChange={(open) => { if (!open) { setShowSkillsEditor(false); setPendingUserType(null); } }}>
-        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {pendingUserType === 'business' || isBusiness
-                ? <><Briefcase className="w-5 h-5 text-cyan-500" /> {pendingUserType === 'business' ? 'Set Up Business Profile' : 'Edit Skills'}</>
-                : <><Heart className="w-5 h-5 text-primary" /> Edit Interests</>}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="flex items-center justify-between text-sm px-1">
-            <span className="text-muted-foreground">{selectedSkills.length} selected</span>
-            {selectedSkills.length > 0 && (
-              <button onClick={() => setSelectedSkills([])} className="text-xs text-muted-foreground hover:text-destructive">Clear all</button>
-            )}
-          </div>
-
-          {selectedSkills.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 px-1 py-2 bg-muted/30 rounded-xl border border-border/50">
-              {selectedSkills.map((s) => (
-                <button key={s} onClick={() => setSelectedSkills(prev => prev.filter(x => x !== s))}
-                  className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-white transition-colors ${
-                    pendingUserType === 'business' || isBusiness ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-primary hover:bg-primary/90'
-                  }`}>
-                  {s} <X className="w-3 h-3" />
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">
-            <div className="flex flex-wrap gap-2 py-2">
-              {(pendingUserType === 'business' || isBusiness ? SKILL_TAGS : INTEREST_TAGS)
-                .filter(s => !selectedSkills.includes(s))
-                .map((tag) => (
-                  <button key={tag} onClick={() => setSelectedSkills(prev => [...prev, tag])}
-                    className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-border bg-background hover:border-primary/50 hover:bg-primary/5 transition-all">
-                    {tag}
-                  </button>
-                ))}
-            </div>
-          </div>
-
-          <DialogFooter className="pt-3 border-t gap-2">
-            <Button variant="outline" onClick={() => { setShowSkillsEditor(false); setPendingUserType(null); }}>Cancel</Button>
-            <Button
-              className={`flex-1 text-white ${pendingUserType === 'business' || isBusiness ? 'bg-cyan-500 hover:bg-cyan-600' : ''}`}
-              disabled={selectedSkills.length === 0 || updateAccountTypeMutation.isPending || saveSkillsMutation.isPending || saveInterestsMutation.isPending}
-              onClick={() => {
-                if (pendingUserType === 'business') {
-                  updateAccountTypeMutation.mutate({ userType: 'business', skills: selectedSkills });
-                } else if (isBusiness) {
-                  saveSkillsMutation.mutate(selectedSkills);
-                } else {
-                  saveInterestsMutation.mutate(selectedSkills);
-                }
-              }}
-            >
-              {(updateAccountTypeMutation.isPending || saveSkillsMutation.isPending || saveInterestsMutation.isPending)
-                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</>
-                : pendingUserType === 'business' ? 'Switch to Business' : 'Save'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
     </div>
   );
 };
