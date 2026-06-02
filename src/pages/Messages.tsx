@@ -843,7 +843,6 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
           </Avatar>
           <div>
             <h2 className="font-bold text-sm">{selectedChat.name}</h2>
-              {isPremium && <PremiumBadge />}
             {/* Find the header area and insert this below the title/status info */}
             {selectedChat.type === 'service' && selectedChat.is_verified && (
               <div className="flex items-center gap-1.5 mt-0.5">
@@ -1315,7 +1314,7 @@ function NewChatModal({ open, onOpenChange, onSelect }: { open: boolean, onOpenC
                     {users.map(u => (
                         <div key={u.user_id} onClick={() => onSelect(u)} className="flex items-center gap-3 p-2 hover:bg-muted rounded-lg cursor-pointer">
                             <Avatar><AvatarImage src={u.avatar_url} /><AvatarFallback>{u.display_name[0]}</AvatarFallback></Avatar>
-                            <span>{u.display_name}</span>{isPremium && <PremiumBadge />}
+                            <span>{u.display_name}</span>
                         </div>
                     ))}
                     {users.length === 0 && search && <p className="text-center text-muted-foreground text-sm">No users found</p>}
