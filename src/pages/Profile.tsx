@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, type ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -212,7 +212,9 @@ const AdminPortalButton = () => {
     enabled: !!user?.id,
   });
 
-  if (!isAdmin) return null;
+  // FIX: isAdmin is `undefined` while loading (not `false`), so `!undefined` = true
+  // was hiding the button permanently during the query. Only return null once resolved.
+  if (isAdmin !== true) return null;
 
   return (
     <div className="flex items-center justify-between p-3 bg-primary/5 rounded-xl border border-primary/20 mb-3">
@@ -593,14 +595,24 @@ const Profile = () => {
     }
   }, [data?.profile]);
 
-  // Auth redirect guard
+  // Auth redirect guard — wait for auth to fully hydrate before redirecting.
+  // Using 100ms was a race condition: Supabase resolves the session async, so
+  // `user` is null for the first render even when the user IS authenticated.
+  // We use a longer settle window (1500ms) to let onAuthStateChange fire first.
+  const authSettled = useRef(false);
   useEffect(() => {
-    if (!user) {
-      const timer = setTimeout(() => {
-        navigate('/');
-      }, 100);
-      return () => clearTimeout(timer);
+    // Once we see a user, mark auth as settled so we never redirect on re-render
+    if (user) {
+      authSettled.current = true;
+      return;
     }
+    if (authSettled.current) return; // user was set before, don't redirect on logout race
+    const timer = setTimeout(() => {
+      if (!authSettled.current) {
+        navigate('/');
+      }
+    }, 1500); // give Supabase session restore enough time
+    return () => clearTimeout(timer);
   }, [user, navigate]);
 
   // Sync form + radius with loaded profile
@@ -873,7 +885,10 @@ const Profile = () => {
   };
 
   // --- 3. LOADING & ERROR STATES ---
-  const isPageLoading = isProfileLoading || !user;
+  // Only block render while the profile query is actively in-flight for a confirmed user.
+  // Do NOT use `!user` here — during Supabase session hydration, `user` is momentarily
+  // null even for authenticated users, which caused the white screen / premature redirect.
+  const isPageLoading = isProfileLoading && !!user;
 
   const isBusiness = profile?.account_type === 'business';
   const safeSkills = Array.isArray(profile?.skills) ? profile.skills : [];
@@ -892,7 +907,10 @@ const Profile = () => {
     );
   }
 
-  if (error || !profile) {
+  // Only show error if: (a) there is an actual query error, OR (b) the query has
+  // finished loading (not in-flight) and profile is still null. This prevents
+  // showing the error screen for new users whose profile row does not exist yet.
+  if (error || (!isProfileLoading && !profile && !!user)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="text-center max-w-md">
