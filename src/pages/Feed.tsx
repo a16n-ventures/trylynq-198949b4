@@ -643,7 +643,8 @@ const Feed = () => {
                                     <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium">
                                       <MapPin className="w-3 h-3" /> {event.distanceKm}km
                                     </span>
-                                  )}
+                                  )} 
+                                <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
                                   {event.is_verified && (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium text-cyan-300">
                                       <ShieldCheck className="w-3 h-3 fill-cyan-400/20" /> Vouched
@@ -664,8 +665,6 @@ const Feed = () => {
                               </div>
                               <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                                 <span className="flex items-center gap-0.5"><Users className="w-3 h-3 text-primary/70" /> {event.attendee_count || 0}{event.max_attendees ? `/${event.max_attendees}` : ''} going</span>
-                                <span className="text-border">·</span>
-                                <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
                               </div>
                             </CardContent>
                           </Card>
