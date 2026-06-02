@@ -590,8 +590,9 @@ const Profile = () => {
   // Sync selectedSkills/selectedInterests with loaded profile data
   useEffect(() => {
     if (data?.profile) {
-      if (data.profile.skills) setSelectedSkills(data.profile.skills);
-      if (data.profile.interests) setSelectedInterests(data.profile.interests);
+      // AFTER — always guarantees state is an array
+      setSelectedSkills(Array.isArray(skills) ? skills : []);
+      setSelectedInterests(Array.isArray(interests) ? interests : []);
     }
   }, [data?.profile]);
 
