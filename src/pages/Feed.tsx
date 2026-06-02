@@ -644,7 +644,7 @@ const Feed = () => {
                                       <MapPin className="w-3 h-3" /> {event.distanceKm}km
                                     </span>
                                   )} 
-                                <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
                                   {event.is_verified && (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium text-cyan-300">
                                       <ShieldCheck className="w-3 h-3 fill-cyan-400/20" /> Vouched
