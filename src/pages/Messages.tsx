@@ -846,7 +846,7 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
             {/* Find the header area and insert this below the title/status info */}
             {selectedChat.type === 'service' && selectedChat.is_verified && (
               <div className="flex items-center gap-1.5 mt-0.5">
-                <PremiumBadge />
+                <ShieldCheck className="w-3 h-3 text-cyan-500" />
                 <p className="text-[10px] text-cyan-600 dark:text-cyan-400 font-semibold">
                   Verified Business · Escrow Protected
                 </p>
@@ -1217,8 +1217,13 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
            <AvatarFallback>{chat.name[0]}</AvatarFallback>
         </Avatar>
         {/* --- INSERT THIS BLOCK --- */}
-        {chat.is_verified && 
-            <PremiumBadge />}
+        {chat.is_verified && (
+           <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5">
+              <div className="bg-primary rounded-full p-0.5 text-white">
+                <ShieldCheck className="w-3 h-3" />
+              </div>
+           </div>
+        )}
         {chat.type === 'event' && (
            <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5">
               <div className="bg-orange-500 rounded-full p-1 text-white">
@@ -1265,7 +1270,7 @@ function CommunityListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSe
         </Avatar>
         {isPremium && (
           <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5">
-            <Crown className="w-2.5 h-2.5 text-white" />
+            <PremiumBadge />
           </div>
         )}
       </div>
