@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent, Component, type ReactNode, type ErrorInfo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -452,7 +452,7 @@ const Profile = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('tickets');
-  const { shareInvite, referralCode } = useReferrals();
+  const { shareInvite, referralCode } = useReferrals() ?? {};
 
   // FIX 7: All skills/interests editor state was missing from Profile (1). Restored.
   const [showSkillsEditor, setShowSkillsEditor] = useState(false);
@@ -1094,7 +1094,7 @@ const Profile = () => {
               size="sm"
               variant="outline"
               className="rounded-full gap-2 h-9 px-4 shadow-sm bg-background hover:bg-primary/5 active:scale-95 transition-all"
-              onClick={shareInvite}
+              onClick={shareInvite ?? (() => {})}
             >
               <Share2 className="w-4 h-4" /> Share
             </Button>
@@ -1665,4 +1665,72 @@ const Profile = () => {
   );
 };
 
-export default Profile;
+// ─── ERROR BOUNDARY ──────────────────────────────────────────────────────────
+// A runtime exception anywhere in the Profile tree (bad hook return, null
+// dereference in JSX, failed dynamic import, etc.) previously caused a silent
+// white/blank screen because React unmounts the whole tree with no fallback.
+// This boundary catches those crashes and renders a recoverable error UI.
+interface ErrorBoundaryState { hasError: boolean; error: Error | null }
+
+class ProfileErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // Log to console so devs can still see the real stack
+    console.error('[Profile] Render error caught by boundary:', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background p-6">
+          <div className="text-center max-w-sm w-full">
+            <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-8 h-8 text-destructive" />
+            </div>
+            <h2 className="text-xl font-bold mb-2">Something went wrong</h2>
+            <p className="text-sm text-muted-foreground mb-1">
+              The profile page encountered an unexpected error.
+            </p>
+            {this.state.error?.message && (
+              <p className="text-xs font-mono bg-muted rounded p-2 mb-4 text-left break-all">
+                {this.state.error.message}
+              </p>
+            )}
+            <div className="flex gap-3 justify-center">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  this.setState({ hasError: false, error: null });
+                  window.location.reload();
+                }}
+              >
+                Reload Page
+              </Button>
+              <Button onClick={() => (window.location.href = '/app/feed')}>
+                Go to Feed
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Wrap the default export so every consumer automatically gets the boundary
+const ProfileWithBoundary = () => (
+  <ProfileErrorBoundary>
+    <Profile />
+  </ProfileErrorBoundary>
+);
+
+export default ProfileWithBoundary;
