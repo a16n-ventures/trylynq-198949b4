@@ -538,7 +538,7 @@ const Feed = () => {
                     className={`rounded-full h-9 px-3 gap-2 transition-all ${verifiedOnly ? 'bg-primary text-white' : 'text-muted-foreground'}`}
                   >
                     <ShieldCheck className={`w-4 h-4 ${verifiedOnly ? 'fill-white/20' : ''}`} />
-                    <span className="text-xs font-bold">Vouched</span>
+                    <span className="text-xs font-bold">Verified</span>
                   </Button>
                   <Button size="icon" variant="ghost" className="rounded-full relative" onClick={() => navigate('/app/notifications')}>
                     <Bell className="w-5 h-5" />
@@ -647,7 +647,7 @@ const Feed = () => {
                                 <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium"><Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(event.start_date), { addSuffix: true })}</span>
                                   {event.is_verified && (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 backdrop-blur-md font-medium text-cyan-300">
-                                      <ShieldCheck className="w-3 h-3 fill-cyan-400/20" /> Vouched
+                                      <ShieldCheck className="w-3 h-3 fill-cyan-400/20" /> Verified
                                     </span>
                                   )}
                                 </div>
