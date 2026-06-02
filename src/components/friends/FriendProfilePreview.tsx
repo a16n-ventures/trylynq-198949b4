@@ -181,10 +181,10 @@ export function FriendProfilePreview({
                 : 'bg-gradient-to-b from-primary/8 via-primary/4 to-transparent'
               }`}>
 
-              {isBusinessUser && isVerified && (
+              {isBusinessUser && isVerified && 
                 <PremiumBadge />
-                  <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300">Verified</span>
-              )}
+              }
+              <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300">Verified</span>
 
               <div className="relative mb-3">
                 <Avatar className="w-24 h-24 border-4 border-background shadow-lg">
