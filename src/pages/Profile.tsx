@@ -1091,7 +1091,7 @@ const Profile = () => {
 
           <div className="mt-4 flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
+              <h1 className="text-2xl font-bold flex items-center gap-1">
                 {displayName}
                 {profile.is_premium && <PremiumBadge />}
               </h1>
@@ -1275,7 +1275,7 @@ const Profile = () => {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border/50">
-                ✨ PRO members get detailed analytics on their profile and event performance.
+                ✨ Premium members get detailed analytics on their profile and event performance.
               </p>
             </div>
           </Card>
