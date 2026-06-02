@@ -445,26 +445,30 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
   );
 };
 
- const SKILL_TAGS = [
-    'Graphic Design', 'Video Editing', 'Photography', 'Social Media Management', 'Content Writing',
-    'Web Design', 'Animation', 'Music Production', 'Voiceover', 'Illustration',
-    'Web Development', 'Mobile App Development', 'Data Analysis', 'IT Support', 'Cybersecurity',
-    'UI/UX Design', 'SEO & Marketing', 'AI / Automation',
-    'Electrical Work', 'Plumbing', 'Carpentry', 'Painting & Decorating', 'AC Repair',
-    'Generator Repair', 'Tiling', 'Masonry', 'Cleaning Services', 'Landscaping', 'Moving & Hauling',
-    'Hair Styling', 'Makeup Artist', 'Nail Technician', 'Barbing', 'Personal Training',
-    'Massage Therapy', 'Spa Services',
-    'Event Planning', 'Catering', 'DJ / Music', 'MC / Host', 'Decoration', 'Security / Ushering',
-    'Tutoring', 'Legal Services', 'Accounting / Bookkeeping', 'Business Consulting',
-    'Translation', 'Driving / Logistics', 'Tailoring / Fashion', 'Laundry Services',
-  ];
+// Module-level constants — defined outside component to avoid closure/scope issues
+// that cause "X is not defined" ReferenceErrors in production builds.
+const SKILL_TAGS = [
+  'Graphic Design', 'Video Editing', 'Photography', 'Social Media Management', 'Content Writing',
+  'Web Design', 'Animation', 'Music Production', 'Voiceover', 'Illustration',
+  'Web Development', 'Mobile App Development', 'Data Analysis', 'IT Support', 'Cybersecurity',
+  'UI/UX Design', 'SEO & Marketing', 'AI / Automation',
+  'Electrical Work', 'Plumbing', 'Carpentry', 'Painting & Decorating', 'AC Repair',
+  'Generator Repair', 'Tiling', 'Masonry', 'Cleaning Services', 'Landscaping', 'Moving & Hauling',
+  'Hair Styling', 'Makeup Artist', 'Nail Technician', 'Barbing', 'Personal Training',
+  'Massage Therapy', 'Spa Services',
+  'Event Planning', 'Catering', 'DJ / Music', 'MC / Host', 'Decoration', 'Security / Ushering',
+  'Tutoring', 'Legal Services', 'Accounting / Bookkeeping', 'Business Consulting',
+  'Translation', 'Driving / Logistics', 'Tailoring / Fashion', 'Laundry Services',
+];
 
-  const INTEREST_TAGS = [
-    'Music', 'Art', 'Sports', 'Gaming', 'Food & Drink', 'Travel', 'Fashion', 'Fitness',
-    'Technology', 'Business', 'Politics', 'Education', 'Health', 'Photography', 'Film',
-    'Books', 'Nature', 'Spirituality', 'Comedy', 'Dance', 'Nightlife', 'Volunteering',
-    'Entrepreneurship', 'Cooking', 'Pets', 'Cars', 'DIY', 'Podcasts', 'Crypto', 'Real Estate',
-  ];
+const INTEREST_TAGS = [
+  'Music', 'Art', 'Sports', 'Gaming', 'Food & Drink', 'Travel', 'Fashion', 'Fitness',
+  'Technology', 'Business', 'Politics', 'Education', 'Health', 'Photography', 'Film',
+  'Books', 'Nature', 'Spirituality', 'Comedy', 'Dance', 'Nightlife', 'Volunteering',
+  'Entrepreneurship', 'Cooking', 'Pets', 'Cars', 'DIY', 'Podcasts', 'Crypto', 'Real Estate',
+];
+
+// EventsProfileTab removed - now handled in Events page
 
 const Profile = () => {
   const { user, signOut } = useAuth();
@@ -584,10 +588,14 @@ const Profile = () => {
     stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 },
   };
 
-  // Sync selectedSkills/selectedInterests with loaded profile data
+  // Sync selectedSkills/selectedInterests with loaded profile data.
+  // Guard with Array.isArray — Supabase can return skills/interests as null,
+  // a JSON string, or a plain object if the column type is jsonb not text[].
+  // Calling .map() on any of those causes the blank screen crash.
   useEffect(() => {
     if (data?.profile) {
-      // AFTER — always guarantees state is an array
+      const skills = data.profile.skills;
+      const interests = data.profile.interests;
       setSelectedSkills(Array.isArray(skills) ? skills : []);
       setSelectedInterests(Array.isArray(interests) ? interests : []);
     }
