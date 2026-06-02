@@ -121,6 +121,20 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, isLocationSharingEnabled]);
 
+  // Distance helper (haversine, km)
+  const distanceKm = (a: LocationData, b: LocationData) => {
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(b.latitude - a.latitude);
+    const dLon = toRad(b.longitude - a.longitude);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  };
+
+  const MIN_MOVEMENT_KM = 0.5; // suppress sub-500m jitter to stop re-render flicker
+
   // Core: Success Handler
   const handleSuccess = useCallback((pos: GeolocationPosition) => {
     const loc: LocationData = {
@@ -130,18 +144,27 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     };
 
     initialLocationObtainedRef.current = true;
-    setLocation(loc);
+
+    // ✅ Stabilization: only update React state on meaningful movement.
+    // This prevents Feed/Map and every other consumer from re-rendering on every GPS tick.
+    setLocation((prev) => {
+      if (prev && distanceKm(prev, loc) < MIN_MOVEMENT_KM) {
+        return prev; // same reference → no re-render
+      }
+      saveLocal(loc);
+      return loc;
+    });
+
     setError(null);
     setLoading(false);
-    saveLocal(loc);
-    
+
     // ✅ Only sync coordinates if sharing is enabled
     if (isLocationSharingEnabled) {
       updateDatabase(loc);
     }
 
     if (!hasShownErrorRef.current) {
-      hasShownErrorRef.current = true; 
+      hasShownErrorRef.current = true;
     }
   }, [updateDatabase, isLocationSharingEnabled]);
 

@@ -270,62 +270,66 @@ const MapPage = () => {
     const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
     queryKey: ['nearby-businesses', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
-      if (!location) return [];
+      // ✅ Query businesses primarily by account_type; user_locations is an OPTIONAL left join.
+      // This ensures business/service accounts show in the Services list even when they
+      // haven't enabled GPS sharing yet (they just won't appear as a map pin).
       const { data, error } = await supabase
-        .from('user_locations')
+        .from('profiles')
         .select(`
           user_id,
-          latitude,
-          longitude,
-          updated_at,
-          is_sharing_location,
-          profiles!inner (
-            display_name,
-            avatar_url,
-            bio,
-            account_type,
-            verification_status,
-            skills,
-            is_premium
+          display_name,
+          avatar_url,
+          bio,
+          account_type,
+          verification_status,
+          skills,
+          is_premium,
+          user_locations (
+            latitude,
+            longitude,
+            is_sharing_location,
+            updated_at
           )
         `)
-        // ✅ Keep this filter to target business accounts
-        .eq('profiles.account_type', 'business')
-        
-        // 🚀 NUCLEAR FIX 1: Remove or comment out this strict verification clause 
-        // so your newly registered business/service accounts display right away
-        // .eq('profiles.verification_status', 'verified')
-        
-        .eq('is_sharing_location', true);
-  
+        .eq('account_type', 'business');
+
       if (error || !data) return [];
-  
+
       return data
         .map((row: any) => {
-          const dist = distanceKm(
-            location.latitude, location.longitude,
-            row.latitude, row.longitude
-          );
-          if (dist > discoveryRadiusKm) return null;
+          const loc = Array.isArray(row.user_locations) ? row.user_locations[0] : row.user_locations;
+          const hasCoords = !!(loc?.latitude && loc?.longitude && loc?.is_sharing_location);
+          const dist = hasCoords && location
+            ? distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude)
+            : null;
+
+          // If sharing location AND outside radius, hide. Otherwise keep (no location → still listed).
+          if (dist !== null && dist > discoveryRadiusKm) return null;
+
           return {
             id: row.user_id,
             user_id: row.user_id,
-            name: row.profiles?.display_name || 'Business',
-            avatar: row.profiles?.avatar_url,
-            bio: row.profiles?.bio,
-            skills: row.profiles?.skills || [],
-            is_premium: row.profiles?.is_premium || false,
-            // ✅ Adapt verification status dynamically rather than filtering items out entirely
-            is_verified: row.profiles?.verification_status === 'verified',
-            latitude: row.latitude,
-            longitude: row.longitude,
-            distanceKm: Number(dist.toFixed(1)),
+            name: row.display_name || 'Business',
+            avatar: row.avatar_url,
+            bio: row.bio,
+            skills: row.skills || [],
+            is_premium: row.is_premium || false,
+            is_verified: row.verification_status === 'verified',
+            latitude: hasCoords ? loc.latitude : null,
+            longitude: hasCoords ? loc.longitude : null,
+            distanceKm: dist !== null ? Number(dist.toFixed(1)) : null,
           };
         })
         .filter(Boolean)
-        .sort((a: any, b: any) => a.distanceKm - b.distanceKm);
+        .sort((a: any, b: any) => {
+          // Businesses with a known distance first (nearest), then those without coords.
+          if (a.distanceKm == null && b.distanceKm == null) return 0;
+          if (a.distanceKm == null) return 1;
+          if (b.distanceKm == null) return -1;
+          return a.distanceKm - b.distanceKm;
+        });
     },
-    enabled: !!location && activeView === 'marketplace',
+    enabled: activeView === 'marketplace',
     refetchInterval: 60000,
   });
 
@@ -349,15 +353,17 @@ const MapPage = () => {
   }, [events, cityMilestone]);
 
   const nearbyBusinessesForMap = useMemo(() => {
-    return nearbyBusinesses.map((b: any) => ({
-      user_id: b.id,
-      latitude: b.latitude,
-      longitude: b.longitude,
-      markerType: 'business' as const,
-      is_sharing: true,
-      updated_at: new Date().toISOString(),
-      profiles: { display_name: b.name, avatar_url: b.avatar }
-    }));
+    return nearbyBusinesses
+      .filter((b: any) => b.latitude != null && b.longitude != null)
+      .map((b: any) => ({
+        user_id: b.id,
+        latitude: b.latitude,
+        longitude: b.longitude,
+        markerType: 'business' as const,
+        is_sharing: true,
+        updated_at: new Date().toISOString(),
+        profiles: { display_name: b.name, avatar_url: b.avatar }
+      }));
   }, [nearbyBusinesses]);
 
   const handleMarkerSelect = (id: string, markerType?: 'friend' | 'event' | 'business') => {

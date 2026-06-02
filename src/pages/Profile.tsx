@@ -88,29 +88,69 @@ interface CombinedProfile {
   stats: ProfileStats;
 }
 
+// Hardened: each query is isolated so one failure can't blank the whole page.
+const safe = async <T,>(p: PromiseLike<T>, fallback: T, label: string): Promise<T> => {
+  try {
+    const result = await p;
+    return result;
+  } catch (err) {
+    console.warn(`[Profile] ${label} query failed:`, err);
+    return fallback;
+  }
+};
+
 const fetchProfileData = async (userId: string): Promise<CombinedProfile> => {
   const [
-    { data: profileData, error: profileError },
-    { data: locationData },
-    { count: friendCount },
-    { count: eventCount },
-    { count: messageCount },
-    { data: eventViewsData }
+    profileRes,
+    locationRes,
+    friendsRes,
+    eventsRes,
+    messagesRes,
+    eventViewsRes,
   ] = await Promise.all([
-    supabase.from('profiles').select('*').eq('user_id', userId).single(),
-    supabase.from('user_locations').select('is_sharing_location').eq('user_id', userId).maybeSingle(),
-    supabase.from('friendships').select('*', { count: 'exact', head: true })
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`),
-    supabase.from('event_attendees').select('*', { count: 'exact', head: true }).eq('user_id', userId),
-    supabase.from('messages').select('*', { count: 'exact', head: true }).eq('sender_id', userId),
-    supabase.from('events').select('event_views_30d').eq('creator_id', userId)
+    safe(
+      supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
+      { data: null, error: null } as any,
+      'profiles'
+    ),
+    safe(
+      supabase.from('user_locations').select('is_sharing_location').eq('user_id', userId).maybeSingle(),
+      { data: null } as any,
+      'user_locations'
+    ),
+    safe(
+      supabase.from('friendships').select('*', { count: 'exact', head: true })
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`),
+      { count: 0 } as any,
+      'friendships'
+    ),
+    safe(
+      supabase.from('event_attendees').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+      { count: 0 } as any,
+      'event_attendees'
+    ),
+    safe(
+      supabase.from('messages').select('*', { count: 'exact', head: true }).eq('sender_id', userId),
+      { count: 0 } as any,
+      'messages'
+    ),
+    safe(
+      supabase.from('events').select('event_views_30d').eq('creator_id', userId),
+      { data: [] } as any,
+      'events'
+    ),
   ]);
 
-  if (profileError && profileError.code !== 'PGRST116') throw profileError;
+  const profileData: any = (profileRes as any)?.data ?? null;
+  const locationData: any = (locationRes as any)?.data ?? null;
+  const friendCount = (friendsRes as any)?.count ?? 0;
+  const eventCount = (eventsRes as any)?.count ?? 0;
+  const messageCount = (messagesRes as any)?.count ?? 0;
+  const eventViewsData: any[] = (eventViewsRes as any)?.data ?? [];
 
   const totalEventViews = eventViewsData?.reduce((acc, curr) => acc + (curr.event_views_30d || 0), 0) || 0;
-  const preferences = profileData?.preferences as any || {};
+  const preferences = (profileData?.preferences as any) || {};
 
   return {
     profile: profileData ? {
