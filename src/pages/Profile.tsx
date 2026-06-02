@@ -445,23 +445,7 @@ const ProfileViewsTab = ({ userId, isPremium }: { userId: string; isPremium: boo
   );
 };
 
-// EventsProfileTab removed - now handled in Events page
-
-const Profile = () => {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('tickets');
-  const { shareInvite, referralCode } = useReferrals() ?? {};
-
-  // FIX 7: All skills/interests editor state was missing from Profile (1). Restored.
-  const [showSkillsEditor, setShowSkillsEditor] = useState(false);
-  const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-
-  // FIX 8: SKILL_TAGS and INTEREST_TAGS constants were entirely absent from Profile (1).
-  const SKILL_TAGS = [
+ const SKILL_TAGS = [
     'Graphic Design', 'Video Editing', 'Photography', 'Social Media Management', 'Content Writing',
     'Web Design', 'Animation', 'Music Production', 'Voiceover', 'Illustration',
     'Web Development', 'Mobile App Development', 'Data Analysis', 'IT Support', 'Cybersecurity',
@@ -481,6 +465,19 @@ const Profile = () => {
     'Books', 'Nature', 'Spirituality', 'Comedy', 'Dance', 'Nightlife', 'Volunteering',
     'Entrepreneurship', 'Cooking', 'Pets', 'Cars', 'DIY', 'Podcasts', 'Crypto', 'Real Estate',
   ];
+
+const Profile = () => {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('tickets');
+  const { shareInvite, referralCode } = useReferrals() ?? {};
+
+  // FIX 7: All skills/interests editor state was missing from Profile (1). Restored.
+  const [showSkillsEditor, setShowSkillsEditor] = useState(false);
+  const [pendingUserType, setPendingUserType] = useState<'personal' | 'business' | null>(null);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
 
   // FIX 9: updateAccountTypeMutation was missing from Profile (1). Restored.
   const updateAccountTypeMutation = useMutation({
