@@ -12,7 +12,7 @@ import {
   Search, Send, ArrowLeft, Plus, Users, 
   MessageSquare, X, Loader2, Info, 
   Image as ImageIcon, Calendar, MapPin, Ticket,
-  Check, Crown, Lock, Briefcase,
+  Check, Crown, Lock, ShieldCheck, Briefcase,
   CreditCard, CheckCircle2, Clock, AlertCircle, Package
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
@@ -854,7 +854,7 @@ function ChatView({ selectedChat, setSelectedChat, messageInput, setMessageInput
             )}
             {selectedChat.type === 'dm' && selectedChat.account_type === 'business' && selectedChat.is_verified && (
               <div className="flex items-center gap-1.5 mt-0.5">
-                <PremiumBadge />
+                <ShieldCheck className="w-3 h-3 text-primary" />
                 <p className="text-[10px] text-primary/80 font-semibold">
                   Verified Business
                 </p>
