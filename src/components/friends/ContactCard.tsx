@@ -26,7 +26,7 @@ export function ContactCard({
     if (!contact.phone) return;
     
     // Normalize invite message
-    const message = encodeURIComponent("Hey! Check out this app: https://try.usecorridor.xyz/ahmia");
+    const message = encodeURIComponent("Hey! Check out this app: https://try.usecorridor.xyz");
     
     // Use window.location for better mobile compatibility with SMS protocols
     window.location.href = `sms:${contact.phone}?&body=${message}`;
