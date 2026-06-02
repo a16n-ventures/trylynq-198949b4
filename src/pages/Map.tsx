@@ -353,15 +353,17 @@ const MapPage = () => {
   }, [events, cityMilestone]);
 
   const nearbyBusinessesForMap = useMemo(() => {
-    return nearbyBusinesses.map((b: any) => ({
-      user_id: b.id,
-      latitude: b.latitude,
-      longitude: b.longitude,
-      markerType: 'business' as const,
-      is_sharing: true,
-      updated_at: new Date().toISOString(),
-      profiles: { display_name: b.name, avatar_url: b.avatar }
-    }));
+    return nearbyBusinesses
+      .filter((b: any) => b.latitude != null && b.longitude != null)
+      .map((b: any) => ({
+        user_id: b.id,
+        latitude: b.latitude,
+        longitude: b.longitude,
+        markerType: 'business' as const,
+        is_sharing: true,
+        updated_at: new Date().toISOString(),
+        profiles: { display_name: b.name, avatar_url: b.avatar }
+      }));
   }, [nearbyBusinesses]);
 
   const handleMarkerSelect = (id: string, markerType?: 'friend' | 'event' | 'business') => {
