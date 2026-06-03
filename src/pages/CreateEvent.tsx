@@ -174,6 +174,25 @@ const CreateEvent = () => {
 
     setIsSubmitting(true);
 
+    // Tier validation when enabled.
+    const validTiers = useTiers
+      ? tiers
+          .map((t) => ({
+            name: t.name.trim(),
+            price: parseFloat(t.price),
+            capacity: t.capacity ? parseInt(t.capacity) : null,
+            description: t.description.trim() || null,
+          }))
+          .filter((t) => t.name && !Number.isNaN(t.price) && t.price >= 0)
+      : [];
+
+    if (useTiers && validTiers.length === 0) {
+      toast.error('Add at least one valid ticket tier (name + price).');
+      setIsSubmitting(false);
+      return;
+    }
+
+
     try {
       // 1. Handle Image Upload
       let imageUrl = null;
