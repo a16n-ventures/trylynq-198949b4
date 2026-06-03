@@ -314,6 +314,25 @@ const CreateEvent = () => {
         console.warn('Event created, but location details failed to save:', locationError);
       }
 
+      // Persist ticket tiers (Free / Regular / VIP, etc.)
+      if (useTiers && validTiers.length > 0) {
+        const tierRows = validTiers.map((t, idx) => ({
+          event_id: newEvent.id,
+          name: t.name,
+          price: t.price,
+          capacity: t.capacity,
+          description: t.description,
+          is_active: true,
+          sort_order: idx,
+        }));
+        const { error: tierErr } = await (supabase.from('event_ticket_tiers') as any).insert(tierRows);
+        if (tierErr) {
+          console.warn('Event created, but ticket tiers failed to save:', tierErr);
+          toast.warning('Event created, but some ticket tiers could not be saved.');
+        }
+      }
+
+
       toast.success('Event created successfully!');
       
       // Invalidate queries
