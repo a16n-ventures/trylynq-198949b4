@@ -217,7 +217,13 @@ const CreateEvent = () => {
           start_date: startDateTime.toISOString(),
           end_date: null,
           max_attendees: eventData.capacity ? parseInt(eventData.capacity) : null,
-          ticket_price: eventData.price ? parseFloat(eventData.price) : 0,
+          ticket_price: (() => {
+            if (useTiers) {
+              const prices = validTiers.map((t) => parseFloat(t.price) || 0);
+              return prices.length ? Math.min(...prices) : 0;
+            }
+            return eventData.price ? parseFloat(eventData.price) : 0;
+          })(),
           is_public: !eventData.isPrivate,
           requires_approval: eventData.requireApproval,
           creator_id: user.id,
