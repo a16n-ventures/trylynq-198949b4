@@ -1145,7 +1145,7 @@ const Profile = () => {
                 className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
               >
                 <span className="block font-bold text-lg group-hover:text-primary transition-colors">
-                  {safeSkills.length || 0}
+                  {catalogItems?.length || 0}
                 </span>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
               </button>
