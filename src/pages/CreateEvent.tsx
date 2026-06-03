@@ -56,6 +56,24 @@ const CreateEvent = () => {
     recurrenceRule: '', 
   });
 
+  // Multiple ticket tiers (Free / Regular / VIP, etc.)
+  // When tiers are enabled, the legacy single `price` field is ignored and
+  // `ticket_price` on the event row is set to the cheapest tier (for display).
+  type TierDraft = { name: string; price: string; capacity: string; description: string };
+  const [useTiers, setUseTiers] = useState(false);
+  const [tiers, setTiers] = useState<TierDraft[]>([
+    { name: 'Free', price: '0', capacity: '', description: '' },
+    { name: 'Regular', price: '', capacity: '', description: '' },
+    { name: 'VIP', price: '', capacity: '', description: '' },
+  ]);
+
+  const updateTier = (i: number, patch: Partial<TierDraft>) =>
+    setTiers((prev) => prev.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+  const addTier = () =>
+    setTiers((prev) => [...prev, { name: '', price: '', capacity: '', description: '' }]);
+  const removeTier = (i: number) =>
+    setTiers((prev) => prev.filter((_, idx) => idx !== i));
+
   const categories = [...CATEGORIES];
 
   // Input validation
