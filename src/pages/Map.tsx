@@ -276,34 +276,28 @@ const MapPage = () => {
     const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
     queryKey: ['nearby-businesses', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
-      // ✅ Query businesses primarily by account_type; user_locations is an OPTIONAL left join.
-      // This ensures business/service accounts show in the Services list even when they
-      // haven't enabled GPS sharing yet (they just won't appear as a map pin).
-      const { data, error } = await supabase
+      // ✅ Two-step fetch: user_locations has no FK to profiles, so PostgREST cannot
+      // embed it via select(). We fetch business profiles first, then their locations
+      // separately. This is why Services was previously empty.
+      const { data: profiles, error: pErr } = await supabase
         .from('profiles')
-        .select(`
-          user_id,
-          display_name,
-          avatar_url,
-          bio,
-          account_type,
-          verification_status,
-          skills,
-          is_premium,
-          user_locations (
-            latitude,
-            longitude,
-            is_sharing_location,
-            updated_at
-          )
-        `)
+        .select('user_id, display_name, avatar_url, bio, account_type, verification_status, skills, is_premium')
         .eq('account_type', 'business');
 
-      if (error || !data) return [];
+      if (pErr || !profiles?.length) return [];
 
-      return data
+      const userIds = profiles.map((p: any) => p.user_id);
+      const { data: locs } = await supabase
+        .from('user_locations')
+        .select('user_id, latitude, longitude, is_sharing_location, updated_at')
+        .in('user_id', userIds);
+
+      const locMap = new Map<string, any>();
+      (locs || []).forEach((l: any) => locMap.set(l.user_id, l));
+
+      return profiles
         .map((row: any) => {
-          const loc = Array.isArray(row.user_locations) ? row.user_locations[0] : row.user_locations;
+          const loc = locMap.get(row.user_id);
           const hasCoords = !!(loc?.latitude && loc?.longitude && loc?.is_sharing_location);
           const dist = hasCoords && location
             ? distanceKm(location.latitude, location.longitude, loc.latitude, loc.longitude)
@@ -328,7 +322,6 @@ const MapPage = () => {
         })
         .filter(Boolean)
         .sort((a: any, b: any) => {
-          // Businesses with a known distance first (nearest), then those without coords.
           if (a.distanceKm == null && b.distanceKm == null) return 0;
           if (a.distanceKm == null) return 1;
           if (b.distanceKm == null) return -1;
