@@ -238,7 +238,7 @@ const CreateEvent = () => {
           max_attendees: eventData.capacity ? parseInt(eventData.capacity) : null,
           ticket_price: (() => {
             if (useTiers) {
-              const prices = validTiers.map((t) => parseFloat(t.price) || 0);
+              const prices = validTiers.map((t) => t.price);
               return prices.length ? Math.min(...prices) : 0;
             }
             return eventData.price ? parseFloat(eventData.price) : 0;
