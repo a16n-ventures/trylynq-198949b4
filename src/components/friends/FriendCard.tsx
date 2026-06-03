@@ -104,7 +104,7 @@ export function FriendCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-semibold truncate">{friend.display_name || 'Unknown User'}</span>
-            <PremiumBadge userId={friend.user_id} />
+            <PremiumBadge />
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Connected</span>

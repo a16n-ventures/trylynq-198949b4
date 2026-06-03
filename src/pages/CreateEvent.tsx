@@ -8,8 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { 
-  Calendar, MapPin, DollarSign, ArrowLeft, Image as ImageIcon, 
-  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check, Repeat, Sparkles
+  Calendar, MapPin, DollarSign, ArrowLeft, Image as ImageIcon,
+  Loader2, X, Video, MapPinned, Share2, Link2, Copy, Check, Repeat, Sparkles, Plus, Ticket, Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -55,6 +55,24 @@ const CreateEvent = () => {
     isOfficial: false, 
     recurrenceRule: '', 
   });
+
+  // Multiple ticket tiers (Free / Regular / VIP, etc.)
+  // When tiers are enabled, the legacy single `price` field is ignored and
+  // `ticket_price` on the event row is set to the cheapest tier (for display).
+  type TierDraft = { name: string; price: string; capacity: string; description: string };
+  const [useTiers, setUseTiers] = useState(false);
+  const [tiers, setTiers] = useState<TierDraft[]>([
+    { name: 'Free', price: '0', capacity: '', description: '' },
+    { name: 'Regular', price: '', capacity: '', description: '' },
+    { name: 'VIP', price: '', capacity: '', description: '' },
+  ]);
+
+  const updateTier = (i: number, patch: Partial<TierDraft>) =>
+    setTiers((prev) => prev.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+  const addTier = () =>
+    setTiers((prev) => [...prev, { name: '', price: '', capacity: '', description: '' }]);
+  const removeTier = (i: number) =>
+    setTiers((prev) => prev.filter((_, idx) => idx !== i));
 
   const categories = [...CATEGORIES];
 
@@ -156,6 +174,25 @@ const CreateEvent = () => {
 
     setIsSubmitting(true);
 
+    // Tier validation when enabled.
+    const validTiers = useTiers
+      ? tiers
+          .map((t) => ({
+            name: t.name.trim(),
+            price: parseFloat(t.price),
+            capacity: t.capacity ? parseInt(t.capacity) : null,
+            description: t.description.trim() || null,
+          }))
+          .filter((t) => t.name && !Number.isNaN(t.price) && t.price >= 0)
+      : [];
+
+    if (useTiers && validTiers.length === 0) {
+      toast.error('Add at least one valid ticket tier (name + price).');
+      setIsSubmitting(false);
+      return;
+    }
+
+
     try {
       // 1. Handle Image Upload
       let imageUrl = null;
@@ -199,7 +236,13 @@ const CreateEvent = () => {
           start_date: startDateTime.toISOString(),
           end_date: null,
           max_attendees: eventData.capacity ? parseInt(eventData.capacity) : null,
-          ticket_price: eventData.price ? parseFloat(eventData.price) : 0,
+          ticket_price: (() => {
+            if (useTiers) {
+              const prices = validTiers.map((t) => t.price);
+              return prices.length ? Math.min(...prices) : 0;
+            }
+            return eventData.price ? parseFloat(eventData.price) : 0;
+          })(),
           is_public: !eventData.isPrivate,
           requires_approval: eventData.requireApproval,
           creator_id: user.id,
@@ -270,6 +313,25 @@ const CreateEvent = () => {
       if (locationError) {
         console.warn('Event created, but location details failed to save:', locationError);
       }
+
+      // Persist ticket tiers (Free / Regular / VIP, etc.)
+      if (useTiers && validTiers.length > 0) {
+        const tierRows = validTiers.map((t, idx) => ({
+          event_id: newEvent.id,
+          name: t.name,
+          price: t.price,
+          capacity: t.capacity,
+          description: t.description,
+          is_active: true,
+          sort_order: idx,
+        }));
+        const { error: tierErr } = await (supabase.from('event_ticket_tiers') as any).insert(tierRows);
+        if (tierErr) {
+          console.warn('Event created, but ticket tiers failed to save:', tierErr);
+          toast.warning('Event created, but some ticket tiers could not be saved.');
+        }
+      }
+
 
       toast.success('Event created successfully!');
       
@@ -620,24 +682,37 @@ const CreateEvent = () => {
               </CardTitle>
             </CardHeader> */} 
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="capacity">Max Attendees</Label>
-                  <Input
-                    id="capacity"
-                    type="number"
-                    placeholder="Unlimited"
-                    value={eventData.capacity}
-                    onChange={(e) => {
-                      setEventData({...eventData, capacity: e.target.value});
-                      if (errors.capacity) setErrors({...errors, capacity: ''});
-                    }}
-                    min="1"
-                    max="10000"
-                    className={errors.capacity ? 'border-red-500' : ''}
-                  />
-                  {errors.capacity && <p className="text-xs text-red-500 mt-1">{errors.capacity}</p>}
+              <div>
+                <Label htmlFor="capacity">Max Attendees</Label>
+                <Input
+                  id="capacity"
+                  type="number"
+                  placeholder="Unlimited"
+                  value={eventData.capacity}
+                  onChange={(e) => {
+                    setEventData({ ...eventData, capacity: e.target.value });
+                    if (errors.capacity) setErrors({ ...errors, capacity: '' });
+                  }}
+                  min="1"
+                  max="10000"
+                  className={errors.capacity ? 'border-red-500' : ''}
+                />
+                {errors.capacity && <p className="text-xs text-red-500 mt-1">{errors.capacity}</p>}
+              </div>
+
+              {/* Toggle: single price vs multiple ticket tiers */}
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="flex items-start gap-2">
+                  <Ticket className="w-4 h-4 mt-0.5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Multiple ticket tiers</p>
+                    <p className="text-xs text-muted-foreground">e.g. Free, Regular, VIP</p>
+                  </div>
                 </div>
+                <Switch checked={useTiers} onCheckedChange={setUseTiers} />
+              </div>
+
+              {!useTiers ? (
                 <div>
                   <Label htmlFor="price">Ticket Price (₦)</Label>
                   <div className="relative">
@@ -650,26 +725,93 @@ const CreateEvent = () => {
                       min="0"
                       value={eventData.price}
                       onChange={(e) => {
-                        setEventData({...eventData, price: e.target.value});
-                        if (errors.price) setErrors({...errors, price: ''});
+                        setEventData({ ...eventData, price: e.target.value });
+                        if (errors.price) setErrors({ ...errors, price: '' });
                       }}
                       className={`pl-8 ${errors.price ? 'border-red-500' : ''}`}
                     />
                   </div>
                   {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price}</p>}
+
+                  {parseFloat(eventData.price) > 0 && (
+                    <div className="bg-muted/50 p-4 rounded-lg space-y-3 text-sm mt-3">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Platform Fee (2%)</span>
+                        <span>- ₦{(parseFloat(eventData.price) * 0.02).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between font-semibold pt-2 border-t border-border">
+                        <span>You Receive</span>
+                        <span className="text-green-600">₦{(parseFloat(eventData.price) * 0.98).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-              
-              {parseFloat(eventData.price) > 0 && (
-                <div className="bg-muted/50 p-4 rounded-lg space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Platform Fee (2%)</span>
-                    <span>- ₦{(parseFloat(eventData.price) * 0.02).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold pt-2 border-t border-border">
-                    <span>You Receive</span>
-                    <span className="text-green-600">₦{(parseFloat(eventData.price) * 0.98).toFixed(2)}</span>
-                  </div>
+              ) : (
+                <div className="space-y-3">
+                  {tiers.map((tier, idx) => (
+                    <div key={idx} className="rounded-lg border border-border p-3 space-y-2 bg-background/50">
+                      <div className="flex items-center justify-between gap-2">
+                        <Input
+                          placeholder="Tier name (e.g. VIP)"
+                          value={tier.name}
+                          onChange={(e) => updateTier(idx, { name: e.target.value })}
+                          className="h-9 text-sm font-semibold"
+                        />
+                        {tiers.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive shrink-0"
+                            onClick={() => removeTier(idx)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">₦</span>
+                          <Input
+                            type="number"
+                            placeholder="Price"
+                            step="0.01"
+                            min="0"
+                            value={tier.price}
+                            onChange={(e) => updateTier(idx, { price: e.target.value })}
+                            className="pl-7 h-9 text-sm"
+                          />
+                        </div>
+                        <Input
+                          type="number"
+                          placeholder="Capacity (optional)"
+                          min="1"
+                          value={tier.capacity}
+                          onChange={(e) => updateTier(idx, { capacity: e.target.value })}
+                          className="h-9 text-sm"
+                        />
+                      </div>
+                      <Textarea
+                        placeholder="What's included? (optional)"
+                        value={tier.description}
+                        onChange={(e) => updateTier(idx, { description: e.target.value })}
+                        rows={2}
+                        className="text-xs resize-none"
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addTier}
+                    className="w-full"
+                  >
+                    <Plus className="w-4 h-4 mr-1" /> Add another tier
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    Tip: Set price to <strong>0</strong> for a free tier. Leave capacity blank for unlimited.
+                  </p>
                 </div>
               )}
             </CardContent>

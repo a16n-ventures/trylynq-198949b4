@@ -171,7 +171,7 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         <div className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setShowProfile(true)}>
             <span className="font-semibold truncate group-hover:underline underline-offset-2">{finalDisplayName}</span>
-            <PremiumBadge userId={profile.user_id} />
+            <PremiumBadge />
           </div>
 
           <div className="flex flex-col gap-0.5 mt-0.5">

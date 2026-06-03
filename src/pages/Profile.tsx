@@ -27,7 +27,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useReferrals } from '@/hooks/useReferrals'; 
+import { useReferrals } from '@/hooks/useReferrals';
+import { useUserCatalog } from '@/hooks/useUserCatalog';
 
 // Premium Badge Component
 const PremiumBadge = () => (
@@ -591,6 +592,9 @@ const Profile = () => {
     stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 },
   };
 
+  // Catalog count: driven by actual store items, not the skills/tags array.
+  const { items: catalogItems } = useUserCatalog(user?.id);
+
   // Sync selectedSkills/selectedInterests with loaded profile data.
   // Guard with Array.isArray — Supabase can return skills/interests as null,
   // a JSON string, or a plain object if the column type is jsonb not text[].
@@ -1141,7 +1145,7 @@ const Profile = () => {
                 className="flex flex-col items-center px-6 py-2 rounded-xl hover:bg-background hover:shadow-sm transition-all active:scale-95 group"
               >
                 <span className="block font-bold text-lg group-hover:text-primary transition-colors">
-                  {safeSkills.length || 0}
+                  {catalogItems?.length || 0}
                 </span>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Catalog</span>
               </button>

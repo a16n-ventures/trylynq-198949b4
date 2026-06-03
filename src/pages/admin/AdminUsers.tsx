@@ -68,16 +68,40 @@ export default function AdminUsers() {
   const { data: stats } = useQuery({
     queryKey: ['admin_user_stats'],
     queryFn: async () => {
-      const [{ count: totalUsers }, { count: bannedUsers }, { count: activeToday }] = await Promise.all([
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      // Active = distinct users with real app activity in the last 24h:
+      // location ping, message sent, social post, comment, or RSVP.
+      // We union the IDs in JS to avoid double counting a user across signals.
+      const [
+        { count: totalUsers },
+        { count: bannedUsers },
+        locationsRes,
+        messagesRes,
+        postsRes,
+        commentsRes,
+        rsvpsRes,
+      ] = await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
         supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true),
-        supabase.from('profiles').select('*', { count: 'exact', head: true })
-          .gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+        supabase.from('user_locations').select('user_id').gte('updated_at', since).limit(1000),
+        supabase.from('messages').select('sender_id').gte('created_at', since).limit(1000),
+        supabase.from('social_posts').select('user_id').gte('created_at', since).limit(1000),
+        supabase.from('post_comments').select('user_id').gte('created_at', since).limit(1000),
+        supabase.from('event_attendees').select('user_id').gte('created_at', since).limit(1000),
       ]);
+
+      const activeSet = new Set<string>();
+      (locationsRes.data || []).forEach((r: any) => r.user_id && activeSet.add(r.user_id));
+      (messagesRes.data || []).forEach((r: any) => r.sender_id && activeSet.add(r.sender_id));
+      (postsRes.data || []).forEach((r: any) => r.user_id && activeSet.add(r.user_id));
+      (commentsRes.data || []).forEach((r: any) => r.user_id && activeSet.add(r.user_id));
+      (rsvpsRes.data || []).forEach((r: any) => r.user_id && activeSet.add(r.user_id));
+
       return {
         total: totalUsers || 0,
         banned: bannedUsers || 0,
-        activeToday: activeToday || 0,
+        activeToday: activeSet.size,
       };
     }
   });

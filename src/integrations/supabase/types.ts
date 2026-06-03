@@ -1659,7 +1659,7 @@ export type Database = {
           premium_tier: string | null
           profile_views_30d: number | null
           referral_code: string | null
-          skills: string | null
+          skills: string[] | null
           travel_propensity: number | null
           trust_score: number | null
           updated_at: string
@@ -1685,7 +1685,7 @@ export type Database = {
           premium_tier?: string | null
           profile_views_30d?: number | null
           referral_code?: string | null
-          skills?: string | null
+          skills?: string[] | null
           travel_propensity?: number | null
           trust_score?: number | null
           updated_at?: string
@@ -1711,7 +1711,7 @@ export type Database = {
           premium_tier?: string | null
           profile_views_30d?: number | null
           referral_code?: string | null
-          skills?: string | null
+          skills?: string[] | null
           travel_propensity?: number | null
           trust_score?: number | null
           updated_at?: string
