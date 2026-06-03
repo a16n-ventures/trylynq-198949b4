@@ -592,6 +592,9 @@ const Profile = () => {
     stats: { friends: 0, events: 0, messages: 0, event_views_30d: 0 },
   };
 
+  // Catalog count: driven by actual store items, not the skills/tags array.
+  const { items: catalogItems } = useUserCatalog(user?.id);
+
   // Sync selectedSkills/selectedInterests with loaded profile data.
   // Guard with Array.isArray — Supabase can return skills/interests as null,
   // a JSON string, or a plain object if the column type is jsonb not text[].
