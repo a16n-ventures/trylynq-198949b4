@@ -13,6 +13,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { Profile, Friendship } from "@/hooks/useFriends";
 import { useAuth } from "@/contexts/AuthContext";
+import { BusinessBadge } from "@/components/BusinessBadge";
 
 // Premium Badge Component
 const PremiumBadge = () => (
