@@ -41,6 +41,41 @@ export default function Marketplace() {
     }
   }, [location]);
 
+  // Realtime: keep catalog/store views in sync with DB changes (no refresh).
+  useEffect(() => {
+    if (!currentUserId) return;
+    const storeId = (userStore as any)?.id;
+
+    const channel = supabase
+      .channel(`marketplace-rt-${currentUserId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'stores', filter: `owner_id=eq.${currentUserId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['user-catalog-store', currentUserId] });
+          queryClient.invalidateQueries({ queryKey: ['user-catalog', currentUserId] });
+          queryClient.invalidateQueries({ queryKey: ['marketplace_items'] });
+        })
+      .subscribe();
+
+    let itemsChannel: any = null;
+    if (storeId) {
+      itemsChannel = supabase
+        .channel(`marketplace-items-rt-${storeId}`)
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'store_items', filter: `store_id=eq.${storeId}` },
+          () => {
+            queryClient.invalidateQueries({ queryKey: ['user-catalog', currentUserId] });
+            queryClient.invalidateQueries({ queryKey: ['marketplace_items'] });
+          })
+        .subscribe();
+    }
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (itemsChannel) supabase.removeChannel(itemsChannel);
+    };
+  }, [currentUserId, (userStore as any)?.id, queryClient]);
+
   // ── Catalog: owner's store + items ────────────────────────────────────────
   const { data: userStore = null, isLoading: storeLoading } = useQuery({
     queryKey: ['user-catalog-store', currentUserId],
