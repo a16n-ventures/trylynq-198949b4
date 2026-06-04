@@ -8,7 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { FriendProfilePreview } from "@/components/friends/FriendProfilePreview";
 import { BlockReportDialog } from "@/components/friends/BlockReportDialog";
 import { toast } from "sonner";
-import type { NearbyProfile } from "@/hooks/useNearbyUsers"; 
+import type { NearbyProfile } from "@/hooks/useNearbyUsers";
+import { BusinessBadge } from "@/components/BusinessBadge";
 
 // Premium Badge Component
 const PremiumBadge = () => (
