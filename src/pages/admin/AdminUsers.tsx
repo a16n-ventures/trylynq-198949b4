@@ -68,11 +68,16 @@ export default function AdminUsers() {
   const { data: stats } = useQuery({
     queryKey: ['admin_user_stats'],
     queryFn: async () => {
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const now = Date.now();
+      const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+      const since5m = new Date(now - 5 * 60 * 1000).toISOString();
 
-      // Active = distinct users with real app activity in the last 24h:
-      // location ping, message sent, social post, comment, or RSVP.
-      // We union the IDs in JS to avoid double counting a user across signals.
+      // Active = distinct users with real, user-driven app activity.
+      // IDs are unioned via Set to dedupe a user that appears in multiple signals
+      // (e.g. same user pings location, sends a message, RSVPs, and checks-in).
+      // Signals: location pings, messages, social posts/comments, event RSVPs
+      // (event_attendees), events created, and check-ins. We also track a
+      // separate "Active Now" pool using the last 5 minutes.
       const [
         { count: totalUsers },
         { count: bannedUsers },
@@ -81,29 +86,51 @@ export default function AdminUsers() {
         postsRes,
         commentsRes,
         rsvpsRes,
+        eventsRes,
+        checkinsRes,
+        locationsNowRes,
+        messagesNowRes,
+        checkinsNowRes,
       ] = await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
         supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true),
-        supabase.from('user_locations').select('user_id').gte('updated_at', since).limit(1000),
-        supabase.from('messages').select('sender_id').gte('created_at', since).limit(1000),
-        supabase.from('social_posts').select('user_id').gte('created_at', since).limit(1000),
-        supabase.from('post_comments').select('user_id').gte('created_at', since).limit(1000),
-        supabase.from('event_attendees').select('user_id').gte('created_at', since).limit(1000),
+        supabase.from('user_locations').select('user_id').gte('updated_at', since24h).limit(1000),
+        supabase.from('messages').select('sender_id').gte('created_at', since24h).limit(1000),
+        supabase.from('social_posts').select('user_id').gte('created_at', since24h).limit(1000),
+        supabase.from('post_comments').select('user_id').gte('created_at', since24h).limit(1000),
+        supabase.from('event_attendees').select('user_id').gte('created_at', since24h).limit(1000),
+        (supabase.from('events') as any).select('creator_id').gte('created_at', since24h).limit(1000),
+        (supabase.from('checkins') as any).select('user_id').gte('created_at', since24h).limit(1000),
+        supabase.from('user_locations').select('user_id').gte('updated_at', since5m).limit(1000),
+        supabase.from('messages').select('sender_id').gte('created_at', since5m).limit(500),
+        (supabase.from('checkins') as any).select('user_id').gte('created_at', since5m).limit(500),
       ]);
 
+      const addAll = (set: Set<string>, rows: any[] | null | undefined, key: string) =>
+        (rows || []).forEach((r: any) => r?.[key] && set.add(r[key]));
+
       const activeSet = new Set<string>();
-      (locationsRes.data || []).forEach((r: any) => r.user_id && activeSet.add(r.user_id));
-      (messagesRes.data || []).forEach((r: any) => r.sender_id && activeSet.add(r.sender_id));
-      (postsRes.data || []).forEach((r: any) => r.user_id && activeSet.add(r.user_id));
-      (commentsRes.data || []).forEach((r: any) => r.user_id && activeSet.add(r.user_id));
-      (rsvpsRes.data || []).forEach((r: any) => r.user_id && activeSet.add(r.user_id));
+      addAll(activeSet, locationsRes.data, 'user_id');
+      addAll(activeSet, messagesRes.data, 'sender_id');
+      addAll(activeSet, postsRes.data, 'user_id');
+      addAll(activeSet, commentsRes.data, 'user_id');
+      addAll(activeSet, rsvpsRes.data, 'user_id');
+      addAll(activeSet, eventsRes.data, 'creator_id');
+      addAll(activeSet, checkinsRes.data, 'user_id');
+
+      const nowSet = new Set<string>();
+      addAll(nowSet, locationsNowRes.data, 'user_id');
+      addAll(nowSet, messagesNowRes.data, 'sender_id');
+      addAll(nowSet, checkinsNowRes.data, 'user_id');
 
       return {
         total: totalUsers || 0,
         banned: bannedUsers || 0,
         activeToday: activeSet.size,
+        activeNow: nowSet.size,
       };
-    }
+    },
+    refetchInterval: 60_000,
   });
 
   // 1. Fetch Users
@@ -296,7 +323,7 @@ export default function AdminUsers() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -308,11 +335,25 @@ export default function AdminUsers() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Now</CardTitle>
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600">{stats?.activeNow || 0}</div>
+            <p className="text-[10px] text-muted-foreground">last 5 min · dedup'd</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Today</CardTitle>
             <UserCheck className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{stats?.activeToday || 0}</div>
+            <p className="text-[10px] text-muted-foreground">msgs · events · RSVPs · check-ins</p>
           </CardContent>
         </Card>
         <Card>

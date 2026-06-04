@@ -8,7 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { FriendProfilePreview } from "@/components/friends/FriendProfilePreview";
 import { BlockReportDialog } from "@/components/friends/BlockReportDialog";
 import { toast } from "sonner";
-import type { NearbyProfile } from "@/hooks/useNearbyUsers"; 
+import type { NearbyProfile } from "@/hooks/useNearbyUsers";
+import { BusinessBadge } from "@/components/BusinessBadge";
 
 // Premium Badge Component
 const PremiumBadge = () => (
@@ -171,7 +172,8 @@ export function NearbyUserCard({ profile, onAddFriend, isAdding }: NearbyUserCar
         <div className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setShowProfile(true)}>
             <span className="font-semibold truncate group-hover:underline underline-offset-2">{finalDisplayName}</span>
-            <PremiumBadge />
+            {(profile as any)?.account_type === 'business' && <BusinessBadge />}
+            {(profile as any)?.is_premium && <PremiumBadge />}
           </div>
 
           <div className="flex flex-col gap-0.5 mt-0.5">
