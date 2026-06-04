@@ -323,7 +323,7 @@ export default function AdminUsers() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -335,11 +335,25 @@ export default function AdminUsers() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Now</CardTitle>
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600">{stats?.activeNow || 0}</div>
+            <p className="text-[10px] text-muted-foreground">last 5 min · dedup'd</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Today</CardTitle>
             <UserCheck className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{stats?.activeToday || 0}</div>
+            <p className="text-[10px] text-muted-foreground">msgs · events · RSVPs · check-ins</p>
           </CardContent>
         </Card>
         <Card>
