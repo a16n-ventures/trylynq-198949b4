@@ -191,6 +191,7 @@ export function ServiceCard(props: ServiceCardProps) {
                 )}
               </Button>
             </div>
+          ) : (
             <div className="flex flex-col gap-1.5 pt-1">
               {/* Primary CTA: Request this service — pre-fills a DM with item details */}
               {(actions as DiscoveryActions).onRequest && (
