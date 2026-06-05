@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   MapPin, Phone, Truck, Tag, Edit, Trash2, Map as MapIcon,
-  MessageCircle, Navigation, Loader2, Eye, EyeOff,
+  MessageCircle, Navigation, Loader2, Eye, EyeOff, Send,
 } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -50,6 +50,8 @@ interface OwnerActions {
 interface DiscoveryActions {
   onContact: (phone: string) => void;
   onDirections: (lat: number, lng: number, name: string) => void;
+  /** Pre-fills a DM to the business owner with item details. */
+  onRequest?: (item: CatalogItem & { store: Store & { owner_id?: string } }) => void;
 }
 
 type ServiceCardProps =
