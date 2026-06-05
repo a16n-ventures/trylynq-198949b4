@@ -818,6 +818,18 @@ const MapPage = () => {
                           actions={{
                             onContact: (phone) => window.open(`tel:${phone}`),
                             onDirections: (lat, lng, name) => handleGetDirections(lat, lng, name),
+                            onRequest: (it: any) => {
+                              const ownerId = it.store?.owner_id || selectedBusiness.user_id;
+                              const params = new URLSearchParams({
+                                type: 'dm',
+                                id: ownerId,
+                                action: 'service-inquiry',
+                                item: it.name || '',
+                                price: String(it.price ?? ''),
+                                store: it.store?.name || selectedBusiness.name || '',
+                              });
+                              navigate(`/app/messages?${params.toString()}`);
+                            },
                           }}
                         />
                       ))}
