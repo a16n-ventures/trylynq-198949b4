@@ -812,9 +812,9 @@ const MapPage = () => {
                   )}
 
                   {/* Show the business's catalog items using ServiceCard in discovery mode */}
-                  {selectedBusiness.catalogItems?.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto mb-3">
-                      {selectedBusiness.catalogItems.slice(0, 4).map((item: any) => (
+                  {selectedBusinessCatalog.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto mb-3">
+                      {selectedBusinessCatalog.slice(0, 6).map((item: any) => (
                         <ServiceCard
                           key={item.id}
                           mode="discovery"
