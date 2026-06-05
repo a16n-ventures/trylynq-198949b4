@@ -30,6 +30,8 @@ import { TicketTierSelector } from '@/components/events/TicketTierSelector';
 import { formatTicketPrice as fmtTicket } from '@/lib/eventFormat';
 import { useUserCatalog } from '@/hooks/useUserCatalog';
 import { ServiceCard } from '@/components/ServiceCard';
+import { PremiumBadge } from '@/components/PremiumBadge';
+import { BusinessBadge } from '@/components/BusinessBadge';
 
 type CityMilestone = {
   city_name: string;
@@ -67,19 +69,7 @@ const distanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const formatTicketPrice = fmtTicket; 
-
-// Premium Badge Component
-const PremiumBadge = () => (
-  <svg 
-    className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 ml-1" 
-    viewBox="0 0 22 22" 
-    fill="currentColor"
-    aria-label="Verified"
-  >
-    <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
-  </svg>
-);
+const formatTicketPrice = fmtTicket;
 
 const MapPage = () => {
   const { user } = useAuth();
@@ -272,6 +262,10 @@ const MapPage = () => {
   // useUserCatalog gives us the *current user's* catalog for map preview.
   // A separate query fetches all nearby verified business profiles for discovery.
   const { items: ownCatalogItems } = useUserCatalog(user?.id);
+
+  // Fetch catalog for the currently selected business so the bottom sheet
+  // can render ServiceCards with a working "Request this service" CTA.
+  const { items: selectedBusinessCatalog = [] } = useUserCatalog(selectedBusiness?.user_id);
 
     const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
     queryKey: ['nearby-businesses', location?.latitude, location?.longitude, discoveryRadiusKm],
@@ -818,9 +812,9 @@ const MapPage = () => {
                   )}
 
                   {/* Show the business's catalog items using ServiceCard in discovery mode */}
-                  {selectedBusiness.catalogItems?.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto mb-3">
-                      {selectedBusiness.catalogItems.slice(0, 4).map((item: any) => (
+                  {selectedBusinessCatalog.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto mb-3">
+                      {selectedBusinessCatalog.slice(0, 6).map((item: any) => (
                         <ServiceCard
                           key={item.id}
                           mode="discovery"
@@ -828,6 +822,18 @@ const MapPage = () => {
                           actions={{
                             onContact: (phone) => window.open(`tel:${phone}`),
                             onDirections: (lat, lng, name) => handleGetDirections(lat, lng, name),
+                            onRequest: (it: any) => {
+                              const ownerId = it.store?.owner_id || selectedBusiness.user_id;
+                              const params = new URLSearchParams({
+                                type: 'dm',
+                                id: ownerId,
+                                action: 'service-inquiry',
+                                item: it.name || '',
+                                price: String(it.price ?? ''),
+                                store: it.store?.name || selectedBusiness.name || '',
+                              });
+                              navigate(`/app/messages?${params.toString()}`);
+                            },
                           }}
                         />
                       ))}

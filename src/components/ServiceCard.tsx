@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   MapPin, Phone, Truck, Tag, Edit, Trash2, Map as MapIcon,
-  MessageCircle, Navigation, Loader2, Eye, EyeOff,
+  MessageCircle, Navigation, Loader2, Eye, EyeOff, Send,
 } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -50,6 +50,8 @@ interface OwnerActions {
 interface DiscoveryActions {
   onContact: (phone: string) => void;
   onDirections: (lat: number, lng: number, name: string) => void;
+  /** Pre-fills a DM to the business owner with item details. */
+  onRequest?: (item: CatalogItem & { store: Store & { owner_id?: string } }) => void;
 }
 
 type ServiceCardProps =
@@ -190,32 +192,47 @@ export function ServiceCard(props: ServiceCardProps) {
               </Button>
             </div>
           ) : (
-            <div className="flex gap-2 pt-1">
-              {item.store?.contact_phone && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              {/* Primary CTA: Request this service — pre-fills a DM with item details */}
+              {(actions as DiscoveryActions).onRequest && (
                 <Button
                   size="sm"
-                  className="flex-1 h-8 text-xs bg-primary/10 text-primary hover:bg-primary/20 border-0"
+                  className="w-full h-8 text-xs bg-primary text-white hover:bg-primary/90"
                   onClick={() =>
-                    (actions as DiscoveryActions).onContact(item.store!.contact_phone!)
+                    (actions as DiscoveryActions).onRequest!(item as any)
                   }
                 >
-                  <Phone className="w-3 h-3 mr-1" /> Contact
+                  <Send className="w-3 h-3 mr-1" /> Request this service
                 </Button>
               )}
-              <Button
-                size="sm"
-                className="flex-1 h-8 text-xs bg-primary text-white hover:bg-primary/90"
-                onClick={() => {
-                  const s = item.store as any;
-                  if (s?.latitude && s?.longitude) {
-                    (actions as DiscoveryActions).onDirections(
-                      s.latitude, s.longitude, item.name
-                    );
-                  }
-                }}
-              >
-                <Navigation className="w-3 h-3 mr-1" /> Directions
-              </Button>
+              <div className="flex gap-2">
+                {item.store?.contact_phone && (
+                  <Button
+                    size="sm"
+                    className="flex-1 h-8 text-xs bg-primary/10 text-primary hover:bg-primary/20 border-0"
+                    onClick={() =>
+                      (actions as DiscoveryActions).onContact(item.store!.contact_phone!)
+                    }
+                  >
+                    <Phone className="w-3 h-3 mr-1" /> Call
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-8 text-xs"
+                  onClick={() => {
+                    const s = item.store as any;
+                    if (s?.latitude && s?.longitude) {
+                      (actions as DiscoveryActions).onDirections(
+                        s.latitude, s.longitude, item.name
+                      );
+                    }
+                  }}
+                >
+                  <Navigation className="w-3 h-3 mr-1" /> Directions
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
