@@ -181,7 +181,15 @@ export default function Marketplace() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold">My Catalog</h1>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            My Catalog
+            {hasStore && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-600 bg-green-500/10 border border-green-500/30 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Live
+              </span>
+            )}
+          </h1>
           <p className="text-sm text-muted-foreground">
             Manage your listings — what you publish here appears on the map
           </p>
@@ -194,6 +202,30 @@ export default function Marketplace() {
           } />
         )}
       </div>
+
+      {/* Live stats strip */}
+      {!catalogLoading && hasStore && (catalogItems as any[]).length > 0 && (() => {
+        const items = catalogItems as any[];
+        const liveCount = items.filter((i) => i.is_available).length;
+        const hiddenCount = items.length - liveCount;
+        const discountCount = items.filter((i) => i.discount_percent > 0).length;
+        return (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-2xl bg-muted/30 border border-border/40 p-3 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Total</p>
+              <p className="text-lg font-black">{items.length}</p>
+            </div>
+            <div className="rounded-2xl bg-green-500/10 border border-green-500/20 p-3 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-green-700 dark:text-green-400">Live</p>
+              <p className="text-lg font-black text-green-700 dark:text-green-400">{liveCount}</p>
+            </div>
+            <div className="rounded-2xl bg-primary/10 border border-primary/20 p-3 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-primary">On Sale</p>
+              <p className="text-lg font-black text-primary">{discountCount}</p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* No-store gate */}
       {!catalogLoading && !hasStore && (
