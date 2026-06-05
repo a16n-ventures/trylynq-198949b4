@@ -90,6 +90,9 @@ export default function Messages() {
     const type = searchParams.get('type') as ChatType;
     const id = searchParams.get('id');
     const action = searchParams.get('action');
+    const itemName = searchParams.get('item');
+    const itemPrice = searchParams.get('price');
+    const storeName = searchParams.get('store');
     
     if (type && id && user) {
       setActiveTab(type);
@@ -99,6 +102,14 @@ export default function Messages() {
           // Pre-fill message input for join requests from Feed
           if (action === 'request') {
             setMessageInput(`Hi! I'd like to request to join "${chat.name}". Please consider my request. Thanks!`);
+          } else if (action === 'service-inquiry' && itemName) {
+            const priceStr = itemPrice && Number(itemPrice) > 0
+              ? ` (listed at ₦${Number(itemPrice).toLocaleString('en-NG')})`
+              : '';
+            const storeStr = storeName ? ` from ${storeName}` : '';
+            setMessageInput(
+              `Hi! I'm interested in "${itemName}"${priceStr}${storeStr}. Is it still available? I'd like to know more about delivery and how to proceed. Thanks!`
+            );
           }
         }
       });
