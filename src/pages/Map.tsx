@@ -263,6 +263,10 @@ const MapPage = () => {
   // A separate query fetches all nearby verified business profiles for discovery.
   const { items: ownCatalogItems } = useUserCatalog(user?.id);
 
+  // Fetch catalog for the currently selected business so the bottom sheet
+  // can render ServiceCards with a working "Request this service" CTA.
+  const { items: selectedBusinessCatalog = [] } = useUserCatalog(selectedBusiness?.user_id);
+
     const { data: nearbyBusinesses = [], isLoading: businessesLoading } = useQuery({
     queryKey: ['nearby-businesses', location?.latitude, location?.longitude, discoveryRadiusKm],
     queryFn: async () => {
