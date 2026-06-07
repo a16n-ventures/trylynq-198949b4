@@ -209,13 +209,13 @@ export default function Messages() {
       const partnerIds = Array.from(partnerMap.keys());
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url, account_type, verification_status') // Add these two
+        .select('user_id, display_name, avatar_url, account_type, verification_status, is_premium')
         .in('user_id', partnerIds);
       
       const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
       
       return Array.from(partnerMap.values()).map(p => {
-        const profile = profileMap.get(p.partner_id);
+        const profile = profileMap.get(p.partner_id) as any;
         return {
           id: p.partner_id,
           type: 'dm' as const,
@@ -225,9 +225,11 @@ export default function Messages() {
           partner_id: p.partner_id,
           badge: p.unread_count > 0 ? p.unread_count : undefined,
           is_verified: profile?.verification_status === 'verified',
-          account_type: profile?.account_type
+          account_type: profile?.account_type,
+          meta: { is_premium: !!profile?.is_premium }
         };
       });
+
     },
     enabled: !!user && activeTab === 'dm'
   });
@@ -370,8 +372,9 @@ export default function Messages() {
     },
     enabled: !!user && activeTab === 'service'
   });
+  const messagesQueryKey = ['messages', selectedChat?.type, selectedChat?.id, selectedChat?.partner_id, selectedChat?.meta?.request_id];
   const { data: messages = [], refetch: refetchMessages } = useQuery({
-    queryKey: ['messages', selectedChat?.type, selectedChat?.id],
+    queryKey: messagesQueryKey,
     queryFn: async () => {
       if (!user || !selectedChat) return [];
       
@@ -381,7 +384,6 @@ export default function Messages() {
           .select('*')
           .or(`and(sender_id.eq.${user.id},receiver_id.eq.${selectedChat.partner_id}),and(sender_id.eq.${selectedChat.partner_id},receiver_id.eq.${user.id})`);
       } else if (selectedChat.type === 'service') {
-        // Service chats reuse the messages table, scoped by a request_id stored in meta
         query = supabase.from('messages')
           .select('*')
           .eq('request_id', selectedChat.meta?.request_id);
@@ -390,7 +392,6 @@ export default function Messages() {
           .select(`*, sender:profiles!sender_id(*)`)
           .eq('community_id', selectedChat.id);
       } else {
-        // Event Chats - no FK to profiles, so fetch separately
         query = supabase.from('event_chats')
           .select('*')
           .eq('event_id', selectedChat.id);
@@ -399,75 +400,150 @@ export default function Messages() {
       const { data, error } = await query.order('created_at', { ascending: true });
       if (error) console.error(error);
       
-      // For event chats, fetch sender profiles separately
       let profileMap = new Map<string, any>();
       if (selectedChat.type === 'event' && data?.length) {
         const userIds = [...new Set(data.map((m: any) => m.user_id))] as string[];
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('user_id, display_name, avatar_url')
+          .select('user_id, display_name, avatar_url, account_type, is_premium')
           .in('user_id', userIds);
+
         profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
       }
       
       return (data || []).map((m: any) => {
         const senderId = m.sender_id || m.user_id;
         const profile = profileMap.get(senderId);
+        const sender = m.sender || profile || {};
         return {
           id: m.id,
           content: m.content || m.message,
           sender_id: senderId,
-          sender_name: m.sender?.display_name || profile?.display_name || 'User',
-          sender_avatar: m.sender?.avatar_url || profile?.avatar_url,
+          sender_name: sender.display_name || 'User',
+          sender_avatar: sender.avatar_url,
+          sender_is_premium: !!sender.is_premium,
+          sender_is_business: sender.account_type === 'business',
           created_at: m.created_at,
           is_me: senderId === user.id,
-          image_url: m.image_url
+          image_url: m.image_url,
+          pending: false,
         };
       });
+
     },
     enabled: !!selectedChat,
-    refetchInterval: 3000 // Simple polling for realtime feel
+    // Realtime subscription below pushes new messages instantly; keep a slow
+    // poll as a safety net in case the channel drops (e.g. tab returning from
+    // background). 3s was overkill and caused flicker + wasted requests.
+    refetchInterval: 15000,
   });
 
-  // --- 4. SEND MESSAGE (Unified) ---
+  // --- 3b. REALTIME PUSH (replaces 3s polling for instant UX) ---
+  useEffect(() => {
+    if (!user || !selectedChat) return;
+    const c = selectedChat;
+
+    const channelName = `chat-${c.type}-${c.id}-${c.partner_id || ''}-${c.meta?.request_id || ''}`;
+    let filter: { table: string; filter?: string } | null = null;
+
+    if (c.type === 'dm' && c.partner_id) {
+      filter = { table: 'messages' };
+    } else if (c.type === 'service' && c.meta?.request_id) {
+      filter = { table: 'messages', filter: `request_id=eq.${c.meta.request_id}` };
+    } else if (c.type === 'community') {
+      filter = { table: 'community_messages', filter: `community_id=eq.${c.id}` };
+    } else if (c.type === 'event') {
+      filter = { table: 'event_chats', filter: `event_id=eq.${c.id}` };
+    }
+    if (!filter) return;
+
+    const channel = supabase
+      .channel(channelName)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', ...(filter as any) },
+        (payload: any) => {
+          const row = payload?.new;
+          if (!row) return;
+          // DM scope check (we can't filter at server level easily)
+          if (c.type === 'dm') {
+            const valid =
+              (row.sender_id === user.id && row.receiver_id === c.partner_id) ||
+              (row.sender_id === c.partner_id && row.receiver_id === user.id);
+            if (!valid) return;
+          }
+          refetchMessages();
+        })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, selectedChat?.id, selectedChat?.type, selectedChat?.partner_id, selectedChat?.meta?.request_id, refetchMessages]);
+
+  // --- 4. SEND MESSAGE (Unified, optimistic) ---
   const sendMessage = useMutation({
     mutationFn: async () => {
-      if (!user || !selectedChat || !messageInput.trim()) return;
-      
+      if (!user || !selectedChat) throw new Error('not_ready');
       const text = messageInput.trim();
+      if (!text) throw new Error('empty');
+
+      // Clear input instantly so the keyboard stays open & feels snappy.
       setMessageInput('');
 
-      let error;
+      // Optimistic append: render a "pending" bubble immediately.
+      const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const optimistic = {
+        id: tempId,
+        content: text,
+        sender_id: user.id,
+        sender_name: 'You',
+        sender_avatar: undefined as any,
+        created_at: new Date().toISOString(),
+        is_me: true,
+        image_url: null,
+        pending: true,
+      };
+      queryClient.setQueryData(messagesQueryKey, (old: any[] | undefined) =>
+        old ? [...old, optimistic] : [optimistic]
+      );
+
+      let error: any = null;
       if (selectedChat.type === 'dm') {
-        const { error: e } = await supabase.from('messages').insert({
+        ({ error } = await supabase.from('messages').insert({
           sender_id: user.id, receiver_id: selectedChat.partner_id, content: text
-        });
-        error = e;
+        }));
       } else if (selectedChat.type === 'service') {
-        // Service messages scoped to request_id
-        const { error: e } = await supabase.from('messages').insert({
+        ({ error } = await supabase.from('messages').insert({
           sender_id: user.id,
           receiver_id: selectedChat.partner_id,
           content: text,
           request_id: selectedChat.meta?.request_id
-        });
-        error = e;
+        }));
       } else if (selectedChat.type === 'community') {
-        const { error: e } = await supabase.from('community_messages').insert({
+        ({ error } = await supabase.from('community_messages').insert({
           community_id: selectedChat.id, sender_id: user.id, content: text
-        });
-        error = e;
+        }));
       } else {
-        const { error: e } = await supabase.from('event_chats').insert({
+        ({ error } = await supabase.from('event_chats').insert({
           event_id: selectedChat.id, user_id: user.id, message: text
-        });
-        error = e;
+        }));
       }
-      
-      if (error) throw error;
+
+      if (error) {
+        // Rollback the optimistic bubble and restore the unsent draft.
+        queryClient.setQueryData(messagesQueryKey, (old: any[] | undefined) =>
+          (old || []).filter((m: any) => m.id !== tempId)
+        );
+        setMessageInput((prev) => prev || text);
+        throw error;
+      }
+      // Realtime INSERT will reconcile the temp bubble with the real row.
       refetchMessages();
-    }
+    },
+    onError: (err: any) => {
+      if (err?.message === 'empty' || err?.message === 'not_ready') return;
+      toast.error('Message failed to send');
+    },
   });
+
 
   // --- 4b. SERVICE REQUEST MUTATIONS ---
 
@@ -1234,7 +1310,10 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
       </div>
       <div className="flex-1 min-w-0">
          <div className="flex justify-between items-center mb-0.5">
-            <h4 className={`font-semibold text-sm truncate ${isSelected ? 'text-primary' : ''}`}>{chat.name}</h4>
+            <h4 className={`font-semibold text-sm truncate inline-flex items-center ${isSelected ? 'text-primary' : ''}`}>
+              <span className="truncate">{chat.name}</span>
+              <PremiumBadge show={!!chat.meta?.is_premium} />
+            </h4>
              {chat.meta?.date && (
                 <span className="text-[10px] text-muted-foreground">
                   {new Date(chat.meta.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
@@ -1243,6 +1322,7 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
          </div>
          <p className="text-xs text-muted-foreground truncate">{chat.subtitle || 'Tap to chat'}</p>
       </div>
+
       {chat.badge && (
          <Badge className="h-5 min-w-[20px] rounded-full px-1.5 flex items-center justify-center">
             {chat.badge}

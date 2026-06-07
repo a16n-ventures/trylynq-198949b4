@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { PremiumBadge } from "@/components/PremiumBadge";
+import { BusinessBadge } from "@/components/BusinessBadge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Bell, UserPlus, Calendar, Loader2, Check, X, MessageSquare, MapPin, Reply, Navigation, Clock, Trash2 } from "lucide-react";
@@ -26,6 +28,8 @@ type NotificationItem = {
   sender_id: string | null;
   sender_name?: string;
   sender_avatar?: string;
+  sender_is_premium?: boolean;
+  sender_is_business?: boolean;
   metadata?: {
     distance_km?: number;
     avatar_url?: string;
@@ -114,8 +118,9 @@ export default function Notifications() {
       if (userIdsToFetch.size > 0) {
         const { data: profiles } = await supabase
           .from("profiles")
-          .select("user_id, display_name, avatar_url")
+          .select("user_id, display_name, avatar_url, is_premium, account_type")
           .in("user_id", Array.from(userIdsToFetch));
+
         
         profiles?.forEach(p => profileMap.set(p.user_id, p));
       }
@@ -144,6 +149,8 @@ export default function Notifications() {
           sender_id: n.sender_id,
           sender_name: profile?.display_name || 'Unknown User',
           sender_avatar: metadata?.avatar_url || profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
           metadata: metadata
         });
       });
@@ -163,7 +170,9 @@ export default function Notifications() {
           is_read: false,
           sender_id: req.requester_id,
           sender_name: profile?.display_name || 'Unknown User',
-          sender_avatar: profile?.avatar_url
+          sender_avatar: profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
         });
       });
 
@@ -182,6 +191,8 @@ export default function Notifications() {
           sender_id: inv.inviter_id,
           sender_name: profile?.display_name || 'Unknown User',
           sender_avatar: profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
           metadata: { event_id: inv.event_id, event_title: event?.title }
         });
       });
@@ -199,7 +210,9 @@ export default function Notifications() {
           is_read: false,
           sender_id: share.sharer_id,
           sender_name: profile?.display_name || 'Unknown User',
-          sender_avatar: profile?.avatar_url
+          sender_avatar: profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
         });
       });
 
@@ -216,7 +229,9 @@ export default function Notifications() {
           is_read: false,
           sender_id: msg.sender_id,
           sender_name: profile?.display_name || 'Unknown User',
-          sender_avatar: profile?.avatar_url
+          sender_avatar: profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
         });
       });
 
@@ -417,7 +432,11 @@ export default function Notifications() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               {getIcon(item.type)}
-              <span className="text-sm font-semibold truncate">{item.sender_name}</span>
+              <span className="text-sm font-semibold truncate inline-flex items-center">
+                {item.sender_name}
+                <PremiumBadge show={!!item.sender_is_premium} />
+                {item.sender_is_business && <BusinessBadge className="ml-0.5" size="sm" />}
+              </span>
               {!item.is_read && (
                 <Badge variant="default" className="h-5 text-[10px] px-1.5 bg-primary/20 text-primary border-0">
                   New

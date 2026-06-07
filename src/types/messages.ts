@@ -11,6 +11,8 @@ export interface Message {
   is_me: boolean;
   sender_name?: string;
   sender_avatar?: string;
+  sender_is_premium?: boolean;
+  sender_is_business?: boolean;
   is_deleted?: boolean;
   is_pinned?: boolean;
   pending?: boolean;
@@ -22,6 +24,7 @@ export interface Message {
     sender_name?: string;
   } | null;
 }
+
 
 export interface CommunityMember {
   user_id: string;

@@ -21,6 +21,8 @@ import { formatMessageTime } from '@/utils/messageHelpers';
 import { LazyImage } from './LazyImage';
 import { UrlPreview, extractUrls, renderTextWithLinks } from './UrlPreview';
 import { QuickReactionBar } from './EmojiPicker';
+import { PremiumBadge } from '@/components/PremiumBadge';
+import { BusinessBadge } from '@/components/BusinessBadge';
 import { toast } from "sonner";
 
 export interface Reaction {
@@ -171,10 +173,13 @@ export const MessageBubble = memo(function MessageBubbleInner({
           <div className={`flex flex-col max-w-[85%] md:max-w-[70%] ${msg.is_me ? 'items-end' : 'items-start'}`}>
             {/* Sender Name */}
             {!msg.is_me && isComm && !isSequence && (
-              <span className="text-[11px] ml-1 mb-1 text-muted-foreground font-semibold">
+              <span className="text-[11px] ml-1 mb-1 text-muted-foreground font-semibold inline-flex items-center">
                 {msg.sender_name ?? 'Unknown'}
+                <PremiumBadge show={!!msg.sender_is_premium} size="sm" />
+                {msg.sender_is_business && <BusinessBadge className="ml-0.5" size="sm" />}
               </span>
             )}
+
 
             <div className="relative group/message flex items-end gap-2">
               {/* Action Buttons (Left side for ME, Right side for OTHERS) */}

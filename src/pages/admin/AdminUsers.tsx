@@ -64,74 +64,27 @@ export default function AdminUsers() {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [banReason, setBanReason] = useState("");
 
-  // Stats Query
+  // Stats Query — uses SECURITY DEFINER RPC so RLS on user_locations/messages/etc.
+  // can't zero-out activity counters for the admin viewer.
   const { data: stats } = useQuery({
     queryKey: ['admin_user_stats'],
     queryFn: async () => {
-      const now = Date.now();
-      const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
-      const since5m = new Date(now - 5 * 60 * 1000).toISOString();
-
-      // Active = distinct users with real, user-driven app activity.
-      // IDs are unioned via Set to dedupe a user that appears in multiple signals
-      // (e.g. same user pings location, sends a message, RSVPs, and checks-in).
-      // Signals: location pings, messages, social posts/comments, event RSVPs
-      // (event_attendees), events created, and check-ins. We also track a
-      // separate "Active Now" pool using the last 5 minutes.
-      const [
-        { count: totalUsers },
-        { count: bannedUsers },
-        locationsRes,
-        messagesRes,
-        postsRes,
-        commentsRes,
-        rsvpsRes,
-        eventsRes,
-        checkinsRes,
-        locationsNowRes,
-        messagesNowRes,
-        checkinsNowRes,
-      ] = await Promise.all([
-        supabase.from('profiles').select('*', { count: 'exact', head: true }),
-        supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true),
-        supabase.from('user_locations').select('user_id').gte('updated_at', since24h).limit(1000),
-        supabase.from('messages').select('sender_id').gte('created_at', since24h).limit(1000),
-        supabase.from('social_posts').select('user_id').gte('created_at', since24h).limit(1000),
-        supabase.from('post_comments').select('user_id').gte('created_at', since24h).limit(1000),
-        supabase.from('event_attendees').select('user_id').gte('created_at', since24h).limit(1000),
-        (supabase.from('events') as any).select('creator_id').gte('created_at', since24h).limit(1000),
-        (supabase.from('checkins') as any).select('user_id').gte('created_at', since24h).limit(1000),
-        supabase.from('user_locations').select('user_id').gte('updated_at', since5m).limit(1000),
-        supabase.from('messages').select('sender_id').gte('created_at', since5m).limit(500),
-        (supabase.from('checkins') as any).select('user_id').gte('created_at', since5m).limit(500),
-      ]);
-
-      const addAll = (set: Set<string>, rows: any[] | null | undefined, key: string) =>
-        (rows || []).forEach((r: any) => r?.[key] && set.add(r[key]));
-
-      const activeSet = new Set<string>();
-      addAll(activeSet, locationsRes.data, 'user_id');
-      addAll(activeSet, messagesRes.data, 'sender_id');
-      addAll(activeSet, postsRes.data, 'user_id');
-      addAll(activeSet, commentsRes.data, 'user_id');
-      addAll(activeSet, rsvpsRes.data, 'user_id');
-      addAll(activeSet, eventsRes.data, 'creator_id');
-      addAll(activeSet, checkinsRes.data, 'user_id');
-
-      const nowSet = new Set<string>();
-      addAll(nowSet, locationsNowRes.data, 'user_id');
-      addAll(nowSet, messagesNowRes.data, 'sender_id');
-      addAll(nowSet, checkinsNowRes.data, 'user_id');
-
+      const { data, error } = await (supabase.rpc as any)('get_admin_user_activity_stats');
+      if (error) {
+        console.error('admin stats rpc failed', error);
+        return { total: 0, banned: 0, activeToday: 0, activeNow: 0 };
+      }
+      const j = (data || {}) as any;
       return {
-        total: totalUsers || 0,
-        banned: bannedUsers || 0,
-        activeToday: activeSet.size,
-        activeNow: nowSet.size,
+        total: Number(j.total) || 0,
+        banned: Number(j.banned) || 0,
+        activeToday: Number(j.activeToday) || 0,
+        activeNow: Number(j.activeNow) || 0,
       };
     },
     refetchInterval: 60_000,
   });
+
 
   // 1. Fetch Users
   const { data: users = [], isLoading, refetch } = useQuery<UserProfile[]>({

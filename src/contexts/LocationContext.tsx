@@ -54,36 +54,47 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // ✅ FIXED: Load user's location sharing preference on mount
+  // Load user's location sharing preference on mount, and keep it in sync
+  // with profile.preferences.ghost_mode (which is the single source of truth
+  // toggled from Profile/Map via the set_ghost_mode RPC).
   useEffect(() => {
     if (!user) return;
-    
+
     const loadLocationPreference = async () => {
       try {
-        const { data, error } = await supabase
-          .from('user_locations')
-          .select('is_sharing_location')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        
-        if (error) {
-          console.error('Error loading location preference:', error);
-          setIsLocationSharingEnabled(false);
-          return;
-        }
-        
-        // Set the user's saved preference
-        const isSharing = data?.is_sharing_location ?? false;
+        const [{ data: loc }, { data: prof }] = await Promise.all([
+          supabase.from('user_locations').select('is_sharing_location').eq('user_id', user.id).maybeSingle(),
+          (supabase.from('profiles') as any).select('preferences').eq('user_id', user.id).maybeSingle(),
+        ]);
+
+        const ghost = (prof?.preferences as any)?.ghost_mode === true;
+        // Ghost mode wins; otherwise fall back to user_locations row, defaulting
+        // to true so a newly-signed-up user is discoverable until they opt out.
+        const isSharing = ghost ? false : (loc?.is_sharing_location ?? true);
         setIsLocationSharingEnabled(isSharing);
-        console.log('📍 Location sharing preference loaded:', isSharing);
+        console.log('📍 Location sharing preference loaded:', isSharing, '(ghost:', ghost, ')');
       } catch (err) {
         console.error('Failed to load location preference:', err);
         setIsLocationSharingEnabled(false);
       }
     };
-    
+
     loadLocationPreference();
+
+    // Realtime: react to ghost-mode toggles from anywhere in the app.
+    const channel = supabase
+      .channel(`loc-prefs-${user.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `user_id=eq.${user.id}` },
+        (payload: any) => {
+          const ghost = (payload?.new?.preferences as any)?.ghost_mode === true;
+          setIsLocationSharingEnabled(!ghost);
+        })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
+
 
   // ✅ FIXED: Only update coordinates, NEVER touch is_sharing_location
   const updateDatabase = useCallback(async (loc: LocationData) => {

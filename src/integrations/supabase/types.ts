@@ -3056,6 +3056,7 @@ export type Database = {
         Returns: boolean
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
+      get_admin_user_activity_stats: { Args: never; Returns: Json }
       get_city_stats: {
         Args: { search_city_name: string }
         Returns: {
@@ -3265,6 +3266,7 @@ export type Database = {
       record_event_view: { Args: { target_event_id: string }; Returns: number }
       record_profile_view: { Args: { target_user_id: string }; Returns: number }
       request_payout: { Args: { withdraw_amount: number }; Returns: Json }
+      set_ghost_mode: { Args: { _enabled: boolean }; Returns: boolean }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       st_3dclosestpoint: {

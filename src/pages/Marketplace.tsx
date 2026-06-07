@@ -249,35 +249,36 @@ export default function Marketplace() {
       {!catalogLoading && hasStore && (
         <>
           {/* Store identity strip */}
-          <div className="flex items-center justify-between p-3 bg-muted/40 rounded-2xl border border-border/40">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 p-3 bg-muted/40 rounded-2xl border border-border/40 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center overflow-hidden shrink-0">
                 {(userStore as any)?.logo_url
                   ? <img src={(userStore as any).logo_url} alt="logo" className="w-full h-full object-cover" />
                   : <StoreIcon className="w-5 h-5 text-primary" />}
               </div>
-              <div>
-                <p className="font-semibold text-sm">{(userStore as any)?.name}</p>
-                <p className="text-[10px] text-muted-foreground">{(userStore as any)?.category}</p>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-sm truncate">{(userStore as any)?.name}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{(userStore as any)?.category}</p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 shrink-0">
               <StoreFormDialog editingStore={userStore as any} trigger={
-                <Button variant="outline" size="sm" className="h-8 text-xs">Edit Store</Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs">Edit</Button>
               } />
               <Button size="sm" variant="outline" className="h-8 text-xs"
                 onClick={() => navigate('/app/map?view=marketplace')}>
-                <MapPin className="w-3.5 h-3.5 mr-1" /> View on Map
+                <MapPin className="w-3.5 h-3.5 mr-1" /> Map
               </Button>
               <Button
                 variant="destructive"
                 size="sm" className="h-8 text-xs"
                 onClick={() => deleteStoreMutation.mutate()}
               >
-                Delete Store
+                Delete
               </Button>
             </div>
           </div>
+
 
           {/* Search */}
           <div className="relative">
