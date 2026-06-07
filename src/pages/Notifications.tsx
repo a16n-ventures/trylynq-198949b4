@@ -432,7 +432,11 @@ export default function Notifications() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               {getIcon(item.type)}
-              <span className="text-sm font-semibold truncate">{item.sender_name}</span>
+              <span className="text-sm font-semibold truncate inline-flex items-center">
+                {item.sender_name}
+                <PremiumBadge show={!!item.sender_is_premium} />
+                {item.sender_is_business && <BusinessBadge className="ml-0.5" size="sm" />}
+              </span>
               {!item.is_read && (
                 <Badge variant="default" className="h-5 text-[10px] px-1.5 bg-primary/20 text-primary border-0">
                   New
