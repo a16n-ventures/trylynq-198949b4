@@ -870,10 +870,20 @@ const Profile = () => {
       return { ...old, profile: { ...old.profile, preferences: newPreferences } };
     });
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ preferences: newPreferences })
-      .eq('user_id', user?.id);
+    // Ghost mode flows through SECURITY DEFINER RPC so it atomically
+    // updates BOTH profiles.preferences.ghost_mode AND
+    // user_locations.is_sharing_location (Map + nearby queries respect it).
+    let error: any = null;
+    if (key === 'ghost_mode') {
+      const { error: rpcErr } = await (supabase.rpc as any)('set_ghost_mode', { _enabled: !!value });
+      error = rpcErr;
+    } else {
+      const { error: updErr } = await supabase
+        .from('profiles')
+        .update({ preferences: newPreferences })
+        .eq('user_id', user?.id);
+      error = updErr;
+    }
 
     if (error) {
       toast.error('Failed to save preference');
@@ -882,9 +892,12 @@ const Profile = () => {
     }
 
     if (key !== 'discovery_radius') {
-      toast.success('Preference updated');
+      toast.success(key === 'ghost_mode'
+        ? (value ? 'Ghost Mode On 👻' : 'You are visible again')
+        : 'Preference updated');
     }
   };
+
 
   // --- 3. LOADING & ERROR STATES ---
   // Only block render while the profile query is actively in-flight for a confirmed user.
