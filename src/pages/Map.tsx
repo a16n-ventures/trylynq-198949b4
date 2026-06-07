@@ -387,32 +387,65 @@ const MapPage = () => {
   };
 
   // --- 5. Ghost Mode ---
+  // Single source of truth: profiles.preferences.ghost_mode (mirrored by RPC to
+  // user_locations.is_sharing_location). Subscribing to the profile row keeps
+  // the Map toggle in sync with the Profile screen and any other tab.
   useEffect(() => {
     if (!user) return;
-    supabase.from('user_locations').select('is_sharing_location').eq('user_id', user.id).maybeSingle()
-      .then(({ data }) => { if (data) setIsGhostMode(!data.is_sharing_location); });
+    let cancelled = false;
 
-    const channel = supabase.channel('online-users', { config: { presence: { key: user.id } } });
-    channel.on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState();
+    const loadGhost = async () => {
+      const { data } = await (supabase.from('profiles') as any)
+        .select('preferences')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      const ghost = (data?.preferences as any)?.ghost_mode === true;
+      setIsGhostMode(ghost);
+    };
+    loadGhost();
+
+    const profileChannel = supabase
+      .channel(`ghost-prefs-${user.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `user_id=eq.${user.id}` },
+        (payload: any) => {
+          const ghost = (payload?.new?.preferences as any)?.ghost_mode === true;
+          setIsGhostMode(ghost);
+        })
+      .subscribe();
+
+    const presenceChannel = supabase.channel('online-users', { config: { presence: { key: user.id } } });
+    presenceChannel.on('presence', { event: 'sync' }, () => {
+      const state = presenceChannel.presenceState();
       const next: any = {};
       Object.keys(state).forEach(k => { next[k] = 'online'; });
       setFriendsPresence(next);
     }).subscribe(status => {
-      if (status === 'SUBSCRIBED') channel.track({ online: true });
+      if (status === 'SUBSCRIBED') presenceChannel.track({ online: true });
     });
-    return () => { channel.unsubscribe(); };
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(profileChannel);
+      presenceChannel.unsubscribe();
+    };
   }, [user]);
 
   const toggleGhostMode = async () => {
     if (!user) return;
     const newValue = !isGhostMode;
-    await supabase.from('user_locations').upsert({ 
-      user_id: user.id, is_sharing_location: !newValue, updated_at: new Date().toISOString()
-    } as any);
+    // Optimistic
     setIsGhostMode(newValue);
+    const { error } = await (supabase.rpc as any)('set_ghost_mode', { _enabled: newValue });
+    if (error) {
+      setIsGhostMode(!newValue);
+      toast.error('Failed to update Ghost Mode');
+      return;
+    }
     toast.success(newValue ? "Ghost Mode On 👻" : "You are visible on map");
   };
+
 
   // --- 6. Navigation ---
   const handleGetDirections = async (destLat: number, destLng: number, destName: string) => {
