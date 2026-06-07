@@ -26,6 +26,8 @@ type NotificationItem = {
   sender_id: string | null;
   sender_name?: string;
   sender_avatar?: string;
+  sender_is_premium?: boolean;
+  sender_is_business?: boolean;
   metadata?: {
     distance_km?: number;
     avatar_url?: string;
