@@ -413,18 +413,22 @@ export default function Messages() {
       return (data || []).map((m: any) => {
         const senderId = m.sender_id || m.user_id;
         const profile = profileMap.get(senderId);
+        const sender = m.sender || profile || {};
         return {
           id: m.id,
           content: m.content || m.message,
           sender_id: senderId,
-          sender_name: m.sender?.display_name || profile?.display_name || 'User',
-          sender_avatar: m.sender?.avatar_url || profile?.avatar_url,
+          sender_name: sender.display_name || 'User',
+          sender_avatar: sender.avatar_url,
+          sender_is_premium: !!sender.is_premium,
+          sender_is_business: sender.account_type === 'business',
           created_at: m.created_at,
           is_me: senderId === user.id,
           image_url: m.image_url,
           pending: false,
         };
       });
+
     },
     enabled: !!selectedChat,
     // Realtime subscription below pushes new messages instantly; keep a slow
