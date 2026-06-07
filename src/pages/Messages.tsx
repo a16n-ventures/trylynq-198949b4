@@ -405,8 +405,9 @@ export default function Messages() {
         const userIds = [...new Set(data.map((m: any) => m.user_id))] as string[];
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('user_id, display_name, avatar_url')
+          .select('user_id, display_name, avatar_url, account_type, is_premium')
           .in('user_id', userIds);
+
         profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
       }
       
