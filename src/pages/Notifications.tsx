@@ -166,7 +166,11 @@ export default function Notifications() {
           is_read: false,
           sender_id: req.requester_id,
           sender_name: profile?.display_name || 'Unknown User',
-          sender_avatar: profile?.avatar_url
+          sender_avatar: profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business'
         });
       });
 
@@ -185,6 +189,8 @@ export default function Notifications() {
           sender_id: inv.inviter_id,
           sender_name: profile?.display_name || 'Unknown User',
           sender_avatar: profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
           metadata: { event_id: inv.event_id, event_title: event?.title }
         });
       });
@@ -202,7 +208,11 @@ export default function Notifications() {
           is_read: false,
           sender_id: share.sharer_id,
           sender_name: profile?.display_name || 'Unknown User',
-          sender_avatar: profile?.avatar_url
+          sender_avatar: profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business'
         });
       });
 
@@ -219,7 +229,11 @@ export default function Notifications() {
           is_read: false,
           sender_id: msg.sender_id,
           sender_name: profile?.display_name || 'Unknown User',
-          sender_avatar: profile?.avatar_url
+          sender_avatar: profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business'
         });
       });
 
