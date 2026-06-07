@@ -169,8 +169,6 @@ export default function Notifications() {
           sender_avatar: profile?.avatar_url,
           sender_is_premium: !!profile?.is_premium,
           sender_is_business: profile?.account_type === 'business',
-          sender_is_premium: !!profile?.is_premium,
-          sender_is_business: profile?.account_type === 'business'
         });
       });
 
@@ -211,8 +209,6 @@ export default function Notifications() {
           sender_avatar: profile?.avatar_url,
           sender_is_premium: !!profile?.is_premium,
           sender_is_business: profile?.account_type === 'business',
-          sender_is_premium: !!profile?.is_premium,
-          sender_is_business: profile?.account_type === 'business'
         });
       });
 
@@ -232,8 +228,6 @@ export default function Notifications() {
           sender_avatar: profile?.avatar_url,
           sender_is_premium: !!profile?.is_premium,
           sender_is_business: profile?.account_type === 'business',
-          sender_is_premium: !!profile?.is_premium,
-          sender_is_business: profile?.account_type === 'business'
         });
       });
 
