@@ -1310,7 +1310,10 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
       </div>
       <div className="flex-1 min-w-0">
          <div className="flex justify-between items-center mb-0.5">
-            <h4 className={`font-semibold text-sm truncate ${isSelected ? 'text-primary' : ''}`}>{chat.name}</h4>
+            <h4 className={`font-semibold text-sm truncate inline-flex items-center ${isSelected ? 'text-primary' : ''}`}>
+              <span className="truncate">{chat.name}</span>
+              <PremiumBadge show={!!chat.meta?.is_premium} />
+            </h4>
              {chat.meta?.date && (
                 <span className="text-[10px] text-muted-foreground">
                   {new Date(chat.meta.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
@@ -1319,6 +1322,7 @@ function ChatListItem({ chat, isSelected, onClick }: { chat: ChatItem, isSelecte
          </div>
          <p className="text-xs text-muted-foreground truncate">{chat.subtitle || 'Tap to chat'}</p>
       </div>
+
       {chat.badge && (
          <Badge className="h-5 min-w-[20px] rounded-full px-1.5 flex items-center justify-center">
             {chat.badge}
