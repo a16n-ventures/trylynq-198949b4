@@ -147,6 +147,8 @@ export default function Notifications() {
           sender_id: n.sender_id,
           sender_name: profile?.display_name || 'Unknown User',
           sender_avatar: metadata?.avatar_url || profile?.avatar_url,
+          sender_is_premium: !!profile?.is_premium,
+          sender_is_business: profile?.account_type === 'business',
           metadata: metadata
         });
       });
