@@ -114,8 +114,9 @@ export default function Notifications() {
       if (userIdsToFetch.size > 0) {
         const { data: profiles } = await supabase
           .from("profiles")
-          .select("user_id, display_name, avatar_url")
+          .select("user_id, display_name, avatar_url, is_premium, account_type")
           .in("user_id", Array.from(userIdsToFetch));
+
         
         profiles?.forEach(p => profileMap.set(p.user_id, p));
       }
