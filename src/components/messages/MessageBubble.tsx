@@ -22,7 +22,7 @@ import { LazyImage } from './LazyImage';
 import { UrlPreview, extractUrls, renderTextWithLinks } from './UrlPreview';
 import { QuickReactionBar } from './EmojiPicker';
 import { PremiumBadge } from '@/components/PremiumBadge';
-import BusinessBadge from '@/components/BusinessBadge';
+import { BusinessBadge } from '@/components/BusinessBadge';
 import { toast } from "sonner";
 
 export interface Reaction {
