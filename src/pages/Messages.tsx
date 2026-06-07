@@ -209,13 +209,13 @@ export default function Messages() {
       const partnerIds = Array.from(partnerMap.keys());
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url, account_type, verification_status') // Add these two
+        .select('user_id, display_name, avatar_url, account_type, verification_status, is_premium')
         .in('user_id', partnerIds);
       
       const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
       
       return Array.from(partnerMap.values()).map(p => {
-        const profile = profileMap.get(p.partner_id);
+        const profile = profileMap.get(p.partner_id) as any;
         return {
           id: p.partner_id,
           type: 'dm' as const,
@@ -225,9 +225,11 @@ export default function Messages() {
           partner_id: p.partner_id,
           badge: p.unread_count > 0 ? p.unread_count : undefined,
           is_verified: profile?.verification_status === 'verified',
-          account_type: profile?.account_type
+          account_type: profile?.account_type,
+          meta: { is_premium: !!profile?.is_premium }
         };
       });
+
     },
     enabled: !!user && activeTab === 'dm'
   });
