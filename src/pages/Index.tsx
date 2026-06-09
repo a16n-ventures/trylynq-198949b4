@@ -540,6 +540,7 @@ const Index = () => {
           </div>
         </div>
 
+        {/*
         <div className="rounded-3xl overflow-hidden relative shadow-2xl" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
           <div className="relative h-52 w-full">
             <img src="/ahmia-zaria-launch.jpg" alt="Zaria Launch" loading="lazy"
@@ -562,6 +563,7 @@ const Index = () => {
             </button>
           </div>
         </div>
+        */} 
 
       </section>
 
